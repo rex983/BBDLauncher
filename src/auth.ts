@@ -16,6 +16,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
       authorization: {
         params: {
+          hd: "bigbuildingsdirect.com",
           prompt: "select_account",
         },
       },
@@ -110,8 +111,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     error: "/auth-error",
   },
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, account }) {
       if (!user.email) return false;
+
+      // Google sign-in: restrict to @bigbuildingsdirect.com
+      if (account?.provider === "google") {
+        if (!user.email.endsWith("@bigbuildingsdirect.com")) return false;
+        return true;
+      }
 
       // Hardcoded admin account — always allowed
       if (user.email === "rex@bigbuildingsdirect.com") return true;
@@ -119,14 +126,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Dev bypass — skip DB check
       if (isDev) return true;
 
-      const supabase = createAdminClient();
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("email", user.email)
-        .single();
+      try {
+        const supabase = createAdminClient();
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("email", user.email)
+          .single();
 
-      if (!profile) return false;
+        if (!profile) return false;
+      } catch {
+        // If Supabase is unavailable, fall back to denying
+        return false;
+      }
 
       return true;
     },

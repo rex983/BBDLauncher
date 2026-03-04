@@ -45,23 +45,28 @@ export default async function DashboardPage() {
   if (isDev) {
     apps = devApps;
   } else {
-    const supabase = createAdminClient();
+    try {
+      const supabase = createAdminClient();
 
-    const { data: accessibleAppIds } = await supabase
-      .from("launcher_role_app_access")
-      .select("app_id")
-      .eq("role_name", session.user.role);
+      const { data: accessibleAppIds } = await supabase
+        .from("launcher_role_app_access")
+        .select("app_id")
+        .eq("role_name", session.user.role);
 
-    const appIds = accessibleAppIds?.map((a) => a.app_id) || [];
+      const appIds = accessibleAppIds?.map((a) => a.app_id) || [];
 
-    if (appIds.length > 0) {
-      const { data } = await supabase
-        .from("launcher_apps")
-        .select("*")
-        .in("id", appIds)
-        .eq("status", "active")
-        .order("display_order", { ascending: true });
-      apps = (data as LauncherApp[]) || [];
+      if (appIds.length > 0) {
+        const { data } = await supabase
+          .from("launcher_apps")
+          .select("*")
+          .in("id", appIds)
+          .eq("status", "active")
+          .order("display_order", { ascending: true });
+        apps = (data as LauncherApp[]) || [];
+      }
+    } catch {
+      // Supabase unavailable — show empty state
+      apps = [];
     }
   }
 
