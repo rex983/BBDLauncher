@@ -1,5 +1,4 @@
-import { auth } from "@/auth";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 const publicPaths = [
   "/login",
@@ -8,7 +7,7 @@ const publicPaths = [
   "/api/saml/metadata",
 ];
 
-export default auth((req) => {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Allow public paths
@@ -16,22 +15,32 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  // Redirect unauthenticated users to login
-  if (!req.auth) {
+  // Dynamically import auth to avoid blowing up if AUTH_SECRET is missing
+  try {
+    const { auth } = await import("@/auth");
+    const session = await auth();
+
+    // Redirect unauthenticated users to login
+    if (!session?.user) {
+      const loginUrl = new URL("/login", req.url);
+      loginUrl.searchParams.set("callbackUrl", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // Admin routes require admin role
+    if (pathname.startsWith("/admin")) {
+      if (session.user.role !== "admin") {
+        return NextResponse.redirect(new URL("/dashboard", req.url));
+      }
+    }
+  } catch {
+    // If auth fails (e.g. missing AUTH_SECRET), redirect to login
     const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Admin routes require admin role
-  if (pathname.startsWith("/admin")) {
-    if (req.auth.user?.role !== "admin") {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-  }
-
   return NextResponse.next();
-});
+}
 
 export const config = {
   matcher: [
