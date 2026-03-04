@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import {
@@ -25,8 +25,11 @@ const adminItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "admin";
+  const viewAs = searchParams.get("viewAs");
+  const isViewingAsOtherRole = isAdmin && viewAs && viewAs !== session?.user?.role;
 
   return (
     <aside className="w-64 border-r bg-background min-h-[calc(100vh-4rem)]">
@@ -47,7 +50,7 @@ export function Sidebar() {
           </Link>
         ))}
 
-        {isAdmin && (
+        {isAdmin && !isViewingAsOtherRole && (
           <>
             <div className="mt-6 mb-2 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Admin
@@ -68,6 +71,17 @@ export function Sidebar() {
               </Link>
             ))}
           </>
+        )}
+
+        {isViewingAsOtherRole && (
+          <div className="mt-6 px-3">
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              Exit role preview
+            </Link>
+          </div>
         )}
       </nav>
     </aside>
