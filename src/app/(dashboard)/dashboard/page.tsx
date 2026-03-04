@@ -37,7 +37,9 @@ export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const isDev = process.env.NODE_ENV === "development";
+  const isDev =
+    process.env.NODE_ENV === "development" ||
+    process.env.AUTH_DEV_BYPASS === "true";
   let apps: LauncherApp[] = [];
 
   if (isDev) {

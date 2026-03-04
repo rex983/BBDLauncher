@@ -5,7 +5,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptStrapiCookie } from "@/lib/auth/strapi-sso";
 import type { UserRole } from "@/types/auth";
 
-const isDev = process.env.NODE_ENV === "development";
+const isDev =
+  process.env.NODE_ENV === "development" ||
+  process.env.AUTH_DEV_BYPASS === "true";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
