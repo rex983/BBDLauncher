@@ -64,7 +64,7 @@ export default function AdminUsersPage() {
           {users.map((user) => (
             <TableRow key={user.id}>
               <TableCell className="font-medium">
-                {user.full_name || "—"}
+                {user.name || "—"}
               </TableCell>
               <TableCell>{user.email}</TableCell>
               <TableCell>

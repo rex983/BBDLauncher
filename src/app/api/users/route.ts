@@ -11,7 +11,7 @@ export async function GET() {
   const supabase = createAdminClient();
   const { data: users } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, avatar_url, created_at, updated_at")
+    .select("id, email, name, role, created_at, updated_at")
     .order("email");
 
   return NextResponse.json(users || []);

@@ -274,6 +274,23 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       <div className="space-y-2">
         <Label>Role Access</Label>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setSelectedRoles(
+                selectedRoles.length === roles.length
+                  ? []
+                  : roles.map((r) => r.name)
+              )
+            }
+            className={`px-3 py-1 rounded-full text-sm border transition-colors ${
+              selectedRoles.length === roles.length && roles.length > 0
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-background border-border hover:bg-accent"
+            }`}
+          >
+            All
+          </button>
           {roles.map((role) => (
             <button
               key={role.name}

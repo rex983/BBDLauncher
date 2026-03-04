@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import Image from "next/image";
 import { Suspense } from "react";
 
 function LoginForm() {
@@ -34,10 +35,10 @@ function LoginForm() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">
-            Big Buildings Direct
-          </CardTitle>
+        <CardHeader className="text-center space-y-4">
+          <div className="flex justify-center">
+            <Image src="/logo-full.png" alt="Big Buildings Direct" width={320} height={80} priority />
+          </div>
           <CardDescription>
             Sign in to access your applications
           </CardDescription>

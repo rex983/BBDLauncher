@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import Image from "next/image";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { LogOut, Settings, Shield, Sun, Moon } from "lucide-react";
@@ -32,9 +33,7 @@ export function Header() {
     <header className="border-b bg-background">
       <div className="flex h-16 items-center px-6">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">BB</span>
-          </div>
+          <Image src="/logo-icon.png" alt="BBD" width={32} height={32} className="rounded" />
           <span className="font-semibold text-lg">BBD Launcher</span>
         </Link>
 

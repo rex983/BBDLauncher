@@ -21,6 +21,6 @@ INSERT INTO launcher_roles (name, display_name, description, is_admin) VALUES
   ('admin', 'Administrator', 'Full system access', TRUE),
   ('manager', 'Manager', 'Team management and reporting access', FALSE),
   ('sales_rep', 'Sales Representative', 'Sales tools and CRM access', FALSE),
-  ('bst', 'BST', 'Building Services Technician tools', FALSE),
+  ('bst', 'BST', 'Building Success Team', FALSE),
   ('rnd', 'R&D', 'Research and Development tools', FALSE)
 ON CONFLICT (name) DO NOTHING;

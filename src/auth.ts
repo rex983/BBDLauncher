@@ -37,7 +37,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, email, full_name, role, avatar_url")
+          .select("id, email, name, role")
           .eq("email", payload.email)
           .single();
 
@@ -46,8 +46,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return {
           id: profile.id,
           email: profile.email,
-          name: profile.full_name || payload.name || null,
-          image: profile.avatar_url || payload.avatar || null,
+          name: profile.name || payload.name || null,
+          image: null,
         };
       },
     }),
@@ -91,7 +91,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, email, full_name, role, avatar_url")
+          .select("id, email, name, role")
           .eq("email", email)
           .single();
 
@@ -100,8 +100,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return {
           id: profile.id,
           email: profile.email,
-          name: profile.full_name || null,
-          image: profile.avatar_url || null,
+          name: profile.name || null,
+          image: null,
         };
       },
     }),
