@@ -37,37 +37,33 @@ export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const isDev =
-    process.env.NODE_ENV === "development" ||
-    process.env.AUTH_DEV_BYPASS === "true";
+  // Try loading apps from Supabase; fall back to hardcoded dev apps
   let apps: LauncherApp[] = [];
+  try {
+    const supabase = createAdminClient();
+    const { data: accessibleAppIds } = await supabase
+      .from("launcher_role_app_access")
+      .select("app_id")
+      .eq("role_name", session.user.role);
 
-  if (isDev) {
-    apps = devApps;
-  } else {
-    try {
-      const supabase = createAdminClient();
+    const appIds = accessibleAppIds?.map((a) => a.app_id) || [];
 
-      const { data: accessibleAppIds } = await supabase
-        .from("launcher_role_app_access")
-        .select("app_id")
-        .eq("role_name", session.user.role);
-
-      const appIds = accessibleAppIds?.map((a) => a.app_id) || [];
-
-      if (appIds.length > 0) {
-        const { data } = await supabase
-          .from("launcher_apps")
-          .select("*")
-          .in("id", appIds)
-          .eq("status", "active")
-          .order("display_order", { ascending: true });
-        apps = (data as LauncherApp[]) || [];
-      }
-    } catch {
-      // Supabase unavailable — show empty state
-      apps = [];
+    if (appIds.length > 0) {
+      const { data } = await supabase
+        .from("launcher_apps")
+        .select("*")
+        .in("id", appIds)
+        .eq("status", "active")
+        .order("display_order", { ascending: true });
+      apps = (data as LauncherApp[]) || [];
     }
+  } catch {
+    // Supabase unavailable
+  }
+
+  // If no apps from DB, show hardcoded apps
+  if (apps.length === 0) {
+    apps = devApps;
   }
 
   return (
