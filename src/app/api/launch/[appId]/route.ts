@@ -8,6 +8,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ appId: string }> }
 ) {
+  try {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.redirect(new URL("/login", req.url));
@@ -157,5 +158,12 @@ export async function GET(
 
     default:
       return NextResponse.redirect(app.url);
+  }
+  } catch (err) {
+    console.error("Launch error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Launch failed" },
+      { status: 500 }
+    );
   }
 }
