@@ -1,7 +1,9 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AppGrid } from "@/components/features/launcher/app-grid";
+import { ViewAsRole } from "@/components/features/launcher/view-as-role";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import type { LauncherApp } from "@/types/app";
 
 const devApps: LauncherApp[] = [
@@ -33,18 +35,37 @@ const devApps: LauncherApp[] = [
   },
 ];
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ viewAs?: string }>;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
+  const { viewAs } = await searchParams;
+  const isAdmin = session.user.role === "admin";
+  const effectiveRole = isAdmin && viewAs ? viewAs : session.user.role;
+
   // Try loading apps from Supabase; fall back to hardcoded dev apps
   let apps: LauncherApp[] = [];
+  let roles: { name: string; display_name: string }[] = [];
   try {
     const supabase = createAdminClient();
+
+    // Fetch roles for the selector (admin only)
+    if (isAdmin) {
+      const { data: rolesData } = await supabase
+        .from("launcher_roles")
+        .select("name, display_name")
+        .order("name");
+      roles = rolesData || [];
+    }
+
     const { data: accessibleAppIds } = await supabase
       .from("launcher_role_app_access")
       .select("app_id")
-      .eq("role_name", session.user.role);
+      .eq("role_name", effectiveRole);
 
     const appIds = accessibleAppIds?.map((a) => a.app_id) || [];
 
@@ -62,18 +83,30 @@ export default async function DashboardPage() {
   }
 
   // If no apps from DB, show hardcoded apps
-  if (apps.length === 0) {
+  if (apps.length === 0 && !viewAs) {
     apps = devApps;
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Applications</h1>
-        <p className="text-muted-foreground">
-          Welcome back, {session.user.name || session.user.email}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Applications</h1>
+          <p className="text-muted-foreground">
+            Welcome back, {session.user.name || session.user.email}
+          </p>
+        </div>
+        {isAdmin && roles.length > 0 && (
+          <Suspense>
+            <ViewAsRole roles={roles} currentRole={session.user.role} />
+          </Suspense>
+        )}
       </div>
+      {viewAs && viewAs !== session.user.role && (
+        <div className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded">
+          Viewing as <span className="font-medium">{viewAs}</span> role
+        </div>
+      )}
       <AppGrid apps={apps} />
     </div>
   );
