@@ -115,6 +115,31 @@ export default function AdminSsoPage() {
               </code>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>JWT SSO (Internal Apps)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">JWKS Endpoint</p>
+                <code className="bg-muted px-2 py-1 rounded text-sm block">
+                  {typeof window !== "undefined"
+                    ? `${window.location.origin}/api/sso/jwks`
+                    : "/api/sso/jwks"}
+                </code>
+              </div>
+              <div className="text-sm text-muted-foreground space-y-2">
+                <p className="font-medium">How to connect an internal app:</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Create the app in the launcher with SSO Type = &quot;JWT&quot;</li>
+                  <li>Set the ACS URL (e.g. <code>https://app.bigbuildings.app/api/sso/callback</code>)</li>
+                  <li>Set the Audience identifier (e.g. <code>order-processing</code>)</li>
+                  <li>In the target app: <code>npm install jose</code>, add a callback route that validates the token via JWKS, and create a local session</li>
+                </ol>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="audit">

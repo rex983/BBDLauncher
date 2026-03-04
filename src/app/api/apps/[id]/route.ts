@@ -65,7 +65,7 @@ export async function PUT(
   // Update SSO config
   if (sso_config !== undefined) {
     await supabase.from("launcher_sso_configs").delete().eq("app_id", id);
-    if (sso_config && (appData.sso_type === "saml" || appData.sso_type === "oauth")) {
+    if (sso_config && (appData.sso_type === "saml" || appData.sso_type === "oauth" || appData.sso_type === "jwt")) {
       await supabase.from("launcher_sso_configs").insert({
         app_id: id,
         ...sso_config,

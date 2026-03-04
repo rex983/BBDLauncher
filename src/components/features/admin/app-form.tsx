@@ -43,6 +43,10 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [oauthAuthorizeUrl, setOauthAuthorizeUrl] = useState(app?.sso_config?.oauth_authorize_url || "");
   const [oauthTokenUrl, setOauthTokenUrl] = useState(app?.sso_config?.oauth_token_url || "");
 
+  // JWT fields
+  const [jwtAcsUrl, setJwtAcsUrl] = useState(app?.sso_config?.jwt_acs_url || "");
+  const [jwtAudience, setJwtAudience] = useState(app?.sso_config?.jwt_audience || "");
+
   useEffect(() => {
     fetch("/api/roles")
       .then((r) => r.json())
@@ -74,7 +78,9 @@ export function AppForm({ app, onSaved }: AppFormProps) {
                 oauth_authorize_url: oauthAuthorizeUrl,
                 oauth_token_url: oauthTokenUrl,
               }
-            : null,
+            : ssoType === "jwt"
+              ? { jwt_acs_url: jwtAcsUrl, jwt_audience: jwtAudience }
+              : null,
     };
 
     const res = app
@@ -152,6 +158,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
               <SelectItem value="direct_link">Direct Link</SelectItem>
               <SelectItem value="saml">SAML</SelectItem>
               <SelectItem value="oauth">OAuth</SelectItem>
+              <SelectItem value="jwt">JWT</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -199,6 +206,39 @@ export function AppForm({ app, onSaved }: AppFormProps) {
           <div className="space-y-2">
             <Label>SLO URL</Label>
             <Input value={sloUrl} onChange={(e) => setSloUrl(e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {ssoType === "jwt" && (
+        <div className="space-y-4 border rounded-lg p-4">
+          <h3 className="font-semibold">JWT SSO Configuration</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>ACS URL</Label>
+              <Input
+                value={jwtAcsUrl}
+                onChange={(e) => setJwtAcsUrl(e.target.value)}
+                placeholder="https://your-app.bigbuildings.app/api/sso/callback"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Audience</Label>
+              <Input
+                value={jwtAudience}
+                onChange={(e) => setJwtAudience(e.target.value)}
+                placeholder="your-app"
+              />
+            </div>
+          </div>
+          <div className="text-sm text-muted-foreground bg-muted p-3 rounded">
+            <p className="font-medium mb-1">Setup Instructions</p>
+            <ol className="list-decimal list-inside space-y-1">
+              <li>Install <code>jose</code> in your app: <code>npm install jose</code></li>
+              <li>Set <code>SSO_JWKS_URL</code> env var to the launcher&apos;s JWKS endpoint</li>
+              <li>Create an API route that validates the <code>sso_token</code> query param using JWKS</li>
+              <li>On valid token, create a local session and redirect to your app</li>
+            </ol>
           </div>
         </div>
       )}

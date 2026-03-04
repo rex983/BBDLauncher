@@ -1,4 +1,4 @@
-export type SsoType = "none" | "saml" | "oauth" | "direct_link";
+export type SsoType = "none" | "saml" | "oauth" | "direct_link" | "jwt";
 export type AppStatus = "active" | "inactive" | "maintenance";
 
 export interface LauncherApp {
@@ -40,6 +40,8 @@ export interface SsoConfig {
   oauth_client_secret: string | null;
   oauth_authorize_url: string | null;
   oauth_token_url: string | null;
+  jwt_acs_url: string | null;
+  jwt_audience: string | null;
   created_at: string;
   updated_at: string;
 }

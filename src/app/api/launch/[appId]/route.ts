@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSamlAssertion, generateAutoSubmitForm } from "@/lib/saml/idp";
+import { generateSsoToken } from "@/lib/sso/jwt-issuer";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -99,6 +100,33 @@ export async function GET(
       return new NextResponse(html, {
         headers: { "Content-Type": "text/html" },
       });
+    }
+
+    case "jwt": {
+      const { data: ssoConfig } = await supabase
+        .from("launcher_sso_configs")
+        .select("*")
+        .eq("app_id", appId)
+        .single();
+
+      if (!ssoConfig?.jwt_acs_url || !ssoConfig?.jwt_audience) {
+        return NextResponse.json(
+          { error: "JWT SSO not configured for this application" },
+          { status: 500 }
+        );
+      }
+
+      const token = await generateSsoToken({
+        email: session.user.email!,
+        name: session.user.name || "",
+        role: session.user.role,
+        profileId: session.user.profileId,
+        audience: ssoConfig.jwt_audience,
+      });
+
+      const acsUrl = new URL(ssoConfig.jwt_acs_url);
+      acsUrl.searchParams.set("sso_token", token);
+      return NextResponse.redirect(acsUrl.toString());
     }
 
     case "oauth": {

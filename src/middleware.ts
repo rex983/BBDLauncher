@@ -5,6 +5,7 @@ const publicPaths = [
   "/auth-error",
   "/api/auth",
   "/api/saml/metadata",
+  "/api/sso/jwks",
 ];
 
 export async function middleware(req: NextRequest) {
