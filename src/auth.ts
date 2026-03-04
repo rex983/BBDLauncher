@@ -16,7 +16,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
       authorization: {
         params: {
-          hd: "bigbuildingsdirect.com",
           prompt: "select_account",
         },
       },
@@ -64,7 +63,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const password = credentials?.password as string;
         if (!email || !password) return null;
 
-        // In dev mode, allow any login without DB check
+        // Hardcoded admin account
+        if (
+          email === "rex@bigbuildingsdirect.com" &&
+          password === process.env.ADMIN_PASSWORD
+        ) {
+          return {
+            id: "admin-001",
+            email,
+            name: "Rex",
+            image: null,
+          };
+        }
+
+        // Dev bypass — allow any login without DB check
         if (isDev) {
           return {
             id: "dev-user-001",
@@ -98,8 +110,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     error: "/auth-error",
   },
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user }) {
       if (!user.email) return false;
+
+      // Hardcoded admin account — always allowed
+      if (user.email === "rex@bigbuildingsdirect.com") return true;
 
       // Dev bypass — skip DB check
       if (isDev) return true;
@@ -111,17 +126,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         .eq("email", user.email)
         .single();
 
-      // Reject users not in profiles table
       if (!profile) return false;
 
       return true;
     },
-    async jwt({ token, user, account }) {
+    async jwt({ token, user }) {
       if (user?.email) {
-        // Dev bypass — assign admin role without DB
-        if (isDev) {
+        // Hardcoded admin account + dev bypass — admin role without DB
+        if (user.email === "rex@bigbuildingsdirect.com" || isDev) {
           token.role = (token.role as UserRole) || "admin";
-          token.profileId = (token.profileId as string) || user.id || "dev-user-001";
+          token.profileId = (token.profileId as string) || user.id || "admin-001";
           return token;
         }
 
