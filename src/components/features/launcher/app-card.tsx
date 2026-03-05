@@ -37,7 +37,7 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
             isDragging ? "shadow-lg ring-2 ring-primary/30 opacity-90" : ""
           }`}
         >
-          <CardContent className="flex flex-col items-center gap-3 p-6 h-full relative">
+          <CardContent className="flex flex-col items-center gap-2 p-4 h-full relative">
             <div
               {...dragHandleProps}
               className="absolute top-2 right-2 opacity-0 group-hover:opacity-40 hover:!opacity-100 cursor-grab active:cursor-grabbing transition-opacity"
@@ -48,18 +48,18 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
               href={href}
               target={app.open_in_new_tab ? "_blank" : "_self"}
               rel="noopener noreferrer"
-              className="flex flex-col items-center gap-3 flex-1 w-full"
+              className="flex flex-col items-center gap-2 flex-1 w-full"
             >
-              <div className="h-16 w-16 flex-shrink-0 flex items-center justify-center">
+              <div className="h-10 w-10 flex-shrink-0 flex items-center justify-center">
                 {app.icon_url ? (
                   <img
                     src={app.icon_url}
                     alt={app.name}
-                    className="max-h-16 max-w-16 rounded-lg object-contain"
+                    className="max-h-10 max-w-10 rounded-md object-contain"
                   />
                 ) : (
-                  <div className="h-16 w-16 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <span className="text-2xl font-bold text-primary">
+                  <div className="h-10 w-10 rounded-md bg-primary/10 flex items-center justify-center">
+                    <span className="text-lg font-bold text-primary">
                       {firstLetter}
                     </span>
                   </div>

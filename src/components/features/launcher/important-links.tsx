@@ -24,15 +24,15 @@ export function ImportantLinks({ links }: ImportantLinksProps) {
           >
             <Card className="group transition-all hover:shadow-md hover:border-primary/50 h-full">
               <CardContent className="flex items-center gap-3 p-4">
-                <div className="h-8 w-8 flex-shrink-0 flex items-center justify-center">
+                <div className="h-5 w-5 flex-shrink-0 flex items-center justify-center">
                   {link.icon_url ? (
                     <img
                       src={link.icon_url}
                       alt={link.name}
-                      className="max-h-8 max-w-8 rounded object-contain"
+                      className="max-h-5 max-w-5 rounded object-contain"
                     />
                   ) : (
-                    <ExternalLink className="h-5 w-5 text-muted-foreground" />
+                    <ExternalLink className="h-4 w-4 text-muted-foreground" />
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
