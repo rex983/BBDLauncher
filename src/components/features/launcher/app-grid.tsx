@@ -201,7 +201,7 @@ export function AppGrid({ apps }: AppGridProps) {
             items={filtered.map((a) => a.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
               {filtered.map((app) => (
                 <SortableAppCard key={app.id} app={app} />
               ))}
@@ -209,7 +209,7 @@ export function AppGrid({ apps }: AppGridProps) {
           </SortableContext>
         </DndContext>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
           {filtered.map((app) => (
             <SortableAppCard key={app.id} app={app} />
           ))}

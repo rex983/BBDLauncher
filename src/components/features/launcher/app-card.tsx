@@ -37,46 +37,46 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
             isDragging ? "shadow-lg ring-2 ring-primary/30 opacity-90" : ""
           }`}
         >
-          <CardContent className="flex flex-col items-center gap-2 p-4 h-full relative">
+          <CardContent className="flex flex-col items-center gap-1.5 p-3 h-full relative">
             <div
               {...dragHandleProps}
-              className="absolute top-2 right-2 opacity-0 group-hover:opacity-40 hover:!opacity-100 cursor-grab active:cursor-grabbing transition-opacity"
+              className="absolute top-1 right-1 opacity-0 group-hover:opacity-40 hover:!opacity-100 cursor-grab active:cursor-grabbing transition-opacity"
             >
-              <GripVertical className="h-4 w-4" />
+              <GripVertical className="h-3.5 w-3.5" />
             </div>
             <a
               href={href}
               target={app.open_in_new_tab ? "_blank" : "_self"}
               rel="noopener noreferrer"
-              className="flex flex-col items-center gap-2 flex-1 w-full"
+              className="flex flex-col items-center gap-1.5 flex-1 w-full"
             >
-              <div className="h-10 w-10 flex-shrink-0 flex items-center justify-center">
+              <div className="h-8 w-8 flex-shrink-0 flex items-center justify-center">
                 {app.icon_url ? (
                   <img
                     src={app.icon_url}
                     alt={app.name}
-                    className="max-h-10 max-w-10 rounded-md object-contain"
+                    className="max-h-8 max-w-8 rounded object-contain"
                   />
                 ) : (
-                  <div className="h-10 w-10 rounded-md bg-primary/10 flex items-center justify-center">
-                    <span className="text-lg font-bold text-primary">
+                  <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center">
+                    <span className="text-sm font-bold text-primary">
                       {firstLetter}
                     </span>
                   </div>
                 )}
               </div>
-              <div className="text-center flex-1 flex flex-col justify-center min-h-[2.5rem]">
-                <h3 className="font-semibold text-sm group-hover:text-primary transition-colors line-clamp-2">
+              <div className="text-center flex-1 flex flex-col justify-center">
+                <h3 className="font-semibold text-xs group-hover:text-primary transition-colors line-clamp-1">
                   {app.name}
                 </h3>
                 {app.description && (
-                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                  <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
                     {app.description}
                   </p>
                 )}
               </div>
               {app.sso_type !== "none" && (
-                <Badge variant={ssoBadgeVariant[app.sso_type] || "outline"} className="text-xs">
+                <Badge variant={ssoBadgeVariant[app.sso_type] || "outline"} className="text-[10px] px-1.5 py-0">
                   {app.sso_type.toUpperCase()}
                 </Badge>
               )}
