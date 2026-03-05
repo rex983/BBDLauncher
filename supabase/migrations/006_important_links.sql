@@ -36,5 +36,5 @@ INSERT INTO launcher_links (name, description, url, icon_url, display_order) VAL
   ('Malwarebytes', 'Anti-malware protection download', 'https://www.malwarebytes.com/mwb-download', 'https://www.malwarebytes.com/favicon-32x32.png', 2),
   ('Slack', 'Team messaging app download', 'https://slack.com/downloads', 'https://a.slack-edge.com/80588/marketing/img/meta/favicon-32.png', 3),
   ('Google Chrome', 'Web browser download', 'https://www.google.com/chrome/', 'https://www.google.com/chrome/static/images/favicons/favicon-32x32.png', 4),
-  ('Microsoft Teams', 'Video conferencing & chat', 'https://www.microsoft.com/en-us/microsoft-teams/download-app', 'https://statics.teams.cdn.office.net/evergreen-assets/favicons/favicon-32x32.png', 5),
-  ('Zoom', 'Video conferencing download', 'https://zoom.us/download', 'https://zoom.us/favicon.ico', 6);
+  ('Google Meet', 'Video conferencing & calls', 'https://meet.google.com/', 'https://fonts.gstatic.com/s/i/productlogos/meet_2020q4/v1/web-32dp/logo_meet_2020q4_color_1x_web_32dp.png', 5),
+  ('ADP', 'Payroll, HR & time tracking', 'https://online.adp.com/', 'https://www.adp.com/favicon.ico', 6);
