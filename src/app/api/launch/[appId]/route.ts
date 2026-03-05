@@ -160,7 +160,8 @@ export async function GET(
       return NextResponse.redirect(app.url);
   }
   } catch (err) {
-    console.error("Launch error:", err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("Launch error:", errMsg, err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Launch failed" },
       { status: 500 }
