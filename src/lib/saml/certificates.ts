@@ -4,12 +4,17 @@ import path from "path";
 let cachedCert: string | null = null;
 let cachedKey: string | null = null;
 
+// Vercel env vars may have literal \n instead of real newlines
+function fixPemNewlines(pem: string): string {
+  return pem.replace(/\\n/g, "\n");
+}
+
 export function getIdpCertificate(): string {
   if (cachedCert) return cachedCert;
 
   // Support cert content directly via env var (for Vercel/serverless)
   if (process.env.SAML_CERT) {
-    cachedCert = process.env.SAML_CERT;
+    cachedCert = fixPemNewlines(process.env.SAML_CERT);
     return cachedCert;
   }
 
@@ -28,7 +33,7 @@ export function getIdpPrivateKey(): string {
 
   // Support key content directly via env var (for Vercel/serverless)
   if (process.env.SAML_KEY) {
-    cachedKey = process.env.SAML_KEY;
+    cachedKey = fixPemNewlines(process.env.SAML_KEY);
     return cachedKey;
   }
 
