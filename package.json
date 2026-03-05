@@ -13,7 +13,6 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.2",
-    "@node-saml/node-saml": "^5.1.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.98.0",
     "class-variance-authority": "^0.7.1",
@@ -29,7 +28,6 @@
     "react-hook-form": "^7.71.2",
     "tailwind-merge": "^3.5.0",
     "xml-crypto": "^6.1.2",
-    "xml2js": "^0.6.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -58,15 +58,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: appsError.message }, { status: 500 });
     }
 
-    // Fetch role access for each app
-    const { data: allAccess } = await supabase
-      .from("launcher_role_app_access")
-      .select("*");
+    const appIds = (apps || []).map((a) => a.id);
 
-    // Fetch SSO configs
-    const { data: ssoConfigs } = await supabase
-      .from("launcher_sso_configs")
-      .select("*");
+    // Fetch role access and SSO configs only for existing apps
+    const { data: allAccess } = appIds.length > 0
+      ? await supabase
+          .from("launcher_role_app_access")
+          .select("*")
+          .in("app_id", appIds)
+      : { data: [] };
+
+    const { data: ssoConfigs } = appIds.length > 0
+      ? await supabase
+          .from("launcher_sso_configs")
+          .select("*")
+          .in("app_id", appIds)
+      : { data: [] };
 
     const appsWithAccess = (apps || []).map((app) => ({
       ...app,

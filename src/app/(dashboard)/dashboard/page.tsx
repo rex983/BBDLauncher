@@ -8,35 +8,6 @@ import { Suspense } from "react";
 import type { LauncherApp } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
 
-const devApps: LauncherApp[] = [
-  {
-    id: "dev-app-001",
-    name: "Order Processing",
-    description: "Manage and process customer orders",
-    url: "https://order-processing.bigbuildings.app/",
-    icon_url: null,
-    sso_type: "jwt",
-    status: "active",
-    display_order: 1,
-    open_in_new_tab: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "dev-app-002",
-    name: "Auto Pricer / CRM",
-    description: "Automated pricing and customer relationship management",
-    url: "https://bigbuildings.app/",
-    icon_url: null,
-    sso_type: "jwt",
-    status: "active",
-    display_order: 2,
-    open_in_new_tab: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -93,11 +64,6 @@ export default async function DashboardPage({
     links = (linksData as ImportantLink[]) || [];
   } catch (err) {
     console.error("Dashboard data fetch error:", err);
-  }
-
-  // If no apps from DB, show hardcoded apps
-  if (apps.length === 0 && !viewAs) {
-    apps = devApps;
   }
 
   return (

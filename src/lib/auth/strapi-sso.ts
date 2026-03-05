@@ -1,7 +1,5 @@
 import * as jose from "jose";
 
-const STRAPI_COOKIE_NAME = "bbd_sso";
-
 interface StrapiSsoPayload {
   email: string;
   name?: string;
@@ -56,6 +54,3 @@ export async function decryptStrapiCookie(
   }
 }
 
-export function getStrapiCookieName(): string {
-  return STRAPI_COOKIE_NAME;
-}

@@ -22,11 +22,6 @@ export interface LauncherRole {
   is_admin: boolean;
 }
 
-export interface RoleAppAccess {
-  role_name: string;
-  app_id: string;
-}
-
 export interface SsoConfig {
   id: string;
   app_id: string;
@@ -44,17 +39,6 @@ export interface SsoConfig {
   jwt_audience: string | null;
   created_at: string;
   updated_at: string;
-}
-
-export interface SsoAuditLog {
-  id: string;
-  user_id: string;
-  app_id: string;
-  event_type: string;
-  details: Record<string, unknown> | null;
-  ip_address: string | null;
-  user_agent: string | null;
-  created_at: string;
 }
 
 export interface AppWithAccess extends LauncherApp {
