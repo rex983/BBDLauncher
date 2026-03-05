@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AppGrid } from "@/components/features/launcher/app-grid";
+import { ImportantLinks } from "@/components/features/launcher/important-links";
 import { ViewAsRole } from "@/components/features/launcher/view-as-role";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -108,6 +109,8 @@ export default async function DashboardPage({
         </div>
       )}
       <AppGrid apps={apps} />
+      <hr className="border-border" />
+      <ImportantLinks />
     </div>
   );
 }
