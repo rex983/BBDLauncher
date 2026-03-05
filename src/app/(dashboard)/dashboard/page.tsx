@@ -83,13 +83,16 @@ export default async function DashboardPage({
     }
 
     // Fetch important links
-    const { data: linksData } = await supabase
+    const { data: linksData, error: linksError } = await supabase
       .from("launcher_links")
       .select("*")
       .order("display_order", { ascending: true });
+    if (linksError) {
+      console.error("Links fetch error:", linksError.message);
+    }
     links = (linksData as ImportantLink[]) || [];
-  } catch {
-    // Supabase unavailable
+  } catch (err) {
+    console.error("Dashboard data fetch error:", err);
   }
 
   // If no apps from DB, show hardcoded apps

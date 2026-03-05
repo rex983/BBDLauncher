@@ -13,7 +13,7 @@ export function ImportantLinks({ links }: ImportantLinksProps) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Important Links</h2>
+      <h2 className="text-lg font-semibold">Notable Links</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {links.map((link) => (
           <a
