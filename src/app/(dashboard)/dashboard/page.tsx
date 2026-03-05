@@ -6,6 +6,7 @@ import { ViewAsRole } from "@/components/features/launcher/view-as-role";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { LauncherApp } from "@/types/app";
+import type { ImportantLink } from "@/types/link";
 
 const devApps: LauncherApp[] = [
   {
@@ -48,8 +49,9 @@ export default async function DashboardPage({
   const isAdmin = session.user.role === "admin";
   const effectiveRole = isAdmin && viewAs ? viewAs : session.user.role;
 
-  // Try loading apps from Supabase; fall back to hardcoded dev apps
+  // Try loading apps and links from Supabase
   let apps: LauncherApp[] = [];
+  let links: ImportantLink[] = [];
   let roles: { name: string; display_name: string }[] = [];
   try {
     const supabase = createAdminClient();
@@ -79,6 +81,13 @@ export default async function DashboardPage({
         .order("display_order", { ascending: true });
       apps = (data as LauncherApp[]) || [];
     }
+
+    // Fetch important links
+    const { data: linksData } = await supabase
+      .from("launcher_links")
+      .select("*")
+      .order("display_order", { ascending: true });
+    links = (linksData as ImportantLink[]) || [];
   } catch {
     // Supabase unavailable
   }
@@ -109,8 +118,12 @@ export default async function DashboardPage({
         </div>
       )}
       <AppGrid apps={apps} />
-      <hr className="border-border" />
-      <ImportantLinks />
+      {links.length > 0 && (
+        <>
+          <hr className="border-border" />
+          <ImportantLinks links={links} />
+        </>
+      )}
     </div>
   );
 }

@@ -2,61 +2,22 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { ExternalLink } from "lucide-react";
+import type { ImportantLink } from "@/types/link";
 
-interface ImportantLink {
-  name: string;
-  description: string;
-  url: string;
-  icon_url?: string;
+interface ImportantLinksProps {
+  links: ImportantLink[];
 }
 
-const links: ImportantLink[] = [
-  {
-    name: "Adobe Acrobat Reader",
-    description: "Free PDF viewer download",
-    url: "https://get.adobe.com/reader/",
-    icon_url: "https://www.adobe.com/favicon.ico",
-  },
-  {
-    name: "Malwarebytes",
-    description: "Anti-malware protection download",
-    url: "https://www.malwarebytes.com/mwb-download",
-    icon_url: "https://www.malwarebytes.com/favicon-32x32.png",
-  },
-  {
-    name: "Slack",
-    description: "Team messaging app download",
-    url: "https://slack.com/downloads",
-    icon_url: "https://a.slack-edge.com/80588/marketing/img/meta/favicon-32.png",
-  },
-  {
-    name: "Google Chrome",
-    description: "Web browser download",
-    url: "https://www.google.com/chrome/",
-    icon_url: "https://www.google.com/chrome/static/images/favicons/favicon-32x32.png",
-  },
-  {
-    name: "Microsoft Teams",
-    description: "Video conferencing & chat",
-    url: "https://www.microsoft.com/en-us/microsoft-teams/download-app",
-    icon_url: "https://statics.teams.cdn.office.net/evergreen-assets/favicons/favicon-32x32.png",
-  },
-  {
-    name: "Zoom",
-    description: "Video conferencing download",
-    url: "https://zoom.us/download",
-    icon_url: "https://zoom.us/favicon.ico",
-  },
-];
+export function ImportantLinks({ links }: ImportantLinksProps) {
+  if (links.length === 0) return null;
 
-export function ImportantLinks() {
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">Important Links</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {links.map((link) => (
           <a
-            key={link.url}
+            key={link.id}
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"

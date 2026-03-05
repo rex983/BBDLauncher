@@ -10,6 +10,7 @@ import {
   Users,
   ShieldCheck,
   KeyRound,
+  Link2,
 } from "lucide-react";
 
 const navItems = [
@@ -18,6 +19,7 @@ const navItems = [
 
 const adminItems = [
   { href: "/admin/apps", label: "Manage Apps", icon: Settings },
+  { href: "/admin/links", label: "Manage Links", icon: Link2 },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/roles", label: "Roles", icon: ShieldCheck },
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
