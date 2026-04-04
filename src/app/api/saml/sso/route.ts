@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   const spEntityId = issuerMatch[1];
-  const acsUrl = acsMatch[1];
+  const requestedAcsUrl = acsMatch[1];
   const requestId = idMatch?.[1];
 
   // Verify the SP is configured
@@ -51,6 +51,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // SECURITY: Always use the registered ACS URL from our database, not the one
+  // from the incoming request. An attacker could spoof the ACS URL to redirect
+  // the signed assertion to their own server.
+  const trustedAcsUrl = ssoConfig.acs_url;
+  if (!trustedAcsUrl) {
+    return NextResponse.json(
+      { error: "ACS URL not configured for this SP" },
+      { status: 500 }
+    );
+  }
+
+  if (requestedAcsUrl !== trustedAcsUrl) {
+    console.warn(
+      `SAML ACS URL mismatch: SP "${spEntityId}" requested "${requestedAcsUrl}" but registered URL is "${trustedAcsUrl}"`
+    );
+  }
+
   // Build attributes from mapping
   const attributes: Record<string, string> = {};
   if (ssoConfig.attribute_mapping) {
@@ -61,12 +78,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Generate assertion
+  // Generate assertion — use trusted ACS URL
   const samlResponse = generateSamlAssertion({
     nameId: session.user.email!,
     nameIdFormat: ssoConfig.name_id_format,
     audience: spEntityId,
-    acsUrl: acsUrl,
+    acsUrl: trustedAcsUrl,
     inResponseTo: requestId,
     attributes,
   });
@@ -81,8 +98,8 @@ export async function POST(req: NextRequest) {
     user_agent: req.headers.get("user-agent"),
   });
 
-  // Return auto-submit form
-  const html = generateAutoSubmitForm(acsUrl, samlResponse, relayState || undefined);
+  // Return auto-submit form — use trusted ACS URL
+  const html = generateAutoSubmitForm(trustedAcsUrl, samlResponse, relayState || undefined);
   return new NextResponse(html, {
     headers: { "Content-Type": "text/html" },
   });

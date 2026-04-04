@@ -5,9 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptStrapiCookie } from "@/lib/auth/strapi-sso";
 import type { UserRole } from "@/types/auth";
 
-const isDev =
-  process.env.NODE_ENV === "development" ||
-  process.env.AUTH_DEV_BYPASS === "true";
+// Dev bypass ONLY in actual development, never via env var in production
+const isDev = process.env.NODE_ENV === "development";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -51,7 +50,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         };
       },
     }),
-    // Email/password credentials — dev bypass when DB isn't available
     Credentials({
       id: "credentials",
       name: "Email & Password",
@@ -64,9 +62,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const password = credentials?.password as string;
         if (!email || !password) return null;
 
-        // Hardcoded admin account
+        // Hardcoded admin account — requires ADMIN_PASSWORD env var
         if (
           email === "rex@bigbuildingsdirect.com" &&
+          process.env.ADMIN_PASSWORD &&
           password === process.env.ADMIN_PASSWORD
         ) {
           return {
@@ -77,32 +76,23 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           };
         }
 
-        // Dev bypass — allow any login without DB check
+        // Dev-only bypass — NEVER available in production
         if (isDev) {
+          // Generate a deterministic but unique ID per email, not a shared ID
+          const devId = `dev-${Buffer.from(email).toString("base64url").slice(0, 16)}`;
           return {
-            id: "dev-user-001",
+            id: devId,
             email,
             name: email.split("@")[0],
             image: null,
           };
         }
 
-        // Production: validate against profiles table
-        const supabase = createAdminClient();
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("id, email, name, role")
-          .eq("email", email)
-          .single();
-
-        if (!profile) return null;
-
-        return {
-          id: profile.id,
-          email: profile.email,
-          name: profile.name || null,
-          image: null,
-        };
+        // Production: credentials login is not supported without password hashing.
+        // Only Google OAuth and Strapi SSO should be used in production.
+        // If you need credentials login, add a password_hash column to profiles
+        // and verify with bcrypt here.
+        return null;
       },
     }),
   ],
@@ -123,7 +113,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Hardcoded admin account — always allowed
       if (user.email === "rex@bigbuildingsdirect.com") return true;
 
-      // Dev bypass — skip DB check
+      // Dev bypass — skip DB check only in actual development
       if (isDev) return true;
 
       try {
@@ -144,10 +134,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async jwt({ token, user }) {
       if (user?.email) {
-        // Hardcoded admin account + dev bypass — admin role without DB
-        if (user.email === "rex@bigbuildingsdirect.com" || isDev) {
+        // Hardcoded admin account — admin role without DB
+        if (user.email === "rex@bigbuildingsdirect.com") {
           token.role = (token.role as UserRole) || "admin";
           token.profileId = (token.profileId as string) || user.id || "admin-001";
+          return token;
+        }
+
+        // Dev bypass — assign admin only in development
+        if (isDev) {
+          token.role = (token.role as UserRole) || "admin";
+          token.profileId = (token.profileId as string) || user.id;
           return token;
         }
 

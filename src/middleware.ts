@@ -8,6 +8,14 @@ const publicPaths = [
   "/api/sso/jwks",
 ];
 
+/** Only allow relative paths as callback URLs to prevent open redirect */
+function sanitizeCallbackUrl(pathname: string): string {
+  if (pathname.startsWith("/") && !pathname.startsWith("//")) {
+    return pathname;
+  }
+  return "/dashboard";
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -24,7 +32,7 @@ export async function middleware(req: NextRequest) {
     // Redirect unauthenticated users to login
     if (!session?.user) {
       const loginUrl = new URL("/login", req.url);
-      loginUrl.searchParams.set("callbackUrl", pathname);
+      loginUrl.searchParams.set("callbackUrl", sanitizeCallbackUrl(pathname));
       return NextResponse.redirect(loginUrl);
     }
 
@@ -45,6 +53,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
