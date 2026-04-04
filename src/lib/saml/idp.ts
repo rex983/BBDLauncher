@@ -25,7 +25,7 @@ export function generateSamlAssertion(params: AssertionParams): string {
   const now = new Date();
   const notBefore = new Date(now.getTime() - 5 * 60 * 1000); // 5 min skew
   const notOnOrAfter = new Date(now.getTime() + 5 * 60 * 1000);
-  const sessionNotOnOrAfter = new Date(now.getTime() + 8 * 60 * 60 * 1000); // 8 hours
+  const sessionNotOnOrAfter = new Date(now.getTime() + 1 * 60 * 60 * 1000); // 1 hour
 
   const responseId = generateId();
   const assertionId = generateId();
