@@ -18,7 +18,11 @@ export async function GET() {
     });
   }
 
-  const normalized = raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw;
+  const normalized = (raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw)
+    .split("\n")
+    .map((line) => line.trim())
+    .join("\n")
+    .trim();
 
   const info = {
     configured: true,
