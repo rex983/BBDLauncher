@@ -13,9 +13,10 @@ export async function GET() {
       }
     );
   } catch (err) {
-    console.error("JWKS endpoint failed:", err instanceof Error ? err.message : err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("JWKS endpoint failed:", message);
     return NextResponse.json(
-      { error: "JWKS not available. SSO_JWT_PRIVATE_KEY may not be configured." },
+      { error: "JWKS not available.", detail: message },
       { status: 503 }
     );
   }
