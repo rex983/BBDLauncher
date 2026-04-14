@@ -24,7 +24,9 @@ async function getPrivateKey(): Promise<CryptoKey> {
     .join("\n")
     .trim();
 
-  cachedPrivateKey = await importPKCS8(pem, ALG);
+  // extractable: true is required so we can derive the public JWK for /api/sso/jwks.
+  // Without it, exportJWK throws "non-extractable CryptoKey cannot be exported".
+  cachedPrivateKey = await importPKCS8(pem, ALG, { extractable: true });
   return cachedPrivateKey;
 }
 
