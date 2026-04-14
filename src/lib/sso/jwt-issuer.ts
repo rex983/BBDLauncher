@@ -7,10 +7,14 @@ let cachedPrivateKey: CryptoKey | null = null;
 async function getPrivateKey(): Promise<CryptoKey> {
   if (cachedPrivateKey) return cachedPrivateKey;
 
-  const pem = process.env.SSO_JWT_PRIVATE_KEY;
-  if (!pem) {
+  const raw = process.env.SSO_JWT_PRIVATE_KEY;
+  if (!raw) {
     throw new Error("SSO_JWT_PRIVATE_KEY environment variable is not set");
   }
+
+  // Vercel env vars sometimes store newlines as literal \n strings —
+  // normalize to real newlines so PEM parsing works either way.
+  const pem = raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw;
 
   cachedPrivateKey = await importPKCS8(pem, ALG);
   return cachedPrivateKey;
