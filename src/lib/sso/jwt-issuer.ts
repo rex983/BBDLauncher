@@ -12,9 +12,17 @@ async function getPrivateKey(): Promise<CryptoKey> {
     throw new Error("SSO_JWT_PRIVATE_KEY environment variable is not set");
   }
 
-  // Vercel env vars sometimes store newlines as literal \n strings —
-  // normalize to real newlines so PEM parsing works either way.
-  const pem = raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw;
+  // Normalize the PEM:
+  //  1. Convert literal \n sequences to real newlines (Vercel sometimes
+  //     stores multi-line env vars that way).
+  //  2. Strip leading/trailing whitespace from each line — when pasting
+  //     from indented contexts (code blocks, markdown) the PEM header
+  //     can pick up leading spaces, which breaks PKCS#8 parsing.
+  const pem = (raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw)
+    .split("\n")
+    .map((line) => line.trim())
+    .join("\n")
+    .trim();
 
   cachedPrivateKey = await importPKCS8(pem, ALG);
   return cachedPrivateKey;
