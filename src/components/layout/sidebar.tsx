@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   KeyRound,
   Link2,
+  FolderTree,
 } from "lucide-react";
 
 const navItems = [
@@ -19,6 +20,7 @@ const navItems = [
 
 const adminItems = [
   { href: "/admin/apps", label: "Manage Apps", icon: Settings },
+  { href: "/admin/sections", label: "Manage Sections", icon: FolderTree },
   { href: "/admin/links", label: "Manage Links", icon: Link2 },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/roles", label: "Roles", icon: ShieldCheck },

@@ -12,6 +12,7 @@ const appSchema = z.object({
   status: z.enum(["active", "inactive", "maintenance"]).default("active"),
   display_order: z.number().default(0),
   open_in_new_tab: z.boolean().default(true),
+  section_id: z.string().uuid().nullable().optional(),
   roles: z.array(z.string()).optional(),
   sso_config: z
     .object({

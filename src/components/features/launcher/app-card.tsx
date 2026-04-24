@@ -3,7 +3,7 @@
 import { forwardRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Star } from "lucide-react";
 import type { LauncherApp } from "@/types/app";
 
 interface AppCardProps {
@@ -11,6 +11,9 @@ interface AppCardProps {
   isDragging?: boolean;
   dragHandleProps?: Record<string, unknown>;
   style?: React.CSSProperties;
+  isFavorite?: boolean;
+  onToggleFavorite?: (appId: string) => void;
+  showDragHandle?: boolean;
 }
 
 const ssoBadgeVariant: Record<string, "default" | "secondary" | "outline"> = {
@@ -22,7 +25,18 @@ const ssoBadgeVariant: Record<string, "default" | "secondary" | "outline"> = {
 };
 
 export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
-  function AppCard({ app, isDragging, dragHandleProps, style }, ref) {
+  function AppCard(
+    {
+      app,
+      isDragging,
+      dragHandleProps,
+      style,
+      isFavorite,
+      onToggleFavorite,
+      showDragHandle = true,
+    },
+    ref
+  ) {
     const firstLetter = app.name.charAt(0).toUpperCase();
 
     const href =
@@ -38,12 +52,35 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
           }`}
         >
           <CardContent className="flex flex-col items-center gap-1.5 p-3 h-full relative">
-            <div
-              {...dragHandleProps}
-              className="absolute top-1 right-1 opacity-0 group-hover:opacity-40 hover:!opacity-100 cursor-grab active:cursor-grabbing transition-opacity"
-            >
-              <GripVertical className="h-3.5 w-3.5" />
-            </div>
+            {onToggleFavorite && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onToggleFavorite(app.id);
+                }}
+                aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                className={`absolute top-1 left-1 transition-opacity ${
+                  isFavorite
+                    ? "opacity-100 text-yellow-500"
+                    : "opacity-0 group-hover:opacity-40 hover:!opacity-100 text-muted-foreground"
+                }`}
+              >
+                <Star
+                  className="h-3.5 w-3.5"
+                  fill={isFavorite ? "currentColor" : "none"}
+                />
+              </button>
+            )}
+            {showDragHandle && (
+              <div
+                {...dragHandleProps}
+                className="absolute top-1 right-1 opacity-0 group-hover:opacity-40 hover:!opacity-100 cursor-grab active:cursor-grabbing transition-opacity"
+              >
+                <GripVertical className="h-3.5 w-3.5" />
+              </div>
+            )}
             <a
               href={href}
               target={app.open_in_new_tab ? "_blank" : "_self"}

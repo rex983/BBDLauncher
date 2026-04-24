@@ -11,6 +11,15 @@ export interface LauncherApp {
   status: AppStatus;
   display_order: number;
   open_in_new_tab: boolean;
+  section_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LauncherSection {
+  id: string;
+  name: string;
+  display_order: number;
   created_at: string;
   updated_at: string;
 }

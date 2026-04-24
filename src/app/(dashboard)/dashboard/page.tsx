@@ -1,11 +1,11 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { AppGrid } from "@/components/features/launcher/app-grid";
+import { SectionedAppGrid } from "@/components/features/launcher/sectioned-app-grid";
 import { ImportantLinks } from "@/components/features/launcher/important-links";
 import { ViewAsRole } from "@/components/features/launcher/view-as-role";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import type { LauncherApp } from "@/types/app";
+import type { LauncherApp, LauncherSection } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
 
 export default async function DashboardPage({
@@ -20,8 +20,9 @@ export default async function DashboardPage({
   const isAdmin = session.user.role === "admin";
   const effectiveRole = isAdmin && viewAs ? viewAs : session.user.role;
 
-  // Try loading apps and links from Supabase
+  // Try loading apps, sections, and links from Supabase
   let apps: LauncherApp[] = [];
+  let sections: LauncherSection[] = [];
   let links: ImportantLink[] = [];
   let roles: { name: string; display_name: string }[] = [];
   try {
@@ -52,6 +53,12 @@ export default async function DashboardPage({
         .order("display_order", { ascending: true });
       apps = (data as LauncherApp[]) || [];
     }
+
+    const { data: sectionsData } = await supabase
+      .from("launcher_sections")
+      .select("*")
+      .order("display_order", { ascending: true });
+    sections = (sectionsData as LauncherSection[]) || [];
 
     // Fetch important links
     const { data: linksData, error: linksError } = await supabase
@@ -86,7 +93,7 @@ export default async function DashboardPage({
           Viewing as <span className="font-medium">{viewAs}</span> role
         </div>
       )}
-      <AppGrid apps={apps} />
+      <SectionedAppGrid apps={apps} sections={sections} isAdmin={isAdmin} />
       {links.length > 0 && (
         <>
           <hr className="border-border" />

@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { AppWithAccess, LauncherRole, SsoType, AppStatus } from "@/types/app";
+import type { AppWithAccess, LauncherRole, LauncherSection, SsoType, AppStatus } from "@/types/app";
 
 interface AppFormProps {
   app?: AppWithAccess | null;
@@ -29,7 +29,9 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [displayOrder, setDisplayOrder] = useState(app?.display_order || 0);
   const [openInNewTab, setOpenInNewTab] = useState(app?.open_in_new_tab ?? true);
   const [selectedRoles, setSelectedRoles] = useState<string[]>(app?.roles || []);
+  const [sectionId, setSectionId] = useState<string>(app?.section_id || "none");
   const [roles, setRoles] = useState<LauncherRole[]>([]);
+  const [sections, setSections] = useState<LauncherSection[]>([]);
   const [saving, setSaving] = useState(false);
 
   // SAML fields
@@ -52,6 +54,10 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       .then((r) => r.json())
       .then(setRoles)
       .catch(() => {});
+    fetch("/api/sections")
+      .then((r) => r.json())
+      .then(setSections)
+      .catch(() => {});
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -67,6 +73,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       status,
       display_order: displayOrder,
       open_in_new_tab: openInNewTab,
+      section_id: sectionId === "none" ? null : sectionId,
       roles: selectedRoles,
       sso_config:
         ssoType === "saml"
@@ -144,6 +151,23 @@ export function AppForm({ app, onSaved }: AppFormProps) {
             onChange={(e) => setDisplayOrder(parseInt(e.target.value) || 0)}
           />
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Section</Label>
+        <Select value={sectionId} onValueChange={setSectionId}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Unsorted</SelectItem>
+            {sections.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="grid grid-cols-3 gap-4">

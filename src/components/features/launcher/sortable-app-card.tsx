@@ -7,9 +7,17 @@ import type { LauncherApp } from "@/types/app";
 
 interface SortableAppCardProps {
   app: LauncherApp;
+  isFavorite?: boolean;
+  onToggleFavorite?: (appId: string) => void;
+  sortable?: boolean;
 }
 
-export function SortableAppCard({ app }: SortableAppCardProps) {
+export function SortableAppCard({
+  app,
+  isFavorite,
+  onToggleFavorite,
+  sortable = true,
+}: SortableAppCardProps) {
   const {
     attributes,
     listeners,
@@ -17,7 +25,7 @@ export function SortableAppCard({ app }: SortableAppCardProps) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: app.id });
+  } = useSortable({ id: app.id, disabled: !sortable });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -29,8 +37,11 @@ export function SortableAppCard({ app }: SortableAppCardProps) {
       ref={setNodeRef}
       app={app}
       isDragging={isDragging}
-      dragHandleProps={{ ...attributes, ...listeners }}
+      dragHandleProps={sortable ? { ...attributes, ...listeners } : undefined}
+      showDragHandle={sortable}
       style={style}
+      isFavorite={isFavorite}
+      onToggleFavorite={onToggleFavorite}
     />
   );
 }
