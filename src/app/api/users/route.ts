@@ -16,9 +16,10 @@ export async function GET() {
   }
 
   const supabase = createAdminClient();
+  // The shared profiles table uses `full_name`; alias it as `name` for the UI.
   const { data: users } = await supabase
     .from("profiles")
-    .select("id, email, name, role, created_at, updated_at")
+    .select("id, email, name:full_name, role, created_at, updated_at")
     .order("email");
 
   return NextResponse.json(users || []);
@@ -39,31 +40,23 @@ export async function POST(req: NextRequest) {
   const { email, name, role } = parsed.data;
   const supabase = createAdminClient();
 
-  // Create the auth user — email-confirmed so Google sign-in on first login
-  // links to this account. No password; users authenticate via Google OAuth.
-  const { data: created, error: createError } = await supabase.auth.admin.createUser({
-    email,
-    email_confirm: true,
-    user_metadata: name ? { name } : undefined,
-  });
-
-  if (createError || !created.user) {
-    return NextResponse.json(
-      { error: createError?.message || "Failed to create user" },
-      { status: 500 }
-    );
-  }
-
-  // The handle_new_user trigger inserts a profile row; update name + role on it.
-  const { data: profile, error: profileError } = await supabase
+  // Insert the profile directly. The shared DB has no auth.users FK on
+  // profiles.id, and we don't manage Supabase Auth from the launcher —
+  // users sign in via NextAuth (Google), which matches by email.
+  const { data: profile, error } = await supabase
     .from("profiles")
-    .update({ name: name ?? null, role })
-    .eq("id", created.user.id)
-    .select()
+    .insert({ email, full_name: name ?? null, role })
+    .select("id, email, name:full_name, role, created_at, updated_at")
     .single();
 
-  if (profileError) {
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
+  if (error) {
+    if (error.code === "23505") {
+      return NextResponse.json(
+        { error: "A user with that email already exists." },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   return NextResponse.json(profile, { status: 201 });

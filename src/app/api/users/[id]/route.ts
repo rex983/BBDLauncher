@@ -26,7 +26,7 @@ export async function PUT(
   }
 
   const updates: Record<string, unknown> = {};
-  if (parsed.data.name !== undefined) updates.name = parsed.data.name;
+  if (parsed.data.name !== undefined) updates.full_name = parsed.data.name;
   if (parsed.data.role !== undefined) updates.role = parsed.data.role;
 
   if (Object.keys(updates).length === 0) {
@@ -38,7 +38,7 @@ export async function PUT(
     .from("profiles")
     .update(updates)
     .eq("id", id)
-    .select()
+    .select("id, email, name:full_name, role, created_at, updated_at")
     .single();
 
   if (error) {
@@ -68,8 +68,9 @@ export async function DELETE(
 
   const supabase = createAdminClient();
 
-  // Delete from auth.users — cascades to profiles via FK ON DELETE CASCADE.
-  const { error } = await supabase.auth.admin.deleteUser(id);
+  // Delete the profile directly. ASC manages its own auth.users lifecycle —
+  // launcher does not touch Supabase Auth users on the shared DB.
+  const { error } = await supabase.from("profiles").delete().eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -36,7 +36,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, email, name, role")
+          .select("id, email, full_name, role")
           .eq("email", payload.email)
           .single();
 
@@ -45,7 +45,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return {
           id: profile.id,
           email: profile.email,
-          name: profile.name || payload.name || null,
+          name: profile.full_name || payload.name || null,
           image: null,
         };
       },
