@@ -60,6 +60,20 @@ export async function PUT(
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
+  // Bump session_version when security-relevant fields change so live JWTs in
+  // any sibling app (QSB, ASC) refresh on the next request instead of carrying
+  // stale role/office for up to the JWT maxAge.
+  const securityChange =
+    parsed.data.role !== undefined || parsed.data.office !== undefined;
+  if (securityChange) {
+    const { data: before } = await supabase
+      .from("profiles")
+      .select("session_version")
+      .eq("id", id)
+      .single();
+    updates.session_version = ((before?.session_version as number | null) ?? 1) + 1;
+  }
+
   const { data, error } = await supabase
     .from("profiles")
     .update(updates)
