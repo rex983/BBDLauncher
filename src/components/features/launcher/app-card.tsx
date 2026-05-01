@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef } from "react";
+import { useSession } from "next-auth/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GripVertical, Star } from "lucide-react";
@@ -37,6 +38,8 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
     },
     ref
   ) {
+    const { data: session } = useSession();
+    const isAdmin = session?.user?.role === "admin";
     const firstLetter = app.name.charAt(0).toUpperCase();
 
     const href =
@@ -112,7 +115,7 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
                   </p>
                 )}
               </div>
-              {app.sso_type !== "none" && (
+              {isAdmin && app.sso_type !== "none" && (
                 <Badge variant={ssoBadgeVariant[app.sso_type] || "outline"} className="text-[10px] px-1.5 py-0">
                   {app.sso_type.toUpperCase()}
                 </Badge>
