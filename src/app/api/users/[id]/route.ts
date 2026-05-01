@@ -6,6 +6,7 @@ import { z } from "zod";
 const updateSchema = z.object({
   name: z.string().nullable().optional(),
   role: z.enum(["admin", "manager", "sales_rep", "bst", "rnd"]).optional(),
+  office: z.enum(["Harbor", "Marion"]).nullable().optional(),
 });
 
 export async function PUT(
@@ -28,6 +29,7 @@ export async function PUT(
   const updates: Record<string, unknown> = {};
   if (parsed.data.name !== undefined) updates.full_name = parsed.data.name;
   if (parsed.data.role !== undefined) updates.role = parsed.data.role;
+  if (parsed.data.office !== undefined) updates.office = parsed.data.office;
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
@@ -38,7 +40,7 @@ export async function PUT(
     .from("profiles")
     .update(updates)
     .eq("id", id)
-    .select("id, email, name:full_name, role, created_at, updated_at")
+    .select("id, email, name:full_name, role, office, created_at, updated_at")
     .single();
 
   if (error) {

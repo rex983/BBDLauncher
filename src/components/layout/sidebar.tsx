@@ -12,6 +12,7 @@ import {
   KeyRound,
   Link2,
   FolderTree,
+  Factory,
 } from "lucide-react";
 
 const navItems = [
@@ -23,6 +24,7 @@ const adminItems = [
   { href: "/admin/sections", label: "Manage Sections", icon: FolderTree },
   { href: "/admin/links", label: "Manage Links", icon: Link2 },
   { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/manufacturers", label: "Manufacturers", icon: Factory },
   { href: "/admin/roles", label: "Roles", icon: ShieldCheck },
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
 ];

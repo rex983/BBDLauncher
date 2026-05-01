@@ -1,10 +1,13 @@
 export type UserRole = "admin" | "manager" | "sales_rep" | "bst" | "rnd";
 
+export type Office = "Harbor" | "Marion";
+
 export interface UserProfile {
   id: string;
   email: string;
   name: string | null;
   role: UserRole;
+  office: Office | null;
   created_at: string;
   updated_at: string;
 }

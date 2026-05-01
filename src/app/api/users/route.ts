@@ -7,6 +7,7 @@ const createSchema = z.object({
   email: z.string().email(),
   name: z.string().optional(),
   role: z.enum(["admin", "manager", "sales_rep", "bst", "rnd"]).default("sales_rep"),
+  office: z.enum(["Harbor", "Marion"]).nullable().optional(),
 });
 
 export async function GET() {
@@ -19,7 +20,7 @@ export async function GET() {
   // The shared profiles table uses `full_name`; alias it as `name` for the UI.
   const { data: users } = await supabase
     .from("profiles")
-    .select("id, email, name:full_name, role, created_at, updated_at")
+    .select("id, email, name:full_name, role, office, created_at, updated_at")
     .order("email");
 
   return NextResponse.json(users || []);
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { email, name, role } = parsed.data;
+  const { email, name, role, office } = parsed.data;
   const supabase = createAdminClient();
 
   // Insert the profile directly. The shared DB has no auth.users FK on
@@ -45,8 +46,8 @@ export async function POST(req: NextRequest) {
   // users sign in via NextAuth (Google), which matches by email.
   const { data: profile, error } = await supabase
     .from("profiles")
-    .insert({ email, full_name: name ?? null, role })
-    .select("id, email, name:full_name, role, created_at, updated_at")
+    .insert({ email, full_name: name ?? null, role, office: office ?? null })
+    .select("id, email, name:full_name, role, office, created_at, updated_at")
     .single();
 
   if (error) {

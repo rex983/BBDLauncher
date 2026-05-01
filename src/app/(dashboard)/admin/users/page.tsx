@@ -29,17 +29,19 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import type { UserProfile, UserRole } from "@/types/auth";
+import type { Office, UserProfile, UserRole } from "@/types/auth";
 
 const allRoles: UserRole[] = ["admin", "manager", "sales_rep", "bst", "rnd"];
+const allOffices: Office[] = ["Harbor", "Marion"];
 
 type FormState = {
   email: string;
   name: string;
   role: UserRole;
+  office: Office | "";
 };
 
-const emptyForm: FormState = { email: "", name: "", role: "sales_rep" };
+const emptyForm: FormState = { email: "", name: "", role: "sales_rep", office: "" };
 
 export default function AdminUsersPage() {
   const { data: session } = useSession();
@@ -70,7 +72,12 @@ export default function AdminUsersPage() {
 
   const openEdit = (user: UserProfile) => {
     setEditing(user);
-    setForm({ email: user.email, name: user.name ?? "", role: user.role });
+    setForm({
+      email: user.email,
+      name: user.name ?? "",
+      role: user.role,
+      office: user.office ?? "",
+    });
     setError(null);
     setDialogOpen(true);
   };
@@ -96,6 +103,7 @@ export default function AdminUsersPage() {
           body: JSON.stringify({
             name: form.name.trim() || null,
             role: form.role,
+            office: form.office || null,
           }),
         })
       : await fetch("/api/users", {
@@ -105,6 +113,7 @@ export default function AdminUsersPage() {
             email: form.email.trim(),
             name: form.name.trim() || undefined,
             role: form.role,
+            office: form.office || null,
           }),
         });
 
@@ -197,6 +206,28 @@ export default function AdminUsersPage() {
                 </Select>
               </div>
 
+              <div className="space-y-2">
+                <Label>Office</Label>
+                <Select
+                  value={form.office || "__none__"}
+                  onValueChange={(v) =>
+                    setForm({ ...form, office: v === "__none__" ? "" : (v as Office) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No office" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No office</SelectItem>
+                    {allOffices.map((o) => (
+                      <SelectItem key={o} value={o}>
+                        {o}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {error && (
                 <p className="text-sm text-destructive">{error}</p>
               )}
@@ -216,6 +247,7 @@ export default function AdminUsersPage() {
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Email</TableHead>
+            <TableHead>Office</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Change Role</TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
@@ -228,6 +260,13 @@ export default function AdminUsersPage() {
               <TableRow key={user.id}>
                 <TableCell className="font-medium">{user.name || "—"}</TableCell>
                 <TableCell>{user.email}</TableCell>
+                <TableCell>
+                  {user.office ? (
+                    <Badge variant="outline">{user.office}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
                 <TableCell>
                   <Badge variant="secondary">{user.role}</Badge>
                 </TableCell>
@@ -273,7 +312,7 @@ export default function AdminUsersPage() {
           })}
           {users.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                 No users yet.
               </TableCell>
             </TableRow>
