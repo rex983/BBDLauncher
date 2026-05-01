@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { canManageContent } from "@/lib/auth/permissions";
+import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -40,6 +40,15 @@ export async function POST(req: NextRequest) {
   }
 
   const { email, name, role, office } = parsed.data;
+
+  // Only admins can grant admin role.
+  if (role === "admin" && !isAdmin(session.user.role)) {
+    return NextResponse.json(
+      { error: "Only admins can assign the admin role." },
+      { status: 403 }
+    );
+  }
+
   const supabase = createAdminClient();
 
   // Insert the profile directly. The shared DB has no auth.users FK on

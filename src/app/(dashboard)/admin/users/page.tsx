@@ -46,6 +46,8 @@ const emptyForm: FormState = { email: "", name: "", role: "sales_rep", office: "
 export default function AdminUsersPage() {
   const { data: session } = useSession();
   const currentProfileId = session?.user?.profileId;
+  const viewerIsAdmin = session?.user?.role === "admin";
+  const assignableRoles = viewerIsAdmin ? allRoles : allRoles.filter((r) => r !== "admin");
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -192,18 +194,24 @@ export default function AdminUsersPage() {
                 <Select
                   value={form.role}
                   onValueChange={(v) => setForm({ ...form, role: v as UserRole })}
+                  disabled={!viewerIsAdmin && editing?.role === "admin"}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {allRoles.map((r) => (
+                    {assignableRoles.map((r) => (
                       <SelectItem key={r} value={r}>
                         {r}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!viewerIsAdmin && (
+                  <p className="text-xs text-muted-foreground">
+                    Only admins can grant or change the admin role.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -256,6 +264,15 @@ export default function AdminUsersPage() {
         <TableBody>
           {users.map((user) => {
             const isSelf = user.id === currentProfileId;
+            const targetIsAdmin = user.role === "admin";
+            const lockedByRole = !viewerIsAdmin && targetIsAdmin;
+            const editDisabled = lockedByRole;
+            const deleteDisabled = isSelf || lockedByRole;
+            const deleteTitle = isSelf
+              ? "You cannot remove yourself"
+              : lockedByRole
+                ? "Only admins can remove an admin account"
+                : "Remove user";
             return (
               <TableRow key={user.id}>
                 <TableCell className="font-medium">{user.name || "—"}</TableCell>
@@ -274,12 +291,13 @@ export default function AdminUsersPage() {
                   <Select
                     value={user.role}
                     onValueChange={(v) => handleRoleChange(user.id, v as UserRole)}
+                    disabled={lockedByRole}
                   >
                     <SelectTrigger className="w-[150px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {allRoles.map((r) => (
+                      {assignableRoles.map((r) => (
                         <SelectItem key={r} value={r}>
                           {r}
                         </SelectItem>
@@ -292,6 +310,8 @@ export default function AdminUsersPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      disabled={editDisabled}
+                      title={editDisabled ? "Only admins can edit an admin account" : "Edit user"}
                       onClick={() => openEdit(user)}
                     >
                       <Pencil className="h-4 w-4" />
@@ -299,8 +319,8 @@ export default function AdminUsersPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      disabled={isSelf}
-                      title={isSelf ? "You cannot remove yourself" : "Remove user"}
+                      disabled={deleteDisabled}
+                      title={deleteTitle}
                       onClick={() => handleDelete(user)}
                     >
                       <Trash2 className="h-4 w-4" />

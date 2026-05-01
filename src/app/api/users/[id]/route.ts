@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { canManageContent } from "@/lib/auth/permissions";
+import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -27,6 +27,30 @@ export async function PUT(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const supabase = createAdminClient();
+
+  // Non-admins can't touch admin accounts or grant the admin role.
+  if (!isAdmin(session.user.role)) {
+    const { data: target } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", id)
+      .single();
+
+    if (target?.role === "admin") {
+      return NextResponse.json(
+        { error: "Only admins can modify an admin account." },
+        { status: 403 }
+      );
+    }
+    if (parsed.data.role === "admin") {
+      return NextResponse.json(
+        { error: "Only admins can assign the admin role." },
+        { status: 403 }
+      );
+    }
+  }
+
   const updates: Record<string, unknown> = {};
   if (parsed.data.name !== undefined) updates.full_name = parsed.data.name;
   if (parsed.data.role !== undefined) updates.role = parsed.data.role;
@@ -36,7 +60,6 @@ export async function PUT(
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("profiles")
     .update(updates)
@@ -70,6 +93,21 @@ export async function DELETE(
   }
 
   const supabase = createAdminClient();
+
+  // Non-admins can't delete admin accounts.
+  if (!isAdmin(session.user.role)) {
+    const { data: target } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", id)
+      .single();
+    if (target?.role === "admin") {
+      return NextResponse.json(
+        { error: "Only admins can delete an admin account." },
+        { status: 403 }
+      );
+    }
+  }
 
   // Delete the profile directly. ASC manages its own auth.users lifecycle —
   // launcher does not touch Supabase Auth users on the shared DB.
