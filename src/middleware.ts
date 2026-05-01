@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canAccessAdminPath } from "@/lib/auth/permissions";
 
 const publicPaths = [
   "/login",
@@ -36,9 +37,9 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Admin routes require admin role
+    // Admin routes — admins get all; managers get a curated subset.
     if (pathname.startsWith("/admin")) {
-      if (session.user.role !== "admin") {
+      if (!canAccessAdminPath(session.user.role, pathname)) {
         return NextResponse.redirect(new URL("/dashboard", req.url));
       }
     }

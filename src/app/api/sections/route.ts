@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { canManageContent } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -28,7 +29,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!session?.user || !canManageContent(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 // Bulk reorder: PUT with { orders: [{id, display_order}, ...] }
 export async function PUT(req: NextRequest) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!session?.user || !canManageContent(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 

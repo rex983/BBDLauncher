@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { canManageContent } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PUT(
@@ -8,7 +9,7 @@ export async function PUT(
 ) {
   try {
     const session = await auth();
-    if (!session?.user || session.user.role !== "admin") {
+    if (!session?.user || !canManageContent(session.user.role)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
@@ -46,7 +47,7 @@ export async function DELETE(
 ) {
   try {
     const session = await auth();
-    if (!session?.user || session.user.role !== "admin") {
+    if (!session?.user || !canManageContent(session.user.role)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 

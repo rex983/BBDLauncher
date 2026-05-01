@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
+import { canAccessAdminPath, canManageContent, isAdmin as isAdminRole } from "@/lib/auth/permissions";
 import {
   LayoutGrid,
   Settings,
@@ -33,7 +34,10 @@ export function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "admin";
+  const role = session?.user?.role;
+  const isAdmin = isAdminRole(role);
+  const showAdminNav = canManageContent(role);
+  const visibleAdminItems = adminItems.filter((item) => canAccessAdminPath(role, item.href));
   const viewAs = searchParams.get("viewAs");
   const isViewingAsOtherRole = isAdmin && viewAs && viewAs !== session?.user?.role;
 
@@ -56,12 +60,12 @@ export function Sidebar() {
           </Link>
         ))}
 
-        {isAdmin && !isViewingAsOtherRole && (
+        {showAdminNav && !isViewingAsOtherRole && (
           <>
             <div className="mt-6 mb-2 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Admin
             </div>
-            {adminItems.map((item) => (
+            {visibleAdminItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}

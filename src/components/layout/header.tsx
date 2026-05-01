@@ -15,6 +15,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { LogOut, Settings, Shield, Sun, Moon } from "lucide-react";
+import { canManageContent } from "@/lib/auth/permissions";
 
 export function Header() {
   const { data: session } = useSession();
@@ -48,7 +49,7 @@ export function Header() {
             <span className="sr-only">Toggle theme</span>
           </Button>
 
-          {user?.role === "admin" && (
+          {canManageContent(user?.role) && (
             <Button variant="ghost" size="sm" asChild>
               <Link href="/admin/apps">
                 <Shield className="mr-2 h-4 w-4" />
@@ -77,7 +78,7 @@ export function Header() {
                 </div>
               </div>
               <DropdownMenuSeparator />
-              {user?.role === "admin" && (
+              {canManageContent(user?.role) && (
                 <DropdownMenuItem asChild>
                   <Link href="/admin/apps">
                     <Settings className="mr-2 h-4 w-4" />

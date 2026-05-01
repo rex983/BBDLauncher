@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { canManageContent } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 
 export default async function AdminLayout({
@@ -7,7 +8,7 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  if (!session?.user || !canManageContent(session.user.role)) {
     redirect("/dashboard");
   }
   return <>{children}</>;

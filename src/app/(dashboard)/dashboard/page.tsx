@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SectionedAppGrid } from "@/components/features/launcher/sectioned-app-grid";
 import { ImportantLinks } from "@/components/features/launcher/important-links";
 import { ViewAsRole } from "@/components/features/launcher/view-as-role";
+import { canManageContent } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { LauncherApp, LauncherSection } from "@/types/app";
@@ -18,6 +19,7 @@ export default async function DashboardPage({
 
   const { viewAs } = await searchParams;
   const isAdmin = session.user.role === "admin";
+  const canEditDashboard = canManageContent(session.user.role);
   const effectiveRole = isAdmin && viewAs ? viewAs : session.user.role;
 
   // Try loading apps, sections, and links from Supabase
@@ -93,7 +95,7 @@ export default async function DashboardPage({
           Viewing as <span className="font-medium">{viewAs}</span> role
         </div>
       )}
-      <SectionedAppGrid apps={apps} sections={sections} isAdmin={isAdmin} />
+      <SectionedAppGrid apps={apps} sections={sections} isAdmin={canEditDashboard} />
       {links.length > 0 && (
         <>
           <hr className="border-border" />

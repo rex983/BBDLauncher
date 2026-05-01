@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { canManageContent } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -33,7 +34,7 @@ const appSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session?.user || session.user.role !== "admin") {
+    if (!session?.user || !canManageContent(session.user.role)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
@@ -97,7 +98,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session?.user || session.user.role !== "admin") {
+    if (!session?.user || !canManageContent(session.user.role)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
