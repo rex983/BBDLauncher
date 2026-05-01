@@ -54,9 +54,17 @@ export async function POST(req: NextRequest) {
   // Insert the profile directly. The shared DB has no auth.users FK on
   // profiles.id, and we don't manage Supabase Auth from the launcher —
   // users sign in via NextAuth (Google), which matches by email.
+  // `approved: true` is required because ASC Engineering's signIn gate
+  // blocks `approved === false`, and the column default is false.
   const { data: profile, error } = await supabase
     .from("profiles")
-    .insert({ email, full_name: name ?? null, role, office: office ?? null })
+    .insert({
+      email,
+      full_name: name ?? null,
+      role,
+      office: office ?? null,
+      approved: true,
+    })
     .select("id, email, name:full_name, role, office, created_at, updated_at")
     .single();
 
