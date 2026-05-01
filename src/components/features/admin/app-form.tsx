@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Upload, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,9 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [description, setDescription] = useState(app?.description || "");
   const [url, setUrl] = useState(app?.url || "");
   const [iconUrl, setIconUrl] = useState(app?.icon_url || "");
+  const [iconUploading, setIconUploading] = useState(false);
+  const [iconError, setIconError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [ssoType, setSsoType] = useState<SsoType>(app?.sso_type || "none");
   const [status, setStatus] = useState<AppStatus>(app?.status || "active");
   const [displayOrder, setDisplayOrder] = useState(app?.display_order || 0);
@@ -106,6 +110,30 @@ export function AppForm({ app, onSaved }: AppFormProps) {
     if (res.ok) onSaved();
   };
 
+  const handleIconFile = async (file: File) => {
+    setIconError(null);
+    setIconUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/apps/upload-icon", {
+        method: "POST",
+        body: formData,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setIconError(typeof body.error === "string" ? body.error : "Upload failed");
+      } else if (body.url) {
+        setIconUrl(body.url);
+      }
+    } catch {
+      setIconError("Upload failed");
+    } finally {
+      setIconUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const toggleRole = (roleName: string) => {
     setSelectedRoles((prev) =>
       prev.includes(roleName)
@@ -139,8 +167,53 @@ export function AppForm({ app, onSaved }: AppFormProps) {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="icon_url">Icon URL</Label>
-          <Input id="icon_url" value={iconUrl} onChange={(e) => setIconUrl(e.target.value)} />
+          <Label htmlFor="icon_url">Icon</Label>
+          <div className="flex items-center gap-2">
+            {iconUrl && (
+              <div className="h-9 w-9 flex-shrink-0 rounded border bg-muted flex items-center justify-center overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={iconUrl} alt="" className="max-h-9 max-w-9 object-contain" />
+              </div>
+            )}
+            <Input
+              id="icon_url"
+              value={iconUrl}
+              onChange={(e) => setIconUrl(e.target.value)}
+              placeholder="Paste a URL or upload below"
+            />
+            {iconUrl && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setIconUrl("")}
+                title="Clear icon"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleIconFile(f);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={iconUploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="h-3 w-3 mr-1" />
+            {iconUploading ? "Uploading..." : "Upload image"}
+          </Button>
+          {iconError && <p className="text-xs text-destructive">{iconError}</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="display_order">Display Order</Label>
