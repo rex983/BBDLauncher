@@ -22,7 +22,6 @@ export default async function DashboardPage({
   const canEditDashboard = canManageContent(session.user.role);
   const effectiveRole = isAdmin && viewAs ? viewAs : session.user.role;
 
-  // Try loading apps, sections, and links from Supabase
   let apps: LauncherApp[] = [];
   let sections: LauncherSection[] = [];
   let links: ImportantLink[] = [];
@@ -30,47 +29,42 @@ export default async function DashboardPage({
   try {
     const supabase = createAdminClient();
 
-    // Fetch roles for the selector (admin only)
-    if (isAdmin) {
-      const { data: rolesData } = await supabase
-        .from("launcher_roles")
-        .select("name, display_name")
-        .order("name");
-      roles = rolesData || [];
-    }
-
-    const { data: accessibleAppIds } = await supabase
-      .from("launcher_role_app_access")
-      .select("app_id")
-      .eq("role_name", effectiveRole);
-
-    const appIds = accessibleAppIds?.map((a) => a.app_id) || [];
-
-    if (appIds.length > 0) {
-      const { data } = await supabase
-        .from("launcher_apps")
+    // One round-trip: fetch role-scoped apps via join, plus sections, links,
+    // and (for admins) the role list — all in parallel.
+    const [accessRes, sectionsRes, linksRes, rolesRes] = await Promise.all([
+      supabase
+        .from("launcher_role_app_access")
+        .select("launcher_apps!inner(*)")
+        .eq("role_name", effectiveRole)
+        .eq("launcher_apps.status", "active"),
+      supabase
+        .from("launcher_sections")
         .select("*")
-        .in("id", appIds)
-        .eq("status", "active")
-        .order("display_order", { ascending: true });
-      apps = (data as LauncherApp[]) || [];
-    }
+        .order("display_order", { ascending: true }),
+      supabase
+        .from("launcher_links")
+        .select("*")
+        .order("display_order", { ascending: true }),
+      isAdmin
+        ? supabase.from("launcher_roles").select("name, display_name").order("name")
+        : Promise.resolve({ data: [] as { name: string; display_name: string }[] }),
+    ]);
 
-    const { data: sectionsData } = await supabase
-      .from("launcher_sections")
-      .select("*")
-      .order("display_order", { ascending: true });
-    sections = (sectionsData as LauncherSection[]) || [];
-
-    // Fetch important links
-    const { data: linksData, error: linksError } = await supabase
-      .from("launcher_links")
-      .select("*")
-      .order("display_order", { ascending: true });
-    if (linksError) {
-      console.error("Links fetch error:", linksError.message);
-    }
-    links = (linksData as ImportantLink[]) || [];
+    const accessRows = (accessRes.data || []) as unknown as {
+      launcher_apps: LauncherApp | LauncherApp[] | null;
+    }[];
+    apps = accessRows
+      .flatMap((r) =>
+        Array.isArray(r.launcher_apps)
+          ? r.launcher_apps
+          : r.launcher_apps
+            ? [r.launcher_apps]
+            : []
+      )
+      .sort((a, b) => a.display_order - b.display_order);
+    sections = (sectionsRes.data as LauncherSection[]) || [];
+    links = (linksRes.data as ImportantLink[]) || [];
+    roles = (rolesRes.data as { name: string; display_name: string }[]) || [];
   } catch (err) {
     console.error("Dashboard data fetch error:", err);
   }

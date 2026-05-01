@@ -54,11 +54,21 @@ export async function GET(
     user_agent: req.headers.get("user-agent"),
   });
 
+  // Defense in depth: only redirect to http(s) destinations even if a stale
+  // row in the DB has a different scheme. Schema rejects others on write.
+  const safeAppUrl = /^https?:\/\//i.test(app.url) ? app.url : null;
+  if (!safeAppUrl) {
+    return NextResponse.json(
+      { error: "Application has an invalid URL" },
+      { status: 500 }
+    );
+  }
+
   // Route by SSO type
   switch (app.sso_type) {
     case "direct_link":
     case "none":
-      return NextResponse.redirect(app.url);
+      return NextResponse.redirect(safeAppUrl);
 
     case "saml": {
       const { data: ssoConfig } = await supabase
@@ -157,7 +167,7 @@ export async function GET(
     }
 
     default:
-      return NextResponse.redirect(app.url);
+      return NextResponse.redirect(safeAppUrl);
   }
   } catch (err) {
     console.error("Launch error:", err);

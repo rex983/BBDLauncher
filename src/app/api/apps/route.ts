@@ -1,13 +1,20 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { canManageContent } from "@/lib/auth/permissions";
+import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+
+const httpUrl = z
+  .string()
+  .url()
+  .refine((u) => /^https?:\/\//i.test(u), {
+    message: "URL must start with http:// or https://",
+  });
 
 const appSchema = z.object({
   name: z.string().min(1),
   description: z.string().nullable().optional(),
-  url: z.string().url(),
+  url: httpUrl,
   icon_url: z.string().nullable().optional(),
   sso_type: z.enum(["none", "saml", "oauth", "direct_link", "jwt"]).default("none"),
   status: z.enum(["active", "inactive", "maintenance"]).default("active"),
@@ -40,9 +47,12 @@ export async function GET(req: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Check if audit log is requested
+    // Audit log includes IPs/UAs of every launch — admin-only.
     const audit = req.nextUrl.searchParams.get("audit");
     if (audit === "true") {
+      if (!isAdmin(session.user.role)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
       const { data: auditData } = await supabase
         .from("launcher_sso_audit_log")
         .select("*")
@@ -62,27 +72,32 @@ export async function GET(req: NextRequest) {
 
     const appIds = (apps || []).map((a) => a.id);
 
-    // Fetch role access and SSO configs only for existing apps
-    const { data: allAccess } = appIds.length > 0
-      ? await supabase
-          .from("launcher_role_app_access")
-          .select("*")
-          .in("app_id", appIds)
-      : { data: [] };
+    const [accessRes, ssoRes] = appIds.length
+      ? await Promise.all([
+          supabase
+            .from("launcher_role_app_access")
+            .select("*")
+            .in("app_id", appIds),
+          supabase
+            .from("launcher_sso_configs")
+            .select("*")
+            .in("app_id", appIds),
+        ])
+      : [{ data: [] as { app_id: string; role_name: string }[] }, { data: [] as { app_id: string }[] }];
 
-    const { data: ssoConfigs } = appIds.length > 0
-      ? await supabase
-          .from("launcher_sso_configs")
-          .select("*")
-          .in("app_id", appIds)
-      : { data: [] };
+    const rolesByAppId = new Map<string, string[]>();
+    for (const a of accessRes.data || []) {
+      const list = rolesByAppId.get(a.app_id);
+      if (list) list.push(a.role_name);
+      else rolesByAppId.set(a.app_id, [a.role_name]);
+    }
+    const ssoByAppId = new Map<string, unknown>();
+    for (const c of ssoRes.data || []) ssoByAppId.set(c.app_id, c);
 
     const appsWithAccess = (apps || []).map((app) => ({
       ...app,
-      roles: (allAccess || [])
-        .filter((a) => a.app_id === app.id)
-        .map((a) => a.role_name),
-      sso_config: (ssoConfigs || []).find((c) => c.app_id === app.id) || null,
+      roles: rolesByAppId.get(app.id) || [],
+      sso_config: ssoByAppId.get(app.id) || null,
     }));
 
     return NextResponse.json(appsWithAccess);

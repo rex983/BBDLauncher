@@ -8,6 +8,12 @@ import type { UserRole } from "@/types/auth";
 // Dev bypass ONLY in actual development, never via env var in production
 const isDev = process.env.NODE_ENV === "development";
 
+// AUTH_SECRET signs/encrypts JWTs — refuse to start without it in production
+// rather than fall back to an unstable per-deploy secret that breaks sessions.
+if (!isDev && !process.env.AUTH_SECRET) {
+  throw new Error("AUTH_SECRET is required in production");
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Google({

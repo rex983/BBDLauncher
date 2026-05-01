@@ -99,12 +99,18 @@ export default function AdminUsersPage() {
   };
 
   const handleRoleChange = async (userId: string, role: UserRole) => {
-    await fetch(`/api/users/${userId}`, {
+    const prev = users;
+    setUsers((list) => list.map((u) => (u.id === userId ? { ...u, role } : u)));
+    const res = await fetch(`/api/users/${userId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
     });
-    fetchUsers();
+    if (!res.ok) {
+      setUsers(prev);
+      const body = await res.json().catch(() => ({}));
+      alert(typeof body.error === "string" ? body.error : "Failed to change role");
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {

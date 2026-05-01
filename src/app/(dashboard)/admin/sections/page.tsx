@@ -135,17 +135,24 @@ export default function AdminSectionsPage() {
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+    const previous = sections;
     const oldIndex = sections.findIndex((s) => s.id === active.id);
     const newIndex = sections.findIndex((s) => s.id === over.id);
     const reordered = arrayMove(sections, oldIndex, newIndex);
     setSections(reordered);
-    await fetch("/api/sections", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orders: reordered.map((s, idx) => ({ id: s.id, display_order: idx })),
-      }),
-    });
+    try {
+      const res = await fetch("/api/sections", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orders: reordered.map((s, idx) => ({ id: s.id, display_order: idx })),
+        }),
+      });
+      if (!res.ok) throw new Error(`reorder ${res.status}`);
+    } catch {
+      setSections(previous);
+      alert("Couldn't save the new order — reverted.");
+    }
   };
 
   return (

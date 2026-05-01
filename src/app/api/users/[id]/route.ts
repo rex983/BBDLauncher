@@ -29,28 +29,6 @@ export async function PUT(
 
   const supabase = createAdminClient();
 
-  // Non-admins can't touch admin accounts or grant the admin role.
-  if (!isAdmin(session.user.role)) {
-    const { data: target } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", id)
-      .single();
-
-    if (target?.role === "admin") {
-      return NextResponse.json(
-        { error: "Only admins can modify an admin account." },
-        { status: 403 }
-      );
-    }
-    if (parsed.data.role === "admin") {
-      return NextResponse.json(
-        { error: "Only admins can assign the admin role." },
-        { status: 403 }
-      );
-    }
-  }
-
   const updates: Record<string, unknown> = {};
   if (parsed.data.name !== undefined) updates.full_name = parsed.data.name;
   if (parsed.data.role !== undefined) updates.role = parsed.data.role;
@@ -60,18 +38,38 @@ export async function PUT(
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
-  // Bump session_version when security-relevant fields change so live JWTs in
-  // any sibling app (QSB, ASC) refresh on the next request instead of carrying
-  // stale role/office for up to the JWT maxAge.
   const securityChange =
     parsed.data.role !== undefined || parsed.data.office !== undefined;
-  if (securityChange) {
+  const viewerIsAdmin = isAdmin(session.user.role);
+  const needsPrefetch = !viewerIsAdmin || securityChange;
+
+  if (needsPrefetch) {
     const { data: before } = await supabase
       .from("profiles")
-      .select("session_version")
+      .select("role, session_version")
       .eq("id", id)
       .single();
-    updates.session_version = ((before?.session_version as number | null) ?? 1) + 1;
+
+    if (!viewerIsAdmin) {
+      if (before?.role === "admin") {
+        return NextResponse.json(
+          { error: "Only admins can modify an admin account." },
+          { status: 403 }
+        );
+      }
+      if (parsed.data.role === "admin") {
+        return NextResponse.json(
+          { error: "Only admins can assign the admin role." },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Bump session_version when role/office changes so live JWTs in sibling
+    // apps (QSB, ASC) refresh on next request instead of carrying stale claims.
+    if (securityChange) {
+      updates.session_version = ((before?.session_version as number | null) ?? 1) + 1;
+    }
   }
 
   const { data, error } = await supabase

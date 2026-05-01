@@ -252,7 +252,8 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
       display_order: idx,
     }));
 
-    // Optimistic update.
+    // Optimistic update; revert if the server rejects.
+    const previous = workingApps;
     setWorkingApps((prev) => {
       const byId = new Map(prev.map((a) => [a.id, a]));
       for (const u of updates) {
@@ -269,13 +270,16 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
     });
 
     try {
-      await fetch("/api/apps/reorder", {
+      const res = await fetch("/api/apps/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ updates }),
       });
+      if (!res.ok) throw new Error(`reorder ${res.status}`);
     } catch (err) {
       console.error("Reorder failed:", err);
+      setWorkingApps(previous);
+      alert("Couldn't save the new order — reverted.");
     }
   };
 
