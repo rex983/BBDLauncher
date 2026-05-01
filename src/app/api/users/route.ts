@@ -7,7 +7,7 @@ import { z } from "zod";
 const createSchema = z.object({
   email: z.string().email(),
   name: z.string().optional(),
-  role: z.enum(["admin", "manager", "sales_rep", "bst", "rnd"]).default("sales_rep"),
+  role: z.string().min(1).default("sales_rep"),
   office: z.enum(["Harbor", "Marion"]).nullable().optional(),
 });
 

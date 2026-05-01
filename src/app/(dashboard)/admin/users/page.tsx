@@ -31,7 +31,11 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import type { Office, UserProfile, UserRole } from "@/types/auth";
 
-const allRoles: UserRole[] = ["admin", "manager", "sales_rep", "bst", "rnd"];
+interface LauncherRole {
+  name: string;
+  display_name: string;
+}
+
 const allOffices: Office[] = ["Harbor", "Marion"];
 
 type FormState = {
@@ -47,22 +51,32 @@ export default function AdminUsersPage() {
   const { data: session } = useSession();
   const currentProfileId = session?.user?.profileId;
   const viewerIsAdmin = session?.user?.role === "admin";
-  const assignableRoles = viewerIsAdmin ? allRoles : allRoles.filter((r) => r !== "admin");
 
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [roles, setRoles] = useState<LauncherRole[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<UserProfile | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const assignableRoles = viewerIsAdmin
+    ? roles
+    : roles.filter((r) => r.name !== "admin");
+
   const fetchUsers = async () => {
     const res = await fetch("/api/users");
     if (res.ok) setUsers(await res.json());
   };
 
+  const fetchRoles = async () => {
+    const res = await fetch("/api/roles");
+    if (res.ok) setRoles(await res.json());
+  };
+
   useEffect(() => {
     fetchUsers();
+    fetchRoles();
   }, []);
 
   const openNew = () => {
@@ -201,8 +215,8 @@ export default function AdminUsersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {assignableRoles.map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {r}
+                      <SelectItem key={r.name} value={r.name}>
+                        {r.display_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -298,8 +312,8 @@ export default function AdminUsersPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {assignableRoles.map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {r}
+                        <SelectItem key={r.name} value={r.name}>
+                          {r.display_name}
                         </SelectItem>
                       ))}
                     </SelectContent>
