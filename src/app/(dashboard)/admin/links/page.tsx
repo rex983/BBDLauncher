@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { LinkForm } from "@/components/features/admin/link-form";
 import type { ImportantLink } from "@/types/link";
 import { Plus, Pencil, Trash2, ExternalLink } from "lucide-react";
@@ -86,6 +87,7 @@ export default function AdminLinksPage() {
             <TableHead>Name</TableHead>
             <TableHead>Description</TableHead>
             <TableHead>URL</TableHead>
+            <TableHead>Office</TableHead>
             <TableHead>Order</TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
@@ -119,6 +121,13 @@ export default function AdminLinksPage() {
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </TableCell>
+              <TableCell>
+                {link.office ? (
+                  <Badge variant="outline">{link.office}</Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Everyone</span>
+                )}
+              </TableCell>
               <TableCell>{link.display_order}</TableCell>
               <TableCell>
                 <div className="flex gap-1">
@@ -146,7 +155,7 @@ export default function AdminLinksPage() {
           {links.length === 0 && (
             <TableRow>
               <TableCell
-                colSpan={5}
+                colSpan={6}
                 className="text-center py-8 text-muted-foreground"
               >
                 No links configured yet.

@@ -3,7 +3,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptStrapiCookie } from "@/lib/auth/strapi-sso";
-import type { UserRole } from "@/types/auth";
+import type { Office, UserRole } from "@/types/auth";
 
 // Dev bypass ONLY in actual development, never via env var in production
 const isDev = process.env.NODE_ENV === "development";
@@ -144,6 +144,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (user.email === "rex@bigbuildingsdirect.com") {
           token.role = (token.role as UserRole) || "admin";
           token.profileId = (token.profileId as string) || user.id || "admin-001";
+          token.office = (token.office as Office | null) ?? null;
           return token;
         }
 
@@ -151,19 +152,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (isDev) {
           token.role = (token.role as UserRole) || "admin";
           token.profileId = (token.profileId as string) || user.id;
+          token.office = (token.office as Office | null) ?? null;
           return token;
         }
 
         const supabase = createAdminClient();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, role")
+          .select("id, role, office")
           .eq("email", user.email)
           .single();
 
         if (profile) {
           token.role = profile.role as UserRole;
           token.profileId = profile.id;
+          token.office = (profile.office as Office | null) ?? null;
         }
       }
       return token;
@@ -172,6 +175,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (token) {
         session.user.role = token.role as import("@/types/auth").UserRole;
         session.user.profileId = token.profileId as string;
+        session.user.office = (token.office as Office | null) ?? null;
       }
       return session;
     },

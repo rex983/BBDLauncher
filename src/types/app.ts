@@ -1,3 +1,5 @@
+import type { Office } from "@/types/auth";
+
 export type SsoType = "none" | "saml" | "oauth" | "direct_link" | "jwt";
 export type AppStatus = "active" | "inactive" | "maintenance";
 
@@ -12,6 +14,7 @@ export interface LauncherApp {
   display_order: number;
   open_in_new_tab: boolean;
   section_id: string | null;
+  office: Office | null;
   created_at: string;
   updated_at: string;
 }

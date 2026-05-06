@@ -21,6 +21,7 @@ export default async function DashboardPage({
   const isAdmin = session.user.role === "admin";
   const canEditDashboard = canManageContent(session.user.role);
   const effectiveRole = isAdmin && viewAs ? viewAs : session.user.role;
+  const userOffice = session.user.office;
 
   let apps: LauncherApp[] = [];
   let sections: LauncherSection[] = [];
@@ -53,7 +54,7 @@ export default async function DashboardPage({
     const accessRows = (accessRes.data || []) as unknown as {
       launcher_apps: LauncherApp | LauncherApp[] | null;
     }[];
-    apps = accessRows
+    const allApps = accessRows
       .flatMap((r) =>
         Array.isArray(r.launcher_apps)
           ? r.launcher_apps
@@ -62,8 +63,16 @@ export default async function DashboardPage({
             : []
       )
       .sort((a, b) => a.display_order - b.display_order);
+
+    // Office gate: NULL office = visible to all. Admins always see everything.
+    const officeMatches = (office: string | null) =>
+      isAdmin || !office || office === userOffice;
+
+    apps = allApps.filter((a) => officeMatches(a.office));
     sections = (sectionsRes.data as LauncherSection[]) || [];
-    links = (linksRes.data as ImportantLink[]) || [];
+    links = ((linksRes.data as ImportantLink[]) || []).filter((l) =>
+      officeMatches(l.office)
+    );
     roles = (rolesRes.data as { name: string; display_name: string }[]) || [];
   } catch (err) {
     console.error("Dashboard data fetch error:", err);

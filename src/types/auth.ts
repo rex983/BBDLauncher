@@ -25,11 +25,13 @@ declare module "next-auth" {
       image: string | null;
       role: UserRole;
       profileId: string;
+      office: Office | null;
     };
   }
 
   interface JWT {
     role: UserRole;
     profileId: string;
+    office: Office | null;
   }
 }

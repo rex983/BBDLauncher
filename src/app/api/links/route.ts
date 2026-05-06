@@ -10,6 +10,7 @@ const linkSchema = z.object({
   url: z.string().url(),
   icon_url: z.string().nullable().optional(),
   display_order: z.number().default(0),
+  office: z.enum(["Harbor", "Marion"]).nullable().optional(),
 });
 
 export async function GET() {

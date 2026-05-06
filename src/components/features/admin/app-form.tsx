@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { AppWithAccess, LauncherRole, LauncherSection, SsoType, AppStatus } from "@/types/app";
+import type { Office } from "@/types/auth";
 
 interface AppFormProps {
   app?: AppWithAccess | null;
@@ -34,6 +35,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [openInNewTab, setOpenInNewTab] = useState(app?.open_in_new_tab ?? true);
   const [selectedRoles, setSelectedRoles] = useState<string[]>(app?.roles || []);
   const [sectionId, setSectionId] = useState<string>(app?.section_id || "none");
+  const [office, setOffice] = useState<Office | "none">(app?.office ?? "none");
   const [roles, setRoles] = useState<LauncherRole[]>([]);
   const [sections, setSections] = useState<LauncherSection[]>([]);
   const [saving, setSaving] = useState(false);
@@ -78,6 +80,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       display_order: displayOrder,
       open_in_new_tab: openInNewTab,
       section_id: sectionId === "none" ? null : sectionId,
+      office: office === "none" ? null : office,
       roles: selectedRoles,
       sso_config:
         ssoType === "saml"
@@ -226,21 +229,42 @@ export function AppForm({ app, onSaved }: AppFormProps) {
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label>Section</Label>
-        <Select value={sectionId} onValueChange={setSectionId}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">Unsorted</SelectItem>
-            {sections.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Section</Label>
+          <Select value={sectionId} onValueChange={setSectionId}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Unsorted</SelectItem>
+              {sections.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Office</Label>
+          <Select
+            value={office}
+            onValueChange={(v) => setOffice(v as Office | "none")}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Everyone</SelectItem>
+              <SelectItem value="Harbor">Harbor only</SelectItem>
+              <SelectItem value="Marion">Marion only</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Restricts visibility to a specific office (admins always see all).
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">

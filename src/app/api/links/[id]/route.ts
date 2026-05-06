@@ -2,6 +2,16 @@ import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageContent } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+
+const linkUpdateSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+  url: z.string().url().optional(),
+  icon_url: z.string().nullable().optional(),
+  display_order: z.number().optional(),
+  office: z.enum(["Harbor", "Marion"]).nullable().optional(),
+});
 
 export async function PUT(
   req: NextRequest,
@@ -15,11 +25,15 @@ export async function PUT(
 
     const { id } = await params;
     const body = await req.json();
+    const parsed = linkUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    }
     const supabase = createAdminClient();
 
     const { data: link, error } = await supabase
       .from("launcher_links")
-      .update(body)
+      .update(parsed.data)
       .eq("id", id)
       .select()
       .single();

@@ -44,6 +44,14 @@ export async function GET(
     return NextResponse.json({ error: "Application not found" }, { status: 404 });
   }
 
+  // Office gate: admins bypass; otherwise app's office (if set) must match user's office.
+  if (app.office && session.user.role !== "admin" && session.user.office !== app.office) {
+    return NextResponse.json(
+      { error: "You do not have access to this application" },
+      { status: 403 }
+    );
+  }
+
   // Log the launch
   await supabase.from("launcher_sso_audit_log").insert({
     user_id: session.user.profileId,

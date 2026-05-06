@@ -5,7 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { ImportantLink } from "@/types/link";
+import type { Office } from "@/types/auth";
 
 interface LinkFormProps {
   link?: ImportantLink | null;
@@ -18,6 +26,7 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
   const [url, setUrl] = useState(link?.url || "");
   const [iconUrl, setIconUrl] = useState(link?.icon_url || "");
   const [displayOrder, setDisplayOrder] = useState(link?.display_order ?? 0);
+  const [office, setOffice] = useState<Office | "none">(link?.office ?? "none");
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -30,6 +39,7 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
       url,
       icon_url: iconUrl || null,
       display_order: displayOrder,
+      office: office === "none" ? null : office,
     };
 
     const res = link
@@ -97,14 +107,32 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
         </p>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="display_order">Display Order</Label>
-        <Input
-          id="display_order"
-          type="number"
-          value={displayOrder}
-          onChange={(e) => setDisplayOrder(Number(e.target.value))}
-        />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="display_order">Display Order</Label>
+          <Input
+            id="display_order"
+            type="number"
+            value={displayOrder}
+            onChange={(e) => setDisplayOrder(Number(e.target.value))}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Office</Label>
+          <Select
+            value={office}
+            onValueChange={(v) => setOffice(v as Office | "none")}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Everyone</SelectItem>
+              <SelectItem value="Harbor">Harbor only</SelectItem>
+              <SelectItem value="Marion">Marion only</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Button type="submit" disabled={saving} className="w-full">

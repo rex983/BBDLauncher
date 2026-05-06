@@ -85,6 +85,7 @@ export default function AdminAppsPage() {
             <TableHead>URL</TableHead>
             <TableHead>SSO Type</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Office</TableHead>
             <TableHead>Roles</TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
@@ -111,6 +112,13 @@ export default function AdminAppsPage() {
                 >
                   {app.status}
                 </Badge>
+              </TableCell>
+              <TableCell>
+                {app.office ? (
+                  <Badge variant="outline">{app.office}</Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Everyone</span>
+                )}
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-1">
@@ -146,7 +154,7 @@ export default function AdminAppsPage() {
           ))}
           {apps.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                 No applications configured yet.
               </TableCell>
             </TableRow>
