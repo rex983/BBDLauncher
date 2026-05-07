@@ -44,8 +44,14 @@ export async function GET(
     return NextResponse.json({ error: "Application not found" }, { status: 404 });
   }
 
-  // Office gate: admins bypass; otherwise app's office (if set) must match user's office.
-  if (app.office && session.user.role !== "admin" && session.user.office !== app.office) {
+  // Office gate: admins bypass; otherwise app's offices (if any) must include
+  // the user's office. Empty offices array = visible to everyone.
+  const appOffices: string[] = Array.isArray(app.offices) ? app.offices : [];
+  if (
+    appOffices.length > 0 &&
+    session.user.role !== "admin" &&
+    (!session.user.office || !appOffices.includes(session.user.office))
+  ) {
     return NextResponse.json(
       { error: "You do not have access to this application" },
       { status: 403 }

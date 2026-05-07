@@ -4,7 +4,7 @@
 // new roles created at runtime are app-access labels only.
 export type UserRole = string;
 
-export type Office = "Harbor" | "Marion";
+export type Office = "Harbor" | "Marion" | "BST" | "RnD";
 
 export interface UserProfile {
   id: string;

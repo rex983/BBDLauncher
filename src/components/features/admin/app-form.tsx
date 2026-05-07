@@ -35,7 +35,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [openInNewTab, setOpenInNewTab] = useState(app?.open_in_new_tab ?? true);
   const [selectedRoles, setSelectedRoles] = useState<string[]>(app?.roles || []);
   const [sectionId, setSectionId] = useState<string>(app?.section_id || "none");
-  const [office, setOffice] = useState<Office | "none">(app?.office ?? "none");
+  const [selectedOffices, setSelectedOffices] = useState<Office[]>(app?.offices || []);
   const [roles, setRoles] = useState<LauncherRole[]>([]);
   const [sections, setSections] = useState<LauncherSection[]>([]);
   const [saving, setSaving] = useState(false);
@@ -80,7 +80,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       display_order: displayOrder,
       open_in_new_tab: openInNewTab,
       section_id: sectionId === "none" ? null : sectionId,
-      office: office === "none" ? null : office,
+      offices: selectedOffices,
       roles: selectedRoles,
       sso_config:
         ssoType === "saml"
@@ -144,6 +144,14 @@ export function AppForm({ app, onSaved }: AppFormProps) {
         : [...prev, roleName]
     );
   };
+
+  const toggleOffice = (o: Office) => {
+    setSelectedOffices((prev) =>
+      prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o]
+    );
+  };
+
+  const allOffices: Office[] = ["Harbor", "Marion", "BST", "RnD"];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -247,22 +255,26 @@ export function AppForm({ app, onSaved }: AppFormProps) {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>Office</Label>
-          <Select
-            value={office}
-            onValueChange={(v) => setOffice(v as Office | "none")}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Everyone</SelectItem>
-              <SelectItem value="Harbor">Harbor only</SelectItem>
-              <SelectItem value="Marion">Marion only</SelectItem>
-            </SelectContent>
-          </Select>
+          <Label>Offices</Label>
+          <div className="flex flex-wrap gap-3 rounded-md border px-3 py-2">
+            {allOffices.map((o) => (
+              <label
+                key={o}
+                className="flex items-center gap-1.5 text-sm cursor-pointer select-none"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedOffices.includes(o)}
+                  onChange={() => toggleOffice(o)}
+                  className="h-4 w-4"
+                />
+                {o}
+              </label>
+            ))}
+          </div>
           <p className="text-xs text-muted-foreground">
-            Restricts visibility to a specific office (admins always see all).
+            Check offices that should see this app. Leave all unchecked to show
+            it to everyone (admins always see all).
           </p>
         </div>
       </div>

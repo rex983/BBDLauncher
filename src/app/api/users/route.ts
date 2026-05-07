@@ -8,7 +8,7 @@ const createSchema = z.object({
   email: z.string().email(),
   name: z.string().optional(),
   role: z.string().min(1).default("sales_rep"),
-  office: z.enum(["Harbor", "Marion"]).nullable().optional(),
+  office: z.enum(["Harbor", "Marion", "BST", "RnD"]).nullable().optional(),
 });
 
 export async function GET() {

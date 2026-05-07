@@ -7,7 +7,7 @@ import { z } from "zod";
 const updateSchema = z.object({
   name: z.string().nullable().optional(),
   role: z.string().min(1).optional(),
-  office: z.enum(["Harbor", "Marion"]).nullable().optional(),
+  office: z.enum(["Harbor", "Marion", "BST", "RnD"]).nullable().optional(),
 });
 
 export async function PUT(

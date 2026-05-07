@@ -22,7 +22,7 @@ import { AppForm } from "@/components/features/admin/app-form";
 import type { AppWithAccess } from "@/types/app";
 import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
-type SortKey = "name" | "url" | "sso_type" | "status" | "office" | "roles";
+type SortKey = "name" | "url" | "sso_type" | "status" | "offices" | "roles";
 type SortDir = "asc" | "desc";
 
 export default function AdminAppsPage() {
@@ -46,6 +46,7 @@ export default function AdminAppsPage() {
     const dir = sortDir === "asc" ? 1 : -1;
     const value = (a: AppWithAccess): string => {
       if (sortKey === "roles") return (a.roles || []).slice().sort().join(",");
+      if (sortKey === "offices") return (a.offices || []).slice().sort().join(",");
       const v = a[sortKey];
       return v == null ? "" : String(v);
     };
@@ -142,10 +143,10 @@ export default function AdminAppsPage() {
               <div className="flex items-center gap-1">Status <SortIcon k="status" /></div>
             </TableHead>
             <TableHead
-              onClick={() => toggleSort("office")}
+              onClick={() => toggleSort("offices")}
               className="cursor-pointer select-none"
             >
-              <div className="flex items-center gap-1">Office <SortIcon k="office" /></div>
+              <div className="flex items-center gap-1">Offices <SortIcon k="offices" /></div>
             </TableHead>
             <TableHead
               onClick={() => toggleSort("roles")}
@@ -180,8 +181,14 @@ export default function AdminAppsPage() {
                 </Badge>
               </TableCell>
               <TableCell>
-                {app.office ? (
-                  <Badge variant="outline">{app.office}</Badge>
+                {app.offices && app.offices.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {app.offices.map((o) => (
+                      <Badge key={o} variant="outline">
+                        {o}
+                      </Badge>
+                    ))}
+                  </div>
                 ) : (
                   <span className="text-xs text-muted-foreground">Everyone</span>
                 )}

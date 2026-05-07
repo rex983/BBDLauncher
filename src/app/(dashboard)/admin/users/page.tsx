@@ -36,7 +36,7 @@ interface LauncherRole {
   display_name: string;
 }
 
-const allOffices: Office[] = ["Harbor", "Marion"];
+const allOffices: Office[] = ["Harbor", "Marion", "BST", "RnD"];
 
 type FormState = {
   email: string;

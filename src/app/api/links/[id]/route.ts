@@ -10,7 +10,7 @@ const linkUpdateSchema = z.object({
   url: z.string().url().optional(),
   icon_url: z.string().nullable().optional(),
   display_order: z.number().optional(),
-  office: z.enum(["Harbor", "Marion"]).nullable().optional(),
+  office: z.enum(["Harbor", "Marion", "BST", "RnD"]).nullable().optional(),
 });
 
 export async function PUT(

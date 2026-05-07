@@ -64,14 +64,19 @@ export default async function DashboardPage({
       )
       .sort((a, b) => a.display_order - b.display_order);
 
-    // Office gate: NULL office = visible to all. Admins always see everything.
-    const officeMatches = (office: string | null) =>
+    // Office gate: NULL/empty = visible to all. Admins always see everything.
+    const linkOfficeMatches = (office: string | null) =>
       isAdmin || !office || office === userOffice;
+    const appOfficesMatch = (offices: string[] | null) =>
+      isAdmin ||
+      !offices ||
+      offices.length === 0 ||
+      (userOffice ? offices.includes(userOffice) : false);
 
-    apps = allApps.filter((a) => officeMatches(a.office));
+    apps = allApps.filter((a) => appOfficesMatch(a.offices));
     sections = (sectionsRes.data as LauncherSection[]) || [];
     links = ((linksRes.data as ImportantLink[]) || []).filter((l) =>
-      officeMatches(l.office)
+      linkOfficeMatches(l.office)
     );
     roles = (rolesRes.data as { name: string; display_name: string }[]) || [];
   } catch (err) {

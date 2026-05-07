@@ -21,7 +21,7 @@ const appSchema = z.object({
   display_order: z.number().default(0),
   open_in_new_tab: z.boolean().default(true),
   section_id: z.string().uuid().nullable().optional(),
-  office: z.enum(["Harbor", "Marion"]).nullable().optional(),
+  offices: z.array(z.enum(["Harbor", "Marion", "BST", "RnD"])).optional(),
   roles: z.array(z.string()).optional(),
   sso_config: z
     .object({

@@ -130,6 +130,8 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
               <SelectItem value="none">Everyone</SelectItem>
               <SelectItem value="Harbor">Harbor only</SelectItem>
               <SelectItem value="Marion">Marion only</SelectItem>
+              <SelectItem value="BST">BST only</SelectItem>
+              <SelectItem value="RnD">RnD only</SelectItem>
             </SelectContent>
           </Select>
         </div>

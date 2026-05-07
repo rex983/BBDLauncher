@@ -14,7 +14,7 @@ export interface LauncherApp {
   display_order: number;
   open_in_new_tab: boolean;
   section_id: string | null;
-  office: Office | null;
+  offices: Office[];
   created_at: string;
   updated_at: string;
 }
