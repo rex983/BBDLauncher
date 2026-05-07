@@ -3,25 +3,37 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SectionedAppGrid } from "@/components/features/launcher/sectioned-app-grid";
 import { ImportantLinks } from "@/components/features/launcher/important-links";
 import { ViewAsRole } from "@/components/features/launcher/view-as-role";
+import { ViewAsOffice } from "@/components/features/launcher/view-as-office";
 import { canManageContent } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { LauncherApp, LauncherSection } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
+import type { Office } from "@/types/auth";
+
+const ALL_OFFICES: Office[] = ["Harbor", "Marion", "BST", "RnD"];
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ viewAs?: string }>;
+  searchParams: Promise<{ viewAs?: string; viewAsOffice?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const { viewAs } = await searchParams;
+  const { viewAs, viewAsOffice } = await searchParams;
   const isAdmin = session.user.role === "admin";
   const canEditDashboard = canManageContent(session.user.role);
   const effectiveRole = isAdmin && viewAs ? viewAs : session.user.role;
   const userOffice = session.user.office;
+  const viewAsOfficeValid =
+    isAdmin && viewAsOffice && (ALL_OFFICES as string[]).includes(viewAsOffice)
+      ? (viewAsOffice as Office)
+      : null;
+  const effectiveOffice = viewAsOfficeValid ?? userOffice;
+  // When an admin pins a view-as office, apply the office filter as if they
+  // were a user in that office (i.e. no admin bypass for office gating).
+  const bypassOffice = isAdmin && !viewAsOfficeValid;
 
   let apps: LauncherApp[] = [];
   let sections: LauncherSection[] = [];
@@ -64,14 +76,15 @@ export default async function DashboardPage({
       )
       .sort((a, b) => a.display_order - b.display_order);
 
-    // Office gate: NULL/empty = visible to all. Admins always see everything.
+    // Office gate: NULL/empty = visible to all. Admins normally see everything,
+    // unless they've pinned a view-as office (then we treat them like that user).
     const linkOfficeMatches = (office: string | null) =>
-      isAdmin || !office || office === userOffice;
+      bypassOffice || !office || office === effectiveOffice;
     const appOfficesMatch = (offices: string[] | null) =>
-      isAdmin ||
+      bypassOffice ||
       !offices ||
       offices.length === 0 ||
-      (userOffice ? offices.includes(userOffice) : false);
+      (effectiveOffice ? offices.includes(effectiveOffice) : false);
 
     apps = allApps.filter((a) => appOfficesMatch(a.offices));
     sections = (sectionsRes.data as LauncherSection[]) || [];
@@ -92,17 +105,36 @@ export default async function DashboardPage({
             Welcome back, {session.user.name || session.user.email}
           </p>
         </div>
-        {isAdmin && roles.length > 0 && (
-          <Suspense>
-            <ViewAsRole roles={roles} currentRole={session.user.role} />
-          </Suspense>
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            {roles.length > 0 && (
+              <Suspense>
+                <ViewAsRole roles={roles} currentRole={session.user.role} />
+              </Suspense>
+            )}
+            <Suspense>
+              <ViewAsOffice
+                offices={ALL_OFFICES}
+                currentOffice={session.user.office}
+              />
+            </Suspense>
+          </div>
         )}
       </div>
-      {viewAs && viewAs !== session.user.role && (
-        <div className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded">
-          Viewing as <span className="font-medium">{viewAs}</span> role
+      {(viewAs && viewAs !== session.user.role) || viewAsOfficeValid ? (
+        <div className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded space-x-2">
+          {viewAs && viewAs !== session.user.role && (
+            <span>
+              Viewing as <span className="font-medium">{viewAs}</span> role
+            </span>
+          )}
+          {viewAsOfficeValid && (
+            <span>
+              · Office: <span className="font-medium">{viewAsOfficeValid}</span>
+            </span>
+          )}
         </div>
-      )}
+      ) : null}
       <SectionedAppGrid apps={apps} sections={sections} isAdmin={canEditDashboard} />
       {links.length > 0 && (
         <>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -20,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { AppForm } from "@/components/features/admin/app-form";
 import type { AppWithAccess } from "@/types/app";
-import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, ArrowUpDown, Search, X } from "lucide-react";
 
 type SortKey = "name" | "url" | "sso_type" | "status" | "offices" | "roles";
 type SortDir = "asc" | "desc";
@@ -31,6 +32,7 @@ export default function AdminAppsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [search, setSearch] = useState("");
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -41,8 +43,28 @@ export default function AdminAppsPage() {
     }
   };
 
+  const filteredApps = (() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return apps;
+    return apps.filter((a) => {
+      const haystack = [
+        a.name,
+        a.url,
+        a.description,
+        a.sso_type,
+        a.status,
+        ...(a.offices || []),
+        ...(a.roles || []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  })();
+
   const sortedApps = (() => {
-    if (!sortKey) return apps;
+    if (!sortKey) return filteredApps;
     const dir = sortDir === "asc" ? 1 : -1;
     const value = (a: AppWithAccess): string => {
       if (sortKey === "roles") return (a.roles || []).slice().sort().join(",");
@@ -50,7 +72,7 @@ export default function AdminAppsPage() {
       const v = a[sortKey];
       return v == null ? "" : String(v);
     };
-    return [...apps].sort((a, b) =>
+    return [...filteredApps].sort((a, b) =>
       value(a).localeCompare(value(b), undefined, { sensitivity: "base" }) * dir
     );
   })();
@@ -113,6 +135,27 @@ export default function AdminAppsPage() {
             <AppForm app={editingApp} onSaved={handleSaved} />
           </DialogContent>
         </Dialog>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          type="search"
+          placeholder="Search apps by name, URL, role, office..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-8 pr-8"
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            aria-label="Clear search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <Table>
