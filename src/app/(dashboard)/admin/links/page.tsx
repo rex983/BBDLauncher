@@ -20,12 +20,48 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { LinkForm } from "@/components/features/admin/link-form";
 import type { ImportantLink } from "@/types/link";
-import { Plus, Pencil, Trash2, ExternalLink } from "lucide-react";
+import { Plus, Pencil, Trash2, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+
+type SortKey = "name" | "description" | "url" | "office" | "display_order";
+type SortDir = "asc" | "desc";
 
 export default function AdminLinksPage() {
   const [links, setLinks] = useState<ImportantLink[]>([]);
   const [editingLink, setEditingLink] = useState<ImportantLink | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const sortedLinks = (() => {
+    if (!sortKey) return links;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...links].sort((a, b) => {
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+      const as = av == null ? "" : String(av);
+      const bs = bv == null ? "" : String(bv);
+      return as.localeCompare(bs, undefined, { sensitivity: "base" }) * dir;
+    });
+  })();
+
+  const SortIcon = ({ k }: { k: SortKey }) =>
+    sortKey !== k ? (
+      <ArrowUpDown className="h-3 w-3 opacity-40" />
+    ) : sortDir === "asc" ? (
+      <ArrowUp className="h-3 w-3" />
+    ) : (
+      <ArrowDown className="h-3 w-3" />
+    );
 
   const fetchLinks = async () => {
     const res = await fetch("/api/links");
@@ -84,16 +120,41 @@ export default function AdminLinksPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Description</TableHead>
-            <TableHead>URL</TableHead>
-            <TableHead>Office</TableHead>
-            <TableHead>Order</TableHead>
+            <TableHead
+              onClick={() => toggleSort("name")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">Name <SortIcon k="name" /></div>
+            </TableHead>
+            <TableHead
+              onClick={() => toggleSort("description")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">Description <SortIcon k="description" /></div>
+            </TableHead>
+            <TableHead
+              onClick={() => toggleSort("url")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">URL <SortIcon k="url" /></div>
+            </TableHead>
+            <TableHead
+              onClick={() => toggleSort("office")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">Office <SortIcon k="office" /></div>
+            </TableHead>
+            <TableHead
+              onClick={() => toggleSort("display_order")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">Order <SortIcon k="display_order" /></div>
+            </TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {links.map((link) => (
+          {sortedLinks.map((link) => (
             <TableRow key={link.id}>
               <TableCell className="font-medium">
                 <div className="flex items-center gap-2">
@@ -152,7 +213,7 @@ export default function AdminLinksPage() {
               </TableCell>
             </TableRow>
           ))}
-          {links.length === 0 && (
+          {sortedLinks.length === 0 && (
             <TableRow>
               <TableCell
                 colSpan={6}

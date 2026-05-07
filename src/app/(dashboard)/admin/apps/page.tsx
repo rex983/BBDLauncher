@@ -20,12 +20,48 @@ import {
 } from "@/components/ui/dialog";
 import { AppForm } from "@/components/features/admin/app-form";
 import type { AppWithAccess } from "@/types/app";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+
+type SortKey = "name" | "url" | "sso_type" | "status" | "office" | "roles";
+type SortDir = "asc" | "desc";
 
 export default function AdminAppsPage() {
   const [apps, setApps] = useState<AppWithAccess[]>([]);
   const [editingApp, setEditingApp] = useState<AppWithAccess | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const sortedApps = (() => {
+    if (!sortKey) return apps;
+    const dir = sortDir === "asc" ? 1 : -1;
+    const value = (a: AppWithAccess): string => {
+      if (sortKey === "roles") return (a.roles || []).slice().sort().join(",");
+      const v = a[sortKey];
+      return v == null ? "" : String(v);
+    };
+    return [...apps].sort((a, b) =>
+      value(a).localeCompare(value(b), undefined, { sensitivity: "base" }) * dir
+    );
+  })();
+
+  const SortIcon = ({ k }: { k: SortKey }) =>
+    sortKey !== k ? (
+      <ArrowUpDown className="h-3 w-3 opacity-40" />
+    ) : sortDir === "asc" ? (
+      <ArrowUp className="h-3 w-3" />
+    ) : (
+      <ArrowDown className="h-3 w-3" />
+    );
 
   const fetchApps = async () => {
     const res = await fetch("/api/apps");
@@ -81,17 +117,47 @@ export default function AdminAppsPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>URL</TableHead>
-            <TableHead>SSO Type</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Office</TableHead>
-            <TableHead>Roles</TableHead>
+            <TableHead
+              onClick={() => toggleSort("name")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">Name <SortIcon k="name" /></div>
+            </TableHead>
+            <TableHead
+              onClick={() => toggleSort("url")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">URL <SortIcon k="url" /></div>
+            </TableHead>
+            <TableHead
+              onClick={() => toggleSort("sso_type")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">SSO Type <SortIcon k="sso_type" /></div>
+            </TableHead>
+            <TableHead
+              onClick={() => toggleSort("status")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">Status <SortIcon k="status" /></div>
+            </TableHead>
+            <TableHead
+              onClick={() => toggleSort("office")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">Office <SortIcon k="office" /></div>
+            </TableHead>
+            <TableHead
+              onClick={() => toggleSort("roles")}
+              className="cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-1">Roles <SortIcon k="roles" /></div>
+            </TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {apps.map((app) => (
+          {sortedApps.map((app) => (
             <TableRow key={app.id}>
               <TableCell className="font-medium">{app.name}</TableCell>
               <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
@@ -152,7 +218,7 @@ export default function AdminAppsPage() {
               </TableCell>
             </TableRow>
           ))}
-          {apps.length === 0 && (
+          {sortedApps.length === 0 && (
             <TableRow>
               <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                 No applications configured yet.
