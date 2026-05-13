@@ -1,12 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
+// Use NEXT_PUBLIC_SUPABASE_URL (the shared-DB URL the deployed app uses).
+// SUPABASE_URL is kept as a fallback only for local overrides.
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_NAME = process.env.ADMIN_NAME;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !ADMIN_EMAIL) {
-  console.error("Set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ADMIN_EMAIL env vars.");
+  console.error("Set NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ADMIN_EMAIL env vars.");
   process.exit(1);
 }
 
