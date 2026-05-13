@@ -34,7 +34,7 @@ if (createError) {
       console.error("Could not find existing user.");
       process.exit(1);
     }
-    await supabase.from("profiles").update({ role: "admin", name: ADMIN_NAME ?? null }).eq("id", existing.id);
+    await supabase.from("profiles").update({ role: "admin", full_name: ADMIN_NAME ?? null }).eq("id", existing.id);
     console.log(`Updated profile for ${ADMIN_EMAIL} (id=${existing.id}) to role=admin.`);
     process.exit(0);
   }
@@ -48,7 +48,7 @@ console.log(`Created auth user id=${userId}`);
 // The handle_new_user trigger inserts a profile row. Give it a tick, then update.
 const { data: profile, error: updateError } = await supabase
   .from("profiles")
-  .update({ role: "admin", name: ADMIN_NAME ?? null })
+  .update({ role: "admin", full_name: ADMIN_NAME ?? null })
   .eq("id", userId)
   .select()
   .single();
