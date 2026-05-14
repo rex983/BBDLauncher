@@ -43,7 +43,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const { data: profile } = await supabase
           .from("profiles")
           .select("id, email, full_name, role")
-          .eq("email", payload.email)
+          .eq("email", payload.email.toLowerCase())
           .single();
 
         if (!profile) return null;
@@ -127,7 +127,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const { data: profile } = await supabase
           .from("profiles")
           .select("id")
-          .eq("email", user.email)
+          .eq("email", user.email.toLowerCase())
           .single();
 
         if (!profile) return false;
@@ -160,7 +160,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const { data: profile } = await supabase
           .from("profiles")
           .select("id, role, office")
-          .eq("email", user.email)
+          .eq("email", user.email.toLowerCase())
           .single();
 
         if (profile) {

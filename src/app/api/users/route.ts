@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 const createSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().transform((e) => e.toLowerCase()),
   name: z.string().optional(),
   role: z.string().min(1).default("sales_rep"),
   office: z.enum(["Harbor", "Marion", "BST", "RnD"]).nullable().optional(),
