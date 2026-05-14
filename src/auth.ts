@@ -159,7 +159,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, role, office")
+          .select("id, role, office, session_version")
           .eq("email", user.email.toLowerCase())
           .single();
 
@@ -167,6 +167,34 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.role = profile.role as UserRole;
           token.profileId = profile.id;
           token.office = (profile.office as Office | null) ?? null;
+          token.session_version = (profile.session_version as number | null) ?? 0;
+        }
+        return token;
+      }
+
+      // Subsequent requests: refresh role/office if the DB's session_version
+      // has been bumped (admin changed role or office). Without this, JWTs
+      // carry stale claims until the user signs out and back in.
+      const profileId = token.profileId as string | undefined;
+      if (
+        profileId &&
+        profileId !== "admin-001" &&
+        !profileId.startsWith("dev-")
+      ) {
+        const supabase = createAdminClient();
+        const { data: current } = await supabase
+          .from("profiles")
+          .select("role, office, session_version")
+          .eq("id", profileId)
+          .single();
+        if (current) {
+          const dbVersion = (current.session_version as number | null) ?? 0;
+          const tokenVersion = (token.session_version as number | undefined) ?? 0;
+          if (dbVersion !== tokenVersion) {
+            token.role = current.role as UserRole;
+            token.office = (current.office as Office | null) ?? null;
+            token.session_version = dbVersion;
+          }
         }
       }
       return token;

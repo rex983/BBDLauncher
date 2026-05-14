@@ -33,5 +33,6 @@ declare module "next-auth" {
     role: UserRole;
     profileId: string;
     office: Office | null;
+    session_version?: number;
   }
 }
