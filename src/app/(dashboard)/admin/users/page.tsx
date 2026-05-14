@@ -277,6 +277,7 @@ export default function AdminUsersPage() {
             <TableHead>Email</TableHead>
             <TableHead>Office</TableHead>
             <TableHead>Role</TableHead>
+            <TableHead>Added</TableHead>
             <TableHead>Change Role</TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
@@ -306,6 +307,13 @@ export default function AdminUsersPage() {
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary">{user.role}</Badge>
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {new Date(user.created_at).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}
                 </TableCell>
                 <TableCell>
                   <Select
@@ -352,7 +360,7 @@ export default function AdminUsersPage() {
           })}
           {users.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                 No users yet.
               </TableCell>
             </TableRow>
