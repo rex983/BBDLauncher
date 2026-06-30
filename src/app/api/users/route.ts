@@ -9,6 +9,7 @@ const createSchema = z.object({
   name: z.string().optional(),
   role: z.string().min(1).default("sales_rep"),
   office: z.enum(["Harbor", "Marion", "BST", "RnD"]).nullable().optional(),
+  is_it: z.boolean().optional(),
 });
 
 export async function GET() {
@@ -21,7 +22,7 @@ export async function GET() {
   // The shared profiles table uses `full_name`; alias it as `name` for the UI.
   const { data: users } = await supabase
     .from("profiles")
-    .select("id, email, name:full_name, role, office, created_at, updated_at")
+    .select("id, email, name:full_name, role, office, is_it, created_at, updated_at")
     .order("email");
 
   return NextResponse.json(users || []);
@@ -39,12 +40,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { email, name, role, office } = parsed.data;
+  const { email, name, role, office, is_it } = parsed.data;
 
   // Only admins can grant admin role.
   if (role === "admin" && !isAdmin(session.user.role)) {
     return NextResponse.json(
       { error: "Only admins can assign the admin role." },
+      { status: 403 }
+    );
+  }
+
+  // IT capability gates the Help Desk queue — admin-only to grant.
+  if (is_it && !isAdmin(session.user.role)) {
+    return NextResponse.json(
+      { error: "Only admins can grant the IT capability." },
       { status: 403 }
     );
   }
@@ -63,9 +72,10 @@ export async function POST(req: NextRequest) {
       full_name: name ?? null,
       role,
       office: office ?? null,
+      is_it: is_it ?? false,
       approved: true,
     })
-    .select("id, email, name:full_name, role, office, created_at, updated_at")
+    .select("id, email, name:full_name, role, office, is_it, created_at, updated_at")
     .single();
 
   if (error) {

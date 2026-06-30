@@ -47,6 +47,7 @@ interface SsoTokenParams {
   role: string;
   profileId: string;
   audience: string;
+  isIt?: boolean;
 }
 
 export async function generateSsoToken(params: SsoTokenParams): Promise<string> {
@@ -57,6 +58,7 @@ export async function generateSsoToken(params: SsoTokenParams): Promise<string> 
     name: params.name,
     role: params.role,
     profile_id: params.profileId,
+    is_it: params.isIt ?? false,
   })
     .setProtectedHeader({ alg: ALG, kid: "bbd-sso-1" })
     .setIssuer("bbd-launcher")

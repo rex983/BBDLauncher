@@ -12,6 +12,7 @@ export interface UserProfile {
   name: string | null;
   role: UserRole;
   office: Office | null;
+  is_it: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -26,6 +27,7 @@ declare module "next-auth" {
       role: UserRole;
       profileId: string;
       office: Office | null;
+      is_it: boolean;
     };
   }
 
@@ -33,6 +35,7 @@ declare module "next-auth" {
     role: UserRole;
     profileId: string;
     office: Office | null;
+    is_it?: boolean;
     session_version?: number;
   }
 }

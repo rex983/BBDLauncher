@@ -147,6 +147,7 @@ export async function GET(
         role: session.user.role,
         profileId: session.user.profileId,
         audience: ssoConfig.jwt_audience,
+        isIt: session.user.is_it,
       });
 
       const acsUrl = new URL(ssoConfig.jwt_acs_url);

@@ -145,6 +145,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.role = (token.role as UserRole) || "admin";
           token.profileId = (token.profileId as string) || user.id || "admin-001";
           token.office = (token.office as Office | null) ?? null;
+          token.is_it = (token.is_it as boolean | undefined) ?? false;
           return token;
         }
 
@@ -153,13 +154,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.role = (token.role as UserRole) || "admin";
           token.profileId = (token.profileId as string) || user.id;
           token.office = (token.office as Office | null) ?? null;
+          token.is_it = (token.is_it as boolean | undefined) ?? false;
           return token;
         }
 
         const supabase = createAdminClient();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, role, office, session_version")
+          .select("id, role, office, is_it, session_version")
           .eq("email", user.email.toLowerCase())
           .single();
 
@@ -167,6 +169,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.role = profile.role as UserRole;
           token.profileId = profile.id;
           token.office = (profile.office as Office | null) ?? null;
+          token.is_it = (profile.is_it as boolean | null) ?? false;
           token.session_version = (profile.session_version as number | null) ?? 0;
         }
         return token;
@@ -184,7 +187,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: current } = await supabase
           .from("profiles")
-          .select("role, office, session_version")
+          .select("role, office, is_it, session_version")
           .eq("id", profileId)
           .single();
         if (current) {
@@ -193,6 +196,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (dbVersion !== tokenVersion) {
             token.role = current.role as UserRole;
             token.office = (current.office as Office | null) ?? null;
+            token.is_it = (current.is_it as boolean | null) ?? false;
             token.session_version = dbVersion;
           }
         }
@@ -204,6 +208,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.role = token.role as import("@/types/auth").UserRole;
         session.user.profileId = token.profileId as string;
         session.user.office = (token.office as Office | null) ?? null;
+        session.user.is_it = (token.is_it as boolean | undefined) ?? false;
       }
       return session;
     },

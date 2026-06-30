@@ -43,9 +43,16 @@ type FormState = {
   name: string;
   role: UserRole;
   office: Office | "";
+  is_it: boolean;
 };
 
-const emptyForm: FormState = { email: "", name: "", role: "sales_rep", office: "" };
+const emptyForm: FormState = {
+  email: "",
+  name: "",
+  role: "sales_rep",
+  office: "",
+  is_it: false,
+};
 
 export default function AdminUsersPage() {
   const { data: session } = useSession();
@@ -93,6 +100,7 @@ export default function AdminUsersPage() {
       name: user.name ?? "",
       role: user.role,
       office: user.office ?? "",
+      is_it: user.is_it ?? false,
     });
     setError(null);
     setDialogOpen(true);
@@ -118,6 +126,8 @@ export default function AdminUsersPage() {
     setError(null);
     setSaving(true);
 
+    const itChanged = editing ? form.is_it !== (editing.is_it ?? false) : form.is_it;
+
     const res = editing
       ? await fetch(`/api/users/${editing.id}`, {
           method: "PUT",
@@ -126,6 +136,7 @@ export default function AdminUsersPage() {
             name: form.name.trim() || null,
             role: form.role,
             office: form.office || null,
+            ...(viewerIsAdmin && itChanged ? { is_it: form.is_it } : {}),
           }),
         })
       : await fetch("/api/users", {
@@ -136,6 +147,7 @@ export default function AdminUsersPage() {
             name: form.name.trim() || undefined,
             role: form.role,
             office: form.office || null,
+            ...(viewerIsAdmin && form.is_it ? { is_it: true } : {}),
           }),
         });
 
@@ -256,6 +268,24 @@ export default function AdminUsersPage() {
                 </Select>
               </div>
 
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 font-normal">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-input disabled:opacity-50"
+                    checked={form.is_it}
+                    disabled={!viewerIsAdmin}
+                    onChange={(e) => setForm({ ...form, is_it: e.target.checked })}
+                  />
+                  <span>IT — can handle BBD Help Desk tickets</span>
+                </Label>
+                {!viewerIsAdmin && (
+                  <p className="text-xs text-muted-foreground">
+                    Only admins can grant the IT capability.
+                  </p>
+                )}
+              </div>
+
               {error && (
                 <p className="text-sm text-destructive">{error}</p>
               )}
@@ -306,7 +336,10 @@ export default function AdminUsersPage() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="secondary">{user.role}</Badge>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant="secondary">{user.role}</Badge>
+                    {user.is_it && <Badge>IT</Badge>}
+                  </div>
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-muted-foreground">
                   {new Date(user.created_at).toLocaleDateString("en-US", {
