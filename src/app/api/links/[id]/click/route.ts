@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ linkId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -12,13 +12,13 @@ export async function GET(
       return NextResponse.redirect(new URL("/login", req.url));
     }
 
-    const { linkId } = await params;
+    const { id } = await params;
     const supabase = createAdminClient();
 
     const { data: link } = await supabase
       .from("launcher_links")
       .select("id, name, url")
-      .eq("id", linkId)
+      .eq("id", id)
       .single();
 
     if (!link) {
@@ -32,7 +32,7 @@ export async function GET(
 
     await supabase.from("launcher_sso_audit_log").insert({
       user_id: session.user.profileId,
-      link_id: linkId,
+      link_id: id,
       event_type: "link_click",
       details: { link_name: link.name },
       ip_address: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip"),
