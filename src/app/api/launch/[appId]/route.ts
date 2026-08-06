@@ -59,7 +59,7 @@ export async function GET(
   }
 
   // Log the launch
-  await supabase.from("launcher_sso_audit_log").insert({
+  const { error: auditErr } = await supabase.from("launcher_sso_audit_log").insert({
     user_id: session.user.profileId,
     app_id: appId,
     event_type: "app_launch",
@@ -67,6 +67,15 @@ export async function GET(
     ip_address: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip"),
     user_agent: req.headers.get("user-agent"),
   });
+  if (auditErr) {
+    console.error("Audit log insert failed:", {
+      code: auditErr.code,
+      message: auditErr.message,
+      details: auditErr.details,
+      user_id: session.user.profileId,
+      app_id: appId,
+    });
+  }
 
   // Defense in depth: only redirect to http(s) destinations even if a stale
   // row in the DB has a different scheme. Schema rejects others on write.

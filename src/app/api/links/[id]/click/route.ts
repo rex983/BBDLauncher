@@ -30,7 +30,7 @@ export async function GET(
       return NextResponse.json({ error: "Link has an invalid URL" }, { status: 500 });
     }
 
-    await supabase.from("launcher_sso_audit_log").insert({
+    const { error: auditErr } = await supabase.from("launcher_sso_audit_log").insert({
       user_id: session.user.profileId,
       link_id: id,
       event_type: "link_click",
@@ -38,6 +38,15 @@ export async function GET(
       ip_address: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip"),
       user_agent: req.headers.get("user-agent"),
     });
+    if (auditErr) {
+      console.error("Link audit log insert failed:", {
+        code: auditErr.code,
+        message: auditErr.message,
+        details: auditErr.details,
+        user_id: session.user.profileId,
+        link_id: id,
+      });
+    }
 
     return NextResponse.redirect(safeUrl);
   } catch (err) {
