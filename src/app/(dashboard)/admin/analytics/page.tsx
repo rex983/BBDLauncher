@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -234,6 +236,8 @@ export default function AdminAnalyticsPage() {
             loading={loading}
             emptyMessage="No app launches in this range."
             countHeader="Launches"
+            hrefKind="apps"
+            range={range}
           />
         </TabsContent>
 
@@ -249,6 +253,8 @@ export default function AdminAnalyticsPage() {
             loading={loading}
             emptyMessage="No link clicks in this range."
             countHeader="Clicks"
+            hrefKind="links"
+            range={range}
           />
         </TabsContent>
 
@@ -375,11 +381,15 @@ function DestinationTable({
   loading,
   emptyMessage,
   countHeader,
+  hrefKind,
+  range,
 }: {
   rows: DestStat[];
   loading: boolean;
   emptyMessage: string;
   countHeader: string;
+  hrefKind: "apps" | "links";
+  range: string;
 }) {
   return (
     <Table>
@@ -389,29 +399,64 @@ function DestinationTable({
           <TableHead className="text-right">{countHeader}</TableHead>
           <TableHead className="text-right">Unique users</TableHead>
           <TableHead>Last used</TableHead>
+          <TableHead className="w-8" />
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((r) => (
-          <TableRow key={r.id}>
-            <TableCell className="font-medium">{r.name}</TableCell>
-            <TableCell className="text-right tabular-nums">
-              {r.launches.toLocaleString()}
+          <TableRow
+            key={r.id}
+            className="group cursor-pointer transition-colors hover:bg-muted/50"
+          >
+            <TableCell className="font-medium">
+              <Link
+                href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`}
+                className="block hover:underline"
+              >
+                {r.name}
+              </Link>
             </TableCell>
             <TableCell className="text-right tabular-nums">
-              {r.unique_users.toLocaleString()}
+              <Link
+                href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`}
+                className="block"
+              >
+                {r.launches.toLocaleString()}
+              </Link>
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              <Link
+                href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`}
+                className="block"
+              >
+                {r.unique_users.toLocaleString()}
+              </Link>
             </TableCell>
             <TableCell
               className="text-muted-foreground"
               title={formatDateTime(r.last_launch)}
             >
-              {formatRelative(r.last_launch)}
+              <Link
+                href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`}
+                className="block"
+              >
+                {formatRelative(r.last_launch)}
+              </Link>
+            </TableCell>
+            <TableCell className="text-muted-foreground">
+              <Link
+                href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`}
+                className="block"
+                aria-label={`View ${r.name} details`}
+              >
+                <ChevronRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
+              </Link>
             </TableCell>
           </TableRow>
         ))}
         {!loading && rows.length === 0 && (
           <TableRow>
-            <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+            <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
               {emptyMessage}
             </TableCell>
           </TableRow>
