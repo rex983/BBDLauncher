@@ -21,9 +21,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type AppStat = {
-  app_id: string;
-  app_name: string;
+type DestStat = {
+  id: string;
+  name: string;
+  kind: "app" | "link";
   launches: number;
   unique_users: number;
   last_launch: string;
@@ -37,15 +38,17 @@ type UserStat = {
   office: string | null;
   launches: number;
   last_launch: string;
-  top_app: string | null;
-  top_app_launches: number;
+  top_destination: string | null;
+  top_destination_kind: "app" | "link" | null;
+  top_destination_launches: number;
 };
 
 type RecentEvent = {
   created_at: string;
   email: string;
   name: string | null;
-  app_name: string;
+  destination: string;
+  kind: "app" | "link";
 };
 
 type AnalyticsResponse = {
@@ -53,11 +56,15 @@ type AnalyticsResponse = {
   totals: {
     launches: number;
     unique_users: number;
-    unique_apps: number;
-    top_app: string | null;
-    top_app_launches: number;
+    unique_destinations: number;
+    app_launches: number;
+    link_clicks: number;
+    top_destination: string | null;
+    top_destination_kind: "app" | "link" | null;
+    top_destination_launches: number;
   };
-  apps: AppStat[];
+  apps: DestStat[];
+  links: DestStat[];
   users: UserStat[];
   recent: RecentEvent[];
 };
@@ -98,6 +105,7 @@ export default function AdminAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [appQuery, setAppQuery] = useState("");
+  const [linkQuery, setLinkQuery] = useState("");
   const [userQuery, setUserQuery] = useState("");
 
   useEffect(() => {
@@ -126,9 +134,14 @@ export default function AdminAnalyticsPage() {
   const filteredApps = useMemo(() => {
     if (!data) return [];
     const q = appQuery.toLowerCase().trim();
-    if (!q) return data.apps;
-    return data.apps.filter((a) => a.app_name.toLowerCase().includes(q));
+    return q ? data.apps.filter((a) => a.name.toLowerCase().includes(q)) : data.apps;
   }, [data, appQuery]);
+
+  const filteredLinks = useMemo(() => {
+    if (!data) return [];
+    const q = linkQuery.toLowerCase().trim();
+    return q ? data.links.filter((l) => l.name.toLowerCase().includes(q)) : data.links;
+  }, [data, linkQuery]);
 
   const filteredUsers = useMemo(() => {
     if (!data) return [];
@@ -147,7 +160,7 @@ export default function AdminAnalyticsPage() {
         <div>
           <h1 className="text-2xl font-bold">App Analytics</h1>
           <p className="text-muted-foreground">
-            Which users are launching which apps, and how often.
+            Which users are launching which apps and clicking which links, and how often.
           </p>
         </div>
         <Select value={range} onValueChange={setRange}>
@@ -172,23 +185,30 @@ export default function AdminAnalyticsPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total launches"
+          title="Total clicks"
           value={loading ? "…" : data?.totals.launches.toLocaleString() ?? "0"}
+          subvalue={
+            data
+              ? `${data.totals.app_launches.toLocaleString()} apps · ${data.totals.link_clicks.toLocaleString()} links`
+              : undefined
+          }
         />
         <StatCard
           title="Active users"
           value={loading ? "…" : data?.totals.unique_users.toLocaleString() ?? "0"}
         />
         <StatCard
-          title="Apps used"
-          value={loading ? "…" : data?.totals.unique_apps.toLocaleString() ?? "0"}
+          title="Destinations used"
+          value={loading ? "…" : data?.totals.unique_destinations.toLocaleString() ?? "0"}
         />
         <StatCard
-          title="Most-launched app"
-          value={loading ? "…" : data?.totals.top_app ?? "—"}
+          title="Most-clicked"
+          value={loading ? "…" : data?.totals.top_destination ?? "—"}
           subvalue={
-            data?.totals.top_app_launches
-              ? `${data.totals.top_app_launches.toLocaleString()} launches`
+            data?.totals.top_destination_launches
+              ? `${data.totals.top_destination_launches.toLocaleString()} ${
+                  data.totals.top_destination_kind === "link" ? "clicks" : "launches"
+                }`
               : undefined
           }
         />
@@ -197,6 +217,7 @@ export default function AdminAnalyticsPage() {
       <Tabs defaultValue="apps" className="space-y-4">
         <TabsList>
           <TabsTrigger value="apps">By App</TabsTrigger>
+          <TabsTrigger value="links">By Link</TabsTrigger>
           <TabsTrigger value="users">By User</TabsTrigger>
           <TabsTrigger value="recent">Recent Activity</TabsTrigger>
         </TabsList>
@@ -208,42 +229,27 @@ export default function AdminAnalyticsPage() {
             onChange={(e) => setAppQuery(e.target.value)}
             className="max-w-sm"
           />
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>App</TableHead>
-                <TableHead className="text-right">Launches</TableHead>
-                <TableHead className="text-right">Unique users</TableHead>
-                <TableHead>Last launched</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredApps.map((a) => (
-                <TableRow key={a.app_id}>
-                  <TableCell className="font-medium">{a.app_name}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {a.launches.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {a.unique_users.toLocaleString()}
-                  </TableCell>
-                  <TableCell
-                    className="text-muted-foreground"
-                    title={formatDateTime(a.last_launch)}
-                  >
-                    {formatRelative(a.last_launch)}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!loading && filteredApps.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                    No launches in this range.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <DestinationTable
+            rows={filteredApps}
+            loading={loading}
+            emptyMessage="No app launches in this range."
+            countHeader="Launches"
+          />
+        </TabsContent>
+
+        <TabsContent value="links" className="space-y-3">
+          <Input
+            placeholder="Filter links by name…"
+            value={linkQuery}
+            onChange={(e) => setLinkQuery(e.target.value)}
+            className="max-w-sm"
+          />
+          <DestinationTable
+            rows={filteredLinks}
+            loading={loading}
+            emptyMessage="No link clicks in this range."
+            countHeader="Clicks"
+          />
         </TabsContent>
 
         <TabsContent value="users" className="space-y-3">
@@ -259,8 +265,8 @@ export default function AdminAnalyticsPage() {
                 <TableHead>User</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Office</TableHead>
-                <TableHead className="text-right">Launches</TableHead>
-                <TableHead>Top app</TableHead>
+                <TableHead className="text-right">Clicks</TableHead>
+                <TableHead>Top destination</TableHead>
                 <TableHead>Last active</TableHead>
               </TableRow>
             </TableHeader>
@@ -287,13 +293,14 @@ export default function AdminAnalyticsPage() {
                     {u.launches.toLocaleString()}
                   </TableCell>
                   <TableCell>
-                    {u.top_app ? (
-                      <>
-                        <span>{u.top_app}</span>
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          ({u.top_app_launches})
+                    {u.top_destination ? (
+                      <div className="flex items-center gap-2">
+                        <span>{u.top_destination}</span>
+                        <KindBadge kind={u.top_destination_kind!} />
+                        <span className="text-xs text-muted-foreground">
+                          ({u.top_destination_launches})
                         </span>
-                      </>
+                      </div>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
@@ -323,7 +330,8 @@ export default function AdminAnalyticsPage() {
               <TableRow>
                 <TableHead>When</TableHead>
                 <TableHead>User</TableHead>
-                <TableHead>App</TableHead>
+                <TableHead>Destination</TableHead>
+                <TableHead>Type</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -341,12 +349,15 @@ export default function AdminAnalyticsPage() {
                       <div className="text-xs text-muted-foreground">{e.email}</div>
                     )}
                   </TableCell>
-                  <TableCell>{e.app_name}</TableCell>
+                  <TableCell>{e.destination}</TableCell>
+                  <TableCell>
+                    <KindBadge kind={e.kind} />
+                  </TableCell>
                 </TableRow>
               ))}
               {!loading && (data?.recent.length ?? 0) === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
                     No activity yet.
                   </TableCell>
                 </TableRow>
@@ -356,6 +367,65 @@ export default function AdminAnalyticsPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function DestinationTable({
+  rows,
+  loading,
+  emptyMessage,
+  countHeader,
+}: {
+  rows: DestStat[];
+  loading: boolean;
+  emptyMessage: string;
+  countHeader: string;
+}) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Name</TableHead>
+          <TableHead className="text-right">{countHeader}</TableHead>
+          <TableHead className="text-right">Unique users</TableHead>
+          <TableHead>Last used</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((r) => (
+          <TableRow key={r.id}>
+            <TableCell className="font-medium">{r.name}</TableCell>
+            <TableCell className="text-right tabular-nums">
+              {r.launches.toLocaleString()}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {r.unique_users.toLocaleString()}
+            </TableCell>
+            <TableCell
+              className="text-muted-foreground"
+              title={formatDateTime(r.last_launch)}
+            >
+              {formatRelative(r.last_launch)}
+            </TableCell>
+          </TableRow>
+        ))}
+        {!loading && rows.length === 0 && (
+          <TableRow>
+            <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+              {emptyMessage}
+            </TableCell>
+          </TableRow>
+        )}
+      </TableBody>
+    </Table>
+  );
+}
+
+function KindBadge({ kind }: { kind: "app" | "link" }) {
+  return (
+    <Badge variant={kind === "app" ? "default" : "outline"} className="text-[10px]">
+      {kind}
+    </Badge>
   );
 }
 

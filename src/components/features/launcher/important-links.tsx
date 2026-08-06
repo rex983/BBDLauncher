@@ -18,7 +18,7 @@ export function ImportantLinks({ links }: ImportantLinksProps) {
         {links.map((link) => (
           <a
             key={link.id}
-            href={link.url}
+            href={`/api/links/${link.id}/click`}
             target="_blank"
             rel="noopener noreferrer"
           >

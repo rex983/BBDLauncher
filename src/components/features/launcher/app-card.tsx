@@ -48,10 +48,10 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
     const showSsoBadge = effectiveRole === "admin";
     const firstLetter = app.name.charAt(0).toUpperCase();
 
-    const href =
-      app.sso_type === "direct_link" || app.sso_type === "none"
-        ? app.url
-        : `/api/launch/${app.id}`;
+    // Always route through /api/launch so every click is logged and access
+    // checks run — even for direct_link/none apps, the launch endpoint
+    // handles the redirect for us.
+    const href = `/api/launch/${app.id}`;
 
     return (
       <div ref={ref} style={style} className={isDragging ? "z-50" : ""}>
