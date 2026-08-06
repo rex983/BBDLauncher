@@ -30,6 +30,7 @@ type ProfileRow = {
 };
 
 export async function GET(req: NextRequest) {
+  try {
   const session = await auth();
   if (!session?.user || !isAdmin(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -267,4 +268,11 @@ export async function GET(req: NextRequest) {
     users: usersStats,
     recent,
   });
+  } catch (err) {
+    console.error("Analytics error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Analytics failed" },
+      { status: 500 }
+    );
+  }
 }
