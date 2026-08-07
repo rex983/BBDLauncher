@@ -277,48 +277,66 @@ export default function AdminAnalyticsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredUsers.map((u) => (
-                <TableRow key={u.user_id}>
+              {filteredUsers.map((u) => {
+                const href = `/admin/analytics/users/${u.user_id}?range=${range}`;
+                return (
+                <TableRow
+                  key={u.user_id}
+                  className="group cursor-pointer transition-colors hover:bg-muted/50"
+                >
                   <TableCell>
-                    <div className="font-medium">{u.name || u.email}</div>
-                    {u.name && (
-                      <div className="text-xs text-muted-foreground">{u.email}</div>
-                    )}
+                    <Link href={href} className="block hover:underline">
+                      <div className="font-medium">{u.name || u.email}</div>
+                      {u.name && (
+                        <div className="text-xs text-muted-foreground">{u.email}</div>
+                      )}
+                    </Link>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{u.role}</Badge>
+                    <Link href={href} className="block">
+                      <Badge variant="secondary">{u.role}</Badge>
+                    </Link>
                   </TableCell>
                   <TableCell>
-                    {u.office ? (
-                      <Badge variant="outline">{u.office}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
+                    <Link href={href} className="block">
+                      {u.office ? (
+                        <Badge variant="outline">{u.office}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </Link>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {u.launches.toLocaleString()}
+                    <Link href={href} className="block">
+                      {u.launches.toLocaleString()}
+                    </Link>
                   </TableCell>
                   <TableCell>
-                    {u.top_destination ? (
-                      <div className="flex items-center gap-2">
-                        <span>{u.top_destination}</span>
-                        <KindBadge kind={u.top_destination_kind!} />
-                        <span className="text-xs text-muted-foreground">
-                          ({u.top_destination_launches})
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
+                    <Link href={href} className="block">
+                      {u.top_destination ? (
+                        <div className="flex items-center gap-2">
+                          <span>{u.top_destination}</span>
+                          <KindBadge kind={u.top_destination_kind!} />
+                          <span className="text-xs text-muted-foreground">
+                            ({u.top_destination_launches})
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </Link>
                   </TableCell>
                   <TableCell
                     className="text-muted-foreground"
                     title={formatDateTime(u.last_launch)}
                   >
-                    {formatRelative(u.last_launch)}
+                    <Link href={href} className="block">
+                      {formatRelative(u.last_launch)}
+                    </Link>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
               {!loading && filteredUsers.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">

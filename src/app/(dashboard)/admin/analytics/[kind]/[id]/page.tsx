@@ -291,47 +291,75 @@ export default function DestinationAnalyticsPage({
             <TableBody>
               {filteredUsers.map((u) => {
                 const unresolved = u.email === "(unknown user)";
+                const href = `/admin/analytics/users/${u.user_id}?range=${range}`;
+                const Wrapper = ({ children }: { children: React.ReactNode }) =>
+                  unresolved ? (
+                    <>{children}</>
+                  ) : (
+                    <Link href={href} className="block">
+                      {children}
+                    </Link>
+                  );
                 return (
-                <TableRow key={u.user_id}>
+                <TableRow
+                  key={u.user_id}
+                  className={
+                    unresolved
+                      ? undefined
+                      : "group cursor-pointer transition-colors hover:bg-muted/50"
+                  }
+                >
                   <TableCell>
-                    <div className="font-medium">{u.name || u.email}</div>
-                    {u.name && (
-                      <div className="text-xs text-muted-foreground">{u.email}</div>
-                    )}
-                    {unresolved && (
+                    <Wrapper>
                       <div
-                        className="mt-0.5 font-mono text-[10px] text-muted-foreground"
-                        title={u.user_id}
+                        className={
+                          unresolved ? "font-medium" : "font-medium hover:underline"
+                        }
                       >
-                        id: {u.user_id.slice(0, 12)}
-                        {u.user_id.length > 12 && "…"}
+                        {u.name || u.email}
                       </div>
-                    )}
+                      {u.name && (
+                        <div className="text-xs text-muted-foreground">{u.email}</div>
+                      )}
+                      {unresolved && (
+                        <div
+                          className="mt-0.5 font-mono text-[10px] text-muted-foreground"
+                          title={u.user_id}
+                        >
+                          id: {u.user_id.slice(0, 12)}
+                          {u.user_id.length > 12 && "…"}
+                        </div>
+                      )}
+                    </Wrapper>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{u.role}</Badge>
+                    <Wrapper>
+                      <Badge variant="secondary">{u.role}</Badge>
+                    </Wrapper>
                   </TableCell>
                   <TableCell>
-                    {u.office ? (
-                      <Badge variant="outline">{u.office}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
+                    <Wrapper>
+                      {u.office ? (
+                        <Badge variant="outline">{u.office}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </Wrapper>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {u.clicks.toLocaleString()}
+                    <Wrapper>{u.clicks.toLocaleString()}</Wrapper>
                   </TableCell>
                   <TableCell
                     className="text-muted-foreground"
                     title={formatDateTime(u.first_click)}
                   >
-                    {formatRelative(u.first_click)}
+                    <Wrapper>{formatRelative(u.first_click)}</Wrapper>
                   </TableCell>
                   <TableCell
                     className="text-muted-foreground"
                     title={formatDateTime(u.last_click)}
                   >
-                    {formatRelative(u.last_click)}
+                    <Wrapper>{formatRelative(u.last_click)}</Wrapper>
                   </TableCell>
                 </TableRow>
                 );
