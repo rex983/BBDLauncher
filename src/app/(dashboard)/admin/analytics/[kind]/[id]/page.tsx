@@ -289,12 +289,23 @@ export default function DestinationAnalyticsPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredUsers.map((u) => (
+              {filteredUsers.map((u) => {
+                const unresolved = u.email === "(unknown user)";
+                return (
                 <TableRow key={u.user_id}>
                   <TableCell>
                     <div className="font-medium">{u.name || u.email}</div>
                     {u.name && (
                       <div className="text-xs text-muted-foreground">{u.email}</div>
+                    )}
+                    {unresolved && (
+                      <div
+                        className="mt-0.5 font-mono text-[10px] text-muted-foreground"
+                        title={u.user_id}
+                      >
+                        id: {u.user_id.slice(0, 12)}
+                        {u.user_id.length > 12 && "…"}
+                      </div>
                     )}
                   </TableCell>
                   <TableCell>
@@ -323,7 +334,8 @@ export default function DestinationAnalyticsPage({
                     {formatRelative(u.last_click)}
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
               {!loading && filteredUsers.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
@@ -359,7 +371,9 @@ export default function DestinationAnalyticsPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAudit.map((e) => (
+              {filteredAudit.map((e) => {
+                const unresolved = e.email === "(unknown user)";
+                return (
                 <TableRow key={e.id}>
                   <TableCell
                     className="text-muted-foreground whitespace-nowrap"
@@ -372,6 +386,15 @@ export default function DestinationAnalyticsPage({
                     {e.name && (
                       <div className="text-xs text-muted-foreground">{e.email}</div>
                     )}
+                    {unresolved && (
+                      <div
+                        className="mt-0.5 font-mono text-[10px] text-muted-foreground"
+                        title={e.user_id}
+                      >
+                        id: {e.user_id.slice(0, 12)}
+                        {e.user_id.length > 12 && "…"}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {e.ip_address ?? "—"}
@@ -383,7 +406,8 @@ export default function DestinationAnalyticsPage({
                     {shortenAgent(e.user_agent)}
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
               {!loading && filteredAudit.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">

@@ -140,9 +140,26 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async jwt({ token, user }) {
       if (user?.email) {
-        // Hardcoded admin account — admin role without DB
+        // Hardcoded admin account — admin role, but resolve profileId from DB
+        // by email so audit/analytics rows link back to a real profile row.
         if (user.email === "rex@bigbuildingsdirect.com") {
           token.role = (token.role as UserRole) || "admin";
+          try {
+            const supabase = createAdminClient();
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("id, office, is_it")
+              .eq("email", user.email.toLowerCase())
+              .single();
+            if (profile) {
+              token.profileId = profile.id;
+              token.office = (profile.office as Office | null) ?? null;
+              token.is_it = (profile.is_it as boolean | null) ?? false;
+              return token;
+            }
+          } catch {
+            // fall through to legacy fallback
+          }
           token.profileId = (token.profileId as string) || user.id || "admin-001";
           token.office = (token.office as Office | null) ?? null;
           token.is_it = (token.is_it as boolean | undefined) ?? false;
@@ -173,6 +190,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.session_version = (profile.session_version as number | null) ?? 0;
         }
         return token;
+      }
+
+      // Auto-heal legacy tokens where rex's profileId was set to "admin-001"
+      // or a Google sub before we started resolving to the real profiles.id.
+      const email = token.email as string | undefined;
+      if (
+        email === "rex@bigbuildingsdirect.com" &&
+        (token.profileId === "admin-001" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            (token.profileId as string) ?? ""
+          ))
+      ) {
+        try {
+          const supabase = createAdminClient();
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("id, office, is_it")
+            .eq("email", email)
+            .single();
+          if (profile) {
+            token.profileId = profile.id;
+            token.office = (profile.office as Office | null) ?? null;
+            token.is_it = (profile.is_it as boolean | null) ?? false;
+          }
+        } catch {
+          // ignore
+        }
       }
 
       // Subsequent requests: refresh role/office if the DB's session_version
