@@ -1,4 +1,4 @@
-import type { UserRole } from "@/types/auth";
+import type { Office, UserRole } from "@/types/auth";
 
 // Routes under /admin/* that managers are allowed to access. Anything else
 // stays admin-only (e.g., /admin/roles, /admin/sso).
@@ -8,6 +8,7 @@ export const MANAGER_ADMIN_PATHS = [
   "/admin/links",
   "/admin/users",
   "/admin/manufacturers",
+  "/admin/analytics",
 ];
 
 export function isAdmin(role: UserRole | undefined | null): boolean {
@@ -29,4 +30,24 @@ export function canAccessAdminPath(
     return MANAGER_ADMIN_PATHS.some((p) => pathname.startsWith(p));
   }
   return false;
+}
+
+export type AnalyticsScope =
+  | { allowed: false }
+  | { allowed: true; office: Office | null };
+
+// Who can see analytics, and whose activity they can see. Admins and BST
+// managers see everyone; other managers only see their own office. Managers
+// with no office assignment get no access rather than "all offices".
+export function analyticsScope(
+  role: UserRole | undefined | null,
+  office: Office | null,
+): AnalyticsScope {
+  if (role === "admin") return { allowed: true, office: null };
+  if (role === "manager") {
+    if (office === "BST") return { allowed: true, office: null };
+    if (office) return { allowed: true, office };
+    return { allowed: false };
+  }
+  return { allowed: false };
 }

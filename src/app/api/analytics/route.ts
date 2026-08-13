@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { isAdmin } from "@/lib/auth/permissions";
+import { analyticsScope } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -32,7 +32,8 @@ type ProfileRow = {
 export async function GET(req: NextRequest) {
   try {
   const session = await auth();
-  if (!session?.user || !isAdmin(session.user.role)) {
+  const scope = analyticsScope(session?.user?.role, session?.user?.office ?? null);
+  if (!session?.user || !scope.allowed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -42,6 +43,25 @@ export async function GET(req: NextRequest) {
     days === null ? null : new Date(Date.now() - days * 86400_000).toISOString();
 
   const supabase = createAdminClient();
+
+  // Office-scoped viewers (non-BST managers) only see activity by users in
+  // their office. Look up the allowed profile IDs up-front and .in()-filter
+  // the audit query — cheaper than joining and avoids leaking cross-office
+  // rows through the (deleted profile) branch.
+  let allowedUserIds: string[] | null = null;
+  if (scope.office !== null) {
+    const { data: officeProfiles, error: officeErr } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("office", scope.office);
+    if (officeErr) {
+      return NextResponse.json({ error: officeErr.message }, { status: 500 });
+    }
+    allowedUserIds = (officeProfiles ?? []).map((p) => p.id);
+    if (allowedUserIds.length === 0) {
+      return NextResponse.json(emptyAnalytics(rangeParam, sinceIso));
+    }
+  }
 
   // PostgREST caps single-request row counts (Supabase default is 1000), so
   // `.limit(50000)` gets silently clamped and the totals look like they've
@@ -57,6 +77,7 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
     if (sinceIso) query = query.gte("created_at", sinceIso);
+    if (allowedUserIds) query = query.in("user_id", allowedUserIds);
 
     const { data: pageRaw, error: pageErr } = await query;
     if (pageErr) {
@@ -284,4 +305,25 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function emptyAnalytics(range: string, since: string | null) {
+  return {
+    range,
+    since,
+    totals: {
+      launches: 0,
+      unique_users: 0,
+      unique_destinations: 0,
+      app_launches: 0,
+      link_clicks: 0,
+      top_destination: null,
+      top_destination_kind: null,
+      top_destination_launches: 0,
+    },
+    apps: [],
+    links: [],
+    users: [],
+    recent: [],
+  };
 }

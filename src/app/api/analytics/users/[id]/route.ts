@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { isAdmin } from "@/lib/auth/permissions";
+import { analyticsScope } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -30,7 +30,8 @@ export async function GET(
 ) {
   try {
     const session = await auth();
-    if (!session?.user || !isAdmin(session.user.role)) {
+    const scope = analyticsScope(session?.user?.role, session?.user?.office ?? null);
+    if (!session?.user || !scope.allowed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
@@ -48,20 +49,35 @@ export async function GET(
       .eq("id", id)
       .maybeSingle();
 
-    let query = supabase
-      .from("launcher_sso_audit_log")
-      .select("id, app_id, link_id, event_type, created_at, ip_address, user_agent")
-      .eq("user_id", id)
-      .in("event_type", ["app_launch", "link_click"])
-      .order("created_at", { ascending: false })
-      .limit(10000);
-    if (sinceIso) query = query.gte("created_at", sinceIso);
-
-    const { data: eventsRaw, error: eventsErr } = await query;
-    if (eventsErr) {
-      return NextResponse.json({ error: eventsErr.message }, { status: 500 });
+    // Office-scoped viewers can only drill into users in their own office.
+    // If the target profile is missing (orphaned audit rows) or in another
+    // office, refuse. Admins and BST managers pass through.
+    if (scope.office !== null && profile?.office !== scope.office) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
-    const events = (eventsRaw ?? []) as AuditRow[];
+
+    // PostgREST silently caps rows (Supabase default 1000), so paginate.
+    const PAGE_SIZE = 1000;
+    const MAX_ROWS = 200_000;
+    const events: AuditRow[] = [];
+    for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
+      let query = supabase
+        .from("launcher_sso_audit_log")
+        .select("id, app_id, link_id, event_type, created_at, ip_address, user_agent")
+        .eq("user_id", id)
+        .in("event_type", ["app_launch", "link_click"])
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE_SIZE - 1);
+      if (sinceIso) query = query.gte("created_at", sinceIso);
+
+      const { data: pageRaw, error: pageErr } = await query;
+      if (pageErr) {
+        return NextResponse.json({ error: pageErr.message }, { status: 500 });
+      }
+      const page = (pageRaw ?? []) as AuditRow[];
+      events.push(...page);
+      if (page.length < PAGE_SIZE) break;
+    }
 
     const appIds = [
       ...new Set(events.map((e) => e.app_id).filter((v): v is string => !!v)),

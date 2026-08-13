@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { isAdmin } from "@/lib/auth/permissions";
+import { analyticsScope } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -35,7 +35,8 @@ export async function GET(
 ) {
   try {
     const session = await auth();
-    if (!session?.user || !isAdmin(session.user.role)) {
+    const scope = analyticsScope(session?.user?.role, session?.user?.office ?? null);
+    if (!session?.user || !scope.allowed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
@@ -50,6 +51,19 @@ export async function GET(
       days === null ? null : new Date(Date.now() - days * 86400_000).toISOString();
 
     const supabase = createAdminClient();
+
+    // Office-scoped viewers only see rows from users in their office.
+    let allowedUserIds: string[] | null = null;
+    if (scope.office !== null) {
+      const { data: officeProfiles, error: officeErr } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("office", scope.office);
+      if (officeErr) {
+        return NextResponse.json({ error: officeErr.message }, { status: 500 });
+      }
+      allowedUserIds = (officeProfiles ?? []).map((p) => p.id);
+    }
 
     // Look up destination metadata
     const table = kind === "apps" ? "launcher_apps" : "launcher_links";
@@ -67,20 +81,30 @@ export async function GET(
     const filterCol = kind === "apps" ? "app_id" : "link_id";
     const eventType = kind === "apps" ? "app_launch" : "link_click";
 
-    let query = supabase
-      .from("launcher_sso_audit_log")
-      .select("id, user_id, event_type, created_at, ip_address, user_agent, details")
-      .eq(filterCol, id)
-      .eq("event_type", eventType)
-      .order("created_at", { ascending: false })
-      .limit(10000);
-    if (sinceIso) query = query.gte("created_at", sinceIso);
+    // PostgREST silently caps rows (Supabase default 1000), so paginate.
+    const PAGE_SIZE = 1000;
+    const MAX_ROWS = 200_000;
+    const events: AuditRow[] = [];
+    const skipEvents = allowedUserIds?.length === 0;
+    for (let from = 0; !skipEvents && from < MAX_ROWS; from += PAGE_SIZE) {
+      let query = supabase
+        .from("launcher_sso_audit_log")
+        .select("id, user_id, event_type, created_at, ip_address, user_agent, details")
+        .eq(filterCol, id)
+        .eq("event_type", eventType)
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE_SIZE - 1);
+      if (sinceIso) query = query.gte("created_at", sinceIso);
+      if (allowedUserIds) query = query.in("user_id", allowedUserIds);
 
-    const { data: eventsRaw, error: eventsErr } = await query;
-    if (eventsErr) {
-      return NextResponse.json({ error: eventsErr.message }, { status: 500 });
+      const { data: pageRaw, error: pageErr } = await query;
+      if (pageErr) {
+        return NextResponse.json({ error: pageErr.message }, { status: 500 });
+      }
+      const page = (pageRaw ?? []) as AuditRow[];
+      events.push(...page);
+      if (page.length < PAGE_SIZE) break;
     }
-    const events = (eventsRaw ?? []) as AuditRow[];
 
     const userIds = [...new Set(events.map((e) => e.user_id))];
     const { data: profilesRaw } = userIds.length
