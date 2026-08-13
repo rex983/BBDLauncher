@@ -43,20 +43,29 @@ export async function GET(req: NextRequest) {
 
   const supabase = createAdminClient();
 
-  let query = supabase
-    .from("launcher_sso_audit_log")
-    .select("user_id, app_id, link_id, event_type, created_at")
-    .in("event_type", ["app_launch", "link_click"])
-    .order("created_at", { ascending: false })
-    .limit(50000);
+  // PostgREST caps single-request row counts (Supabase default is 1000), so
+  // `.limit(50000)` gets silently clamped and the totals look like they've
+  // topped out at 1,000. Page through the audit log in chunks instead.
+  const PAGE_SIZE = 1000;
+  const MAX_ROWS = 200_000; // safety net for "all time" on a huge audit log
+  const events: AuditRow[] = [];
+  for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
+    let query = supabase
+      .from("launcher_sso_audit_log")
+      .select("user_id, app_id, link_id, event_type, created_at")
+      .in("event_type", ["app_launch", "link_click"])
+      .order("created_at", { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (sinceIso) query = query.gte("created_at", sinceIso);
 
-  if (sinceIso) query = query.gte("created_at", sinceIso);
-
-  const { data: eventsRaw, error: eventsErr } = await query;
-  if (eventsErr) {
-    return NextResponse.json({ error: eventsErr.message }, { status: 500 });
+    const { data: pageRaw, error: pageErr } = await query;
+    if (pageErr) {
+      return NextResponse.json({ error: pageErr.message }, { status: 500 });
+    }
+    const page = (pageRaw ?? []) as AuditRow[];
+    events.push(...page);
+    if (page.length < PAGE_SIZE) break;
   }
-  const events = (eventsRaw ?? []) as AuditRow[];
 
   const appIds = [
     ...new Set(events.map((e) => e.app_id).filter((v): v is string => !!v)),
