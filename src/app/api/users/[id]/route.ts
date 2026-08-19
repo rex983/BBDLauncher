@@ -8,6 +8,7 @@ const updateSchema = z.object({
   name: z.string().nullable().optional(),
   role: z.string().min(1).optional(),
   office: z.enum(["Harbor", "Marion", "BST", "RnD"]).nullable().optional(),
+  department: z.enum(["SALES TEAM", "BST", "RnD"]).nullable().optional(),
   is_it: z.boolean().optional(),
 });
 
@@ -34,6 +35,7 @@ export async function PUT(
   if (parsed.data.name !== undefined) updates.full_name = parsed.data.name;
   if (parsed.data.role !== undefined) updates.role = parsed.data.role;
   if (parsed.data.office !== undefined) updates.office = parsed.data.office;
+  if (parsed.data.department !== undefined) updates.department = parsed.data.department;
   if (parsed.data.is_it !== undefined) updates.is_it = parsed.data.is_it;
 
   if (Object.keys(updates).length === 0) {
@@ -43,6 +45,7 @@ export async function PUT(
   const securityChange =
     parsed.data.role !== undefined ||
     parsed.data.office !== undefined ||
+    parsed.data.department !== undefined ||
     parsed.data.is_it !== undefined;
   const viewerIsAdmin = isAdmin(session.user.role);
   const needsPrefetch = !viewerIsAdmin || securityChange;
@@ -86,7 +89,7 @@ export async function PUT(
     .from("profiles")
     .update(updates)
     .eq("id", id)
-    .select("id, email, name:full_name, role, office, is_it, created_at, updated_at")
+    .select("id, email, name:full_name, role, office, department, is_it, created_at, updated_at")
     .single();
 
   if (error) {

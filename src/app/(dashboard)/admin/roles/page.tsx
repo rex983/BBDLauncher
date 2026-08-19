@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { MANAGER_TIER_ROLES } from "@/lib/auth/permissions";
 
 interface LauncherRole {
   name: string;
@@ -260,7 +261,7 @@ export default function AdminRolesPage() {
                 <TableCell>
                   {role.is_admin ? (
                     <Badge>admin</Badge>
-                  ) : role.name === "manager" ? (
+                  ) : MANAGER_TIER_ROLES.has(role.name) ? (
                     <Badge variant="secondary">manager</Badge>
                   ) : (
                     <Badge variant="outline">app-access</Badge>

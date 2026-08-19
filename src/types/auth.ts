@@ -6,12 +6,15 @@ export type UserRole = string;
 
 export type Office = "Harbor" | "Marion" | "BST" | "RnD";
 
+export type Department = "SALES TEAM" | "BST" | "RnD";
+
 export interface UserProfile {
   id: string;
   email: string;
   name: string | null;
   role: UserRole;
   office: Office | null;
+  department: Department | null;
   is_it: boolean;
   created_at: string;
   updated_at: string;
@@ -27,6 +30,7 @@ declare module "next-auth" {
       role: UserRole;
       profileId: string;
       office: Office | null;
+      department: Department | null;
       is_it: boolean;
     };
   }
@@ -35,6 +39,7 @@ declare module "next-auth" {
     role: UserRole;
     profileId: string;
     office: Office | null;
+    department?: Department | null;
     is_it?: boolean;
     session_version?: number;
   }

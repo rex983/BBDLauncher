@@ -3,7 +3,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptStrapiCookie } from "@/lib/auth/strapi-sso";
-import type { Office, UserRole } from "@/types/auth";
+import type { Department, Office, UserRole } from "@/types/auth";
 
 // Dev bypass ONLY in actual development, never via env var in production
 const isDev = process.env.NODE_ENV === "development";
@@ -148,12 +148,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             const supabase = createAdminClient();
             const { data: profile } = await supabase
               .from("profiles")
-              .select("id, office, is_it")
+              .select("id, office, department, is_it")
               .eq("email", user.email.toLowerCase())
               .single();
             if (profile) {
               token.profileId = profile.id;
               token.office = (profile.office as Office | null) ?? null;
+              token.department = (profile.department as Department | null) ?? null;
               token.is_it = (profile.is_it as boolean | null) ?? false;
               return token;
             }
@@ -162,6 +163,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           }
           token.profileId = (token.profileId as string) || user.id || "admin-001";
           token.office = (token.office as Office | null) ?? null;
+          token.department = (token.department as Department | null) ?? null;
           token.is_it = (token.is_it as boolean | undefined) ?? false;
           return token;
         }
@@ -171,6 +173,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.role = (token.role as UserRole) || "admin";
           token.profileId = (token.profileId as string) || user.id;
           token.office = (token.office as Office | null) ?? null;
+          token.department = (token.department as Department | null) ?? null;
           token.is_it = (token.is_it as boolean | undefined) ?? false;
           return token;
         }
@@ -178,7 +181,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, role, office, is_it, session_version")
+          .select("id, role, office, department, is_it, session_version")
           .eq("email", user.email.toLowerCase())
           .single();
 
@@ -186,6 +189,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.role = profile.role as UserRole;
           token.profileId = profile.id;
           token.office = (profile.office as Office | null) ?? null;
+          token.department = (profile.department as Department | null) ?? null;
           token.is_it = (profile.is_it as boolean | null) ?? false;
           token.session_version = (profile.session_version as number | null) ?? 0;
         }
@@ -206,12 +210,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const supabase = createAdminClient();
           const { data: profile } = await supabase
             .from("profiles")
-            .select("id, office, is_it")
+            .select("id, office, department, is_it")
             .eq("email", email)
             .single();
           if (profile) {
             token.profileId = profile.id;
             token.office = (profile.office as Office | null) ?? null;
+            token.department = (profile.department as Department | null) ?? null;
             token.is_it = (profile.is_it as boolean | null) ?? false;
           }
         } catch {
@@ -231,7 +236,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: current } = await supabase
           .from("profiles")
-          .select("role, office, is_it, session_version")
+          .select("role, office, department, is_it, session_version")
           .eq("id", profileId)
           .single();
         if (current) {
@@ -240,6 +245,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (dbVersion !== tokenVersion) {
             token.role = current.role as UserRole;
             token.office = (current.office as Office | null) ?? null;
+            token.department = (current.department as Department | null) ?? null;
             token.is_it = (current.is_it as boolean | null) ?? false;
             token.session_version = dbVersion;
           }
@@ -252,6 +258,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.role = token.role as import("@/types/auth").UserRole;
         session.user.profileId = token.profileId as string;
         session.user.office = (token.office as Office | null) ?? null;
+        session.user.department = (token.department as Department | null) ?? null;
         session.user.is_it = (token.is_it as boolean | undefined) ?? false;
       }
       return session;

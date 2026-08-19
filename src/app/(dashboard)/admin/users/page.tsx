@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import type { Office, UserProfile, UserRole } from "@/types/auth";
+import type { Department, Office, UserProfile, UserRole } from "@/types/auth";
 
 interface LauncherRole {
   name: string;
@@ -37,12 +37,14 @@ interface LauncherRole {
 }
 
 const allOffices: Office[] = ["Harbor", "Marion", "BST", "RnD"];
+const allDepartments: Department[] = ["SALES TEAM", "BST", "RnD"];
 
 type FormState = {
   email: string;
   name: string;
   role: UserRole;
   office: Office | "";
+  department: Department | "";
   is_it: boolean;
 };
 
@@ -51,6 +53,7 @@ const emptyForm: FormState = {
   name: "",
   role: "sales_rep",
   office: "",
+  department: "",
   is_it: false,
 };
 
@@ -100,6 +103,7 @@ export default function AdminUsersPage() {
       name: user.name ?? "",
       role: user.role,
       office: user.office ?? "",
+      department: user.department ?? "",
       is_it: user.is_it ?? false,
     });
     setError(null);
@@ -136,6 +140,7 @@ export default function AdminUsersPage() {
             name: form.name.trim() || null,
             role: form.role,
             office: form.office || null,
+            department: form.department || null,
             ...(viewerIsAdmin && itChanged ? { is_it: form.is_it } : {}),
           }),
         })
@@ -147,6 +152,7 @@ export default function AdminUsersPage() {
             name: form.name.trim() || undefined,
             role: form.role,
             office: form.office || null,
+            department: form.department || null,
             ...(viewerIsAdmin && form.is_it ? { is_it: true } : {}),
           }),
         });
@@ -269,6 +275,28 @@ export default function AdminUsersPage() {
               </div>
 
               <div className="space-y-2">
+                <Label>Department</Label>
+                <Select
+                  value={form.department || "__none__"}
+                  onValueChange={(v) =>
+                    setForm({ ...form, department: v === "__none__" ? "" : (v as Department) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No department</SelectItem>
+                    {allDepartments.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <Label className="flex items-center gap-2 font-normal">
                   <input
                     type="checkbox"
@@ -306,6 +334,7 @@ export default function AdminUsersPage() {
             <TableHead>Name</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Office</TableHead>
+            <TableHead>Department</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Added</TableHead>
             <TableHead>Change Role</TableHead>
@@ -331,6 +360,13 @@ export default function AdminUsersPage() {
                 <TableCell>
                   {user.office ? (
                     <Badge variant="outline">{user.office}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {user.department ? (
+                    <Badge variant="outline">{user.department}</Badge>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
@@ -393,7 +429,7 @@ export default function AdminUsersPage() {
           })}
           {users.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                 No users yet.
               </TableCell>
             </TableRow>
