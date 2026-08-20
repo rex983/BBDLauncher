@@ -15,12 +15,16 @@ import {
 import {
   SortableContext,
   rectSortingStrategy,
+  verticalListSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { SortableAppCard } from "./sortable-app-card";
 import { AppCard } from "./app-card";
-import { Search, ChevronDown, ChevronRight, Star } from "lucide-react";
+import { SortableAppListRow } from "./sortable-app-list-row";
+import { AppListRow } from "./app-list-row";
+import { Search, ChevronDown, ChevronRight, Star, LayoutGrid, List } from "lucide-react";
 import type { LauncherApp, LauncherSection } from "@/types/app";
 
 interface SectionedAppGridProps {
@@ -29,8 +33,11 @@ interface SectionedAppGridProps {
   isAdmin: boolean;
 }
 
+type ViewType = "cards" | "list";
+
 const FAVORITES_KEY = "bbd-favorites";
 const COLLAPSE_KEY = "bbd-section-collapse";
+const VIEW_TYPE_KEY = "bbd-view-type";
 const FAVORITES_ID = "__favorites__";
 const UNSORTED_ID = "__unsorted__";
 
@@ -110,6 +117,7 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
   const [search, setSearch] = useState("");
   const [favorites, setFavorites] = useState<string[]>([]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [viewType, setViewType] = useState<ViewType>("cards");
   // Admin-only local working copy of apps so drag-drop feels instant.
   const [workingApps, setWorkingApps] = useState<LauncherApp[]>(apps);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -117,7 +125,14 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
   useEffect(() => {
     setFavorites(readJSON<string[]>(FAVORITES_KEY, []));
     setCollapsed(readJSON<Record<string, boolean>>(COLLAPSE_KEY, {}));
+    const savedView = readJSON<ViewType>(VIEW_TYPE_KEY, "cards");
+    setViewType(savedView === "list" ? "list" : "cards");
   }, []);
+
+  const changeViewType = (next: ViewType) => {
+    setViewType(next);
+    writeJSON(VIEW_TYPE_KEY, next);
+  };
 
   useEffect(() => {
     setWorkingApps(apps);
@@ -287,24 +302,46 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
     ? workingApps.find((a) => a.id === activeDragId)
     : null;
 
-  const renderGrid = (list: LauncherApp[], sortable: boolean) => (
-    <SortableContext
-      items={list.map((a) => a.id)}
-      strategy={rectSortingStrategy}
-    >
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-        {list.map((app) => (
-          <SortableAppCard
-            key={app.id}
-            app={app}
-            isFavorite={favorites.includes(app.id)}
-            onToggleFavorite={toggleFavorite}
-            sortable={sortable}
-          />
-        ))}
-      </div>
-    </SortableContext>
-  );
+  const renderGrid = (list: LauncherApp[], sortable: boolean) => {
+    if (viewType === "list") {
+      return (
+        <SortableContext
+          items={list.map((a) => a.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="flex flex-col gap-1.5">
+            {list.map((app) => (
+              <SortableAppListRow
+                key={app.id}
+                app={app}
+                isFavorite={favorites.includes(app.id)}
+                onToggleFavorite={toggleFavorite}
+                sortable={sortable}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      );
+    }
+    return (
+      <SortableContext
+        items={list.map((a) => a.id)}
+        strategy={rectSortingStrategy}
+      >
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+          {list.map((app) => (
+            <SortableAppCard
+              key={app.id}
+              app={app}
+              isFavorite={favorites.includes(app.id)}
+              onToggleFavorite={toggleFavorite}
+              sortable={sortable}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    );
+  };
 
   const content = (
     <div className="space-y-6">
@@ -324,17 +361,31 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
           {!effectiveCollapsed(FAVORITES_ID) && (
             <div id={`section-${FAVORITES_ID}`}>
               {/* Favorites grid is never droppable/sortable — it's a per-user view. */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-                {favoriteApps.map((app) => (
-                  <AppCard
-                    key={app.id}
-                    app={app}
-                    isFavorite
-                    onToggleFavorite={toggleFavorite}
-                    showDragHandle={false}
-                  />
-                ))}
-              </div>
+              {viewType === "list" ? (
+                <div className="flex flex-col gap-1.5">
+                  {favoriteApps.map((app) => (
+                    <AppListRow
+                      key={app.id}
+                      app={app}
+                      isFavorite
+                      onToggleFavorite={toggleFavorite}
+                      showDragHandle={false}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                  {favoriteApps.map((app) => (
+                    <AppCard
+                      key={app.id}
+                      app={app}
+                      isFavorite
+                      onToggleFavorite={toggleFavorite}
+                      showDragHandle={false}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -408,7 +459,7 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -417,6 +468,34 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
           />
+        </div>
+        <div
+          className="inline-flex rounded-md border p-0.5 self-start sm:self-auto"
+          role="group"
+          aria-label="View type"
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant={viewType === "cards" ? "secondary" : "ghost"}
+            onClick={() => changeViewType("cards")}
+            aria-pressed={viewType === "cards"}
+            aria-label="Card view"
+            className="h-7 px-2"
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={viewType === "list" ? "secondary" : "ghost"}
+            onClick={() => changeViewType("list")}
+            aria-pressed={viewType === "list"}
+            aria-label="List view"
+            className="h-7 px-2"
+          >
+            <List className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -430,7 +509,11 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
           {content}
           <DragOverlay>
             {activeApp ? (
-              <AppCard app={activeApp} showDragHandle={false} />
+              viewType === "list" ? (
+                <AppListRow app={activeApp} showDragHandle={false} />
+              ) : (
+                <AppCard app={activeApp} showDragHandle={false} />
+              )
             ) : null}
           </DragOverlay>
         </DndContext>
