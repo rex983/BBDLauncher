@@ -16,6 +16,7 @@ import {
   FolderTree,
   Factory,
   BarChart3,
+  Quote,
 } from "lucide-react";
 
 const navItems = [
@@ -29,6 +30,7 @@ const adminItems = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/manufacturers", label: "Manufacturers", icon: Factory },
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/admin/quotes", label: "Quotes", icon: Quote },
   { href: "/admin/roles", label: "Roles", icon: ShieldCheck },
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
 ];

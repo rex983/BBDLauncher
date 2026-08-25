@@ -4,11 +4,13 @@ import { SectionedAppGrid } from "@/components/features/launcher/sectioned-app-g
 import { ImportantLinks } from "@/components/features/launcher/important-links";
 import { ViewAsRole } from "@/components/features/launcher/view-as-role";
 import { ViewAsOffice } from "@/components/features/launcher/view-as-office";
-import { canManageContent } from "@/lib/auth/permissions";
+import { QuoteBanner } from "@/components/features/launcher/quote-banner";
+import { canManageContent, isAdmin as isAdminRole } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { LauncherApp, LauncherSection } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
+import type { MotivationalQuote } from "@/types/quote";
 import type { Office } from "@/types/auth";
 
 const ALL_OFFICES: Office[] = ["Harbor", "Marion", "BST", "RnD"];
@@ -39,12 +41,13 @@ export default async function DashboardPage({
   let sections: LauncherSection[] = [];
   let links: ImportantLink[] = [];
   let roles: { name: string; display_name: string }[] = [];
+  let quote: MotivationalQuote | null = null;
   try {
     const supabase = createAdminClient();
 
     // One round-trip: fetch role-scoped apps via join, plus sections, links,
-    // and (for admins) the role list — all in parallel.
-    const [accessRes, sectionsRes, linksRes, rolesRes] = await Promise.all([
+    // active motivational quote, and (for admins) the role list — all in parallel.
+    const [accessRes, sectionsRes, linksRes, rolesRes, quoteRes] = await Promise.all([
       supabase
         .from("launcher_role_app_access")
         .select("launcher_apps!inner(*)")
@@ -61,6 +64,11 @@ export default async function DashboardPage({
       isAdmin
         ? supabase.from("launcher_roles").select("name, display_name").order("name")
         : Promise.resolve({ data: [] as { name: string; display_name: string }[] }),
+      supabase
+        .from("launcher_motivational_quotes")
+        .select("*")
+        .eq("is_active", true)
+        .maybeSingle(),
     ]);
 
     const accessRows = (accessRes.data || []) as unknown as {
@@ -92,6 +100,7 @@ export default async function DashboardPage({
       linkOfficeMatches(l.office)
     );
     roles = (rolesRes.data as { name: string; display_name: string }[]) || [];
+    quote = (quoteRes.data as MotivationalQuote | null) ?? null;
   } catch (err) {
     console.error("Dashboard data fetch error:", err);
   }
@@ -121,6 +130,7 @@ export default async function DashboardPage({
           </div>
         )}
       </div>
+      <QuoteBanner initial={quote} canRefresh={isAdminRole(session.user.role)} />
       {(viewAs && viewAs !== session.user.role) || viewAsOfficeValid ? (
         <div className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded space-x-2">
           {viewAs && viewAs !== session.user.role && (
