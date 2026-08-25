@@ -6,7 +6,7 @@
 // duplicating what's already in the rotation.
 
 const GEMINI_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent";
 
 export interface GeneratedQuote {
   quote: string;
