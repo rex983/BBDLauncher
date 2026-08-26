@@ -4,25 +4,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
-// DST-safe weekly refresh.
+// Weekly refresh. vercel.json runs this every Monday at 13:00 UTC
+// (8 AM Eastern in winter / 9 AM Eastern in summer — cron day-of-week
+// doesn't shift with DST at this hour).
 //
-// vercel.json runs this DAILY at 13:00 UTC. During EST (Nov–Mar) that's
-// 8 AM Eastern; during EDT (Mar–Nov) that's 9 AM Eastern. Since Vercel
-// crons run in UTC only, we check the day-of-week in Eastern time here
-// and only refresh when it's actually Monday in Eastern — that way DST
-// transitions don't shift which day the quote rotates.
-//
-// We also guard against double-firing: if the current active quote was
-// activated less than 6 days ago, we skip. That means a manual admin
-// refresh on Monday won't get immediately overwritten by the cron.
-function isEasternMonday(now: Date): boolean {
-  const weekday = new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    timeZone: "America/New_York",
-  }).format(now);
-  return weekday === "Mon";
-}
-
+// We still guard against double-firing: if the current active quote was
+// activated less than 6 days ago (e.g. an admin manually refreshed on
+// Sunday), we skip the cron.
 function ageInDays(iso: string, now: Date): number {
   const t = new Date(iso).getTime();
   return (now.getTime() - t) / (1000 * 60 * 60 * 24);
@@ -46,14 +34,6 @@ async function handle(req: NextRequest) {
 
   const force = req.nextUrl.searchParams.get("force") === "1";
   const now = new Date();
-
-  if (!force && !isEasternMonday(now)) {
-    return NextResponse.json({
-      skipped: true,
-      reason: "not-monday-eastern",
-      at: now.toISOString(),
-    });
-  }
 
   const supabase = createAdminClient();
   const { data: active } = await supabase
