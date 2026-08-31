@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RefreshCw, Quote as QuoteIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getBrowserClient } from "@/lib/supabase/browser";
 import type { MotivationalQuote } from "@/types/quote";
 
 interface Props {
@@ -15,6 +16,32 @@ export function QuoteBanner({ initial, canRefresh }: Props) {
   const [quote, setQuote] = useState<MotivationalQuote | null>(initial);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Subscribe to realtime INSERTs on the quotes table so every dashboard
+  // updates the moment an admin refreshes or the weekly cron fires — no
+  // reload required.
+  useEffect(() => {
+    const supabase = getBrowserClient();
+    const channel = supabase
+      .channel("launcher-motivational-quotes")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "launcher_motivational_quotes",
+          filter: "is_active=eq.true",
+        },
+        (payload) => {
+          setQuote(payload.new as MotivationalQuote);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   async function handleRefresh() {
     if (refreshing) return;
@@ -39,21 +66,29 @@ export function QuoteBanner({ initial, canRefresh }: Props) {
     return null;
   }
 
+  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(quote.author)}`;
+
   return (
     <div className="rounded-lg border bg-muted/30 px-4 py-3">
       <div className="flex items-start gap-3">
         <QuoteIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm italic leading-snug">
+        <a
+          href={searchUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Learn about ${quote.author}`}
+          className="flex-1 min-w-0 group cursor-pointer"
+        >
+          <p className="text-sm italic leading-snug group-hover:underline">
             &ldquo;{quote.quote}&rdquo;
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground group-hover:text-foreground group-hover:underline">
             — {quote.author}
           </p>
           {error && (
             <p className="mt-1 text-xs text-destructive">{error}</p>
           )}
-        </div>
+        </a>
         {canRefresh && (
           <Button
             variant="ghost"
