@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Sparkles } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -28,6 +28,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [iconUrl, setIconUrl] = useState(app?.icon_url || "");
   const [iconUploading, setIconUploading] = useState(false);
   const [iconError, setIconError] = useState<string | null>(null);
+  const [faviconFetching, setFaviconFetching] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [ssoType, setSsoType] = useState<SsoType>(app?.sso_type || "none");
   const [status, setStatus] = useState<AppStatus>(app?.status || "active");
@@ -111,6 +112,32 @@ export function AppForm({ app, onSaved }: AppFormProps) {
 
     setSaving(false);
     if (res.ok) onSaved();
+  };
+
+  const handleFetchFavicon = async () => {
+    if (!url) {
+      setIconError("Enter an app URL first");
+      return;
+    }
+    setIconError(null);
+    setFaviconFetching(true);
+    try {
+      const res = await fetch("/api/apps/fetch-favicon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setIconError(typeof body.error === "string" ? body.error : "Fetch failed");
+      } else if (body.url) {
+        setIconUrl(body.url);
+      }
+    } catch {
+      setIconError("Fetch failed");
+    } finally {
+      setFaviconFetching(false);
+    }
   };
 
   const handleIconFile = async (file: File) => {
@@ -214,16 +241,29 @@ export function AppForm({ app, onSaved }: AppFormProps) {
               if (f) handleIconFile(f);
             }}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={iconUploading}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="h-3 w-3 mr-1" />
-            {iconUploading ? "Uploading..." : "Upload image"}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={iconUploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="h-3 w-3 mr-1" />
+              {iconUploading ? "Uploading..." : "Upload image"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={faviconFetching || !url}
+              onClick={handleFetchFavicon}
+              title="Fetch favicon from the app URL"
+            >
+              <Sparkles className="h-3 w-3 mr-1" />
+              {faviconFetching ? "Fetching..." : "Fetch from URL"}
+            </Button>
+          </div>
           {iconError && <p className="text-xs text-destructive">{iconError}</p>}
         </div>
         <div className="space-y-2">
