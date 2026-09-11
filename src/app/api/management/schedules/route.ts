@@ -4,9 +4,6 @@ import { canViewTimeData, canEditTimeData, timeDataScope } from "@/lib/auth/perm
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-// Default schedule when no override exists: Mon-Fri 10:00-18:00 ET.
-export const DEFAULT_SCHEDULE = { start_time: "10:00", end_time: "18:00", timezone: "America/New_York" };
-
 const upsertSchema = z.object({
   profile_id: z.string().uuid(),
   weekday: z.number().int().min(0).max(6),
