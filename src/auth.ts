@@ -236,10 +236,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: current } = await supabase
           .from("profiles")
-          .select("role, office, department, is_it, session_version")
+          .select("role, office, department, is_it, session_version, signed_out_at")
           .eq("id", profileId)
           .single();
         if (current) {
+          // Force-signout check: the nightly midnight cron bumps signed_out_at
+          // for every profile. Any token issued before that timestamp is
+          // treated as expired — returning null invalidates the session and
+          // bounces the user to /login on their next request.
+          const signedOutAtIso = current.signed_out_at as string | null;
+          const iatSec = (token.iat as number | undefined) ?? 0;
+          if (signedOutAtIso && iatSec > 0) {
+            const signedOutSec = new Date(signedOutAtIso).getTime() / 1000;
+            if (signedOutSec > iatSec) return null;
+          }
+
           const dbVersion = (current.session_version as number | null) ?? 0;
           const tokenVersion = (token.session_version as number | undefined) ?? 0;
           if (dbVersion !== tokenVersion) {

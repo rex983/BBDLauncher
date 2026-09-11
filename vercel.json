@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/refresh-quote",
       "schedule": "0 13 * * 1"
+    },
+    {
+      "path": "/api/cron/midnight-signout",
+      "schedule": "0 4 * * *"
     }
   ]
 }
