@@ -12,16 +12,10 @@ export const MANAGER_ADMIN_PATHS = [
 ];
 
 // Routes under /management/* — timesheets, schedules, time-off approvals.
-// Managers get office-scoped access; team_leads get read-only office-scoped
-// access via a separate helper.
+// Restricted to admins + manager-tier only. Anything else 404s.
 export const MANAGER_MANAGEMENT_PATHS = [
   "/management/timesheets",
   "/management/timeoff",
-];
-
-// Team leads see their office's data read-only.
-export const TEAM_LEAD_MANAGEMENT_PATHS = [
-  "/management/timesheets",
 ];
 
 export function isAdmin(role: UserRole | undefined | null): boolean {
@@ -38,10 +32,6 @@ export const MANAGER_TIER_ROLES = new Set<UserRole>([
   "senior_manager",
   "junior_manager",
 ]);
-
-export function isTeamLead(role: UserRole | undefined | null): boolean {
-  return role === "team_lead";
-}
 
 function isManagerTier(role: UserRole | undefined | null): boolean {
   return !!role && MANAGER_TIER_ROLES.has(role);
@@ -72,23 +62,20 @@ export function canAccessManagementPath(
   if (isManagerTier(role)) {
     return MANAGER_MANAGEMENT_PATHS.some((p) => pathname.startsWith(p));
   }
-  if (isTeamLead(role)) {
-    return TEAM_LEAD_MANAGEMENT_PATHS.some((p) => pathname.startsWith(p));
-  }
   return false;
 }
 
-// Team leads and managers can view time data; only managers+admins can edit.
+// Only admins + manager-tier can view/edit time data.
 export function canEditTimeData(role: UserRole | undefined | null): boolean {
   return isAdmin(role) || isManagerTier(role);
 }
 
 export function canViewTimeData(role: UserRole | undefined | null): boolean {
-  return canEditTimeData(role) || isTeamLead(role);
+  return canEditTimeData(role);
 }
 
 // Time data scope mirrors analyticsScope: admins + BST managers see all,
-// other managers/team_leads see their own office.
+// other managers see their own office.
 export type TimeDataScope =
   | { allowed: false }
   | { allowed: true; office: Office | null };
@@ -98,7 +85,7 @@ export function timeDataScope(
   office: Office | null,
 ): TimeDataScope {
   if (role === "admin") return { allowed: true, office: null };
-  if (isManagerTier(role) || isTeamLead(role)) {
+  if (isManagerTier(role)) {
     if (office === "BST") return { allowed: true, office: null };
     if (office) return { allowed: true, office };
     return { allowed: false };

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { canAccessAdminPath, canAccessManagementPath } from "@/lib/auth/permissions";
+import { canAccessAdminPath } from "@/lib/auth/permissions";
 
 const publicPaths = [
   "/login",
@@ -44,12 +44,10 @@ export async function middleware(req: NextRequest) {
       }
     }
 
-    // Management routes — admins + managers + team_leads (scoped by office).
-    if (pathname.startsWith("/management")) {
-      if (!canAccessManagementPath(session.user.role, pathname)) {
-        return NextResponse.redirect(new URL("/dashboard", req.url));
-      }
-    }
+    // Management routes — access is enforced server-side by
+    // src/app/(dashboard)/management/layout.tsx via notFound(). We deliberately
+    // do NOT redirect here so unauthorized visitors get a real 404 page
+    // instead of a silent redirect that reveals the route exists.
   } catch {
     // If auth fails (e.g. missing AUTH_SECRET), redirect to login
     const loginUrl = new URL("/login", req.url);
