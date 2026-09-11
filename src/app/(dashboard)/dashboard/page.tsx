@@ -5,6 +5,7 @@ import { ImportantLinks } from "@/components/features/launcher/important-links";
 import { ViewAsRole } from "@/components/features/launcher/view-as-role";
 import { ViewAsOffice } from "@/components/features/launcher/view-as-office";
 import { QuoteBanner } from "@/components/features/launcher/quote-banner";
+import { TimeClockShell } from "@/components/features/timeclock/TimeClockShell";
 import { canManageContent, isAdmin as isAdminRole } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -18,12 +19,12 @@ const ALL_OFFICES: Office[] = ["Harbor", "Marion", "BST", "RnD"];
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ viewAs?: string; viewAsOffice?: string }>;
+  searchParams: Promise<{ viewAs?: string; viewAsOffice?: string; clock_required?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const { viewAs, viewAsOffice } = await searchParams;
+  const { viewAs, viewAsOffice, clock_required } = await searchParams;
   const isAdmin = session.user.role === "admin";
   const canEditDashboard = canManageContent(session.user.role);
   const effectiveRole = isAdmin && viewAs ? viewAs : session.user.role;
@@ -131,6 +132,11 @@ export default async function DashboardPage({
         )}
       </div>
       <QuoteBanner initial={quote} canRefresh={isAdminRole(session.user.role)} />
+      {clock_required && (
+        <div className="text-sm bg-yellow-50 dark:bg-yellow-950/40 text-yellow-900 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-900 px-3 py-2 rounded">
+          You need to clock in before launching applications.
+        </div>
+      )}
       {(viewAs && viewAs !== session.user.role) || viewAsOfficeValid ? (
         <div className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded space-x-2">
           {viewAs && viewAs !== session.user.role && (
@@ -145,13 +151,15 @@ export default async function DashboardPage({
           )}
         </div>
       ) : null}
-      <SectionedAppGrid apps={apps} sections={sections} isAdmin={canEditDashboard} />
-      {links.length > 0 && (
-        <>
-          <hr className="border-border" />
-          <ImportantLinks links={links} />
-        </>
-      )}
+      <TimeClockShell>
+        <SectionedAppGrid apps={apps} sections={sections} isAdmin={canEditDashboard} />
+        {links.length > 0 && (
+          <>
+            <hr className="border-border" />
+            <ImportantLinks links={links} />
+          </>
+        )}
+      </TimeClockShell>
     </div>
   );
 }

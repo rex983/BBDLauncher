@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSamlAssertion, generateAutoSubmitForm } from "@/lib/saml/idp";
 import { generateSsoToken } from "@/lib/sso/jwt-issuer";
+import { isClockedIn } from "@/lib/timesheets/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -12,6 +13,18 @@ export async function GET(
   const session = await auth();
   if (!session?.user) {
     return NextResponse.redirect(new URL("/login", req.url));
+  }
+
+  // Clock gate: admins bypass so they can debug apps outside work hours.
+  // Everyone else must be clocked in — refusing to mint SSO tokens ensures
+  // downstream apps can't be reached fresh while a rep is off the clock.
+  if (session.user.role !== "admin") {
+    const clockedIn = await isClockedIn(session.user.profileId);
+    if (!clockedIn) {
+      const back = new URL("/dashboard", req.url);
+      back.searchParams.set("clock_required", "1");
+      return NextResponse.redirect(back);
+    }
   }
 
   const { appId } = await params;
