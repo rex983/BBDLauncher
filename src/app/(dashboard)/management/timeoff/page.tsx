@@ -1,0 +1,149 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import { canEditTimeData } from "@/lib/auth/permissions";
+import { Check, X } from "lucide-react";
+
+interface Row {
+  id: string;
+  profile_id: string;
+  profile?: { email: string; name: string | null; office: string | null };
+  type: "vacation" | "sick" | "personal" | "other";
+  start_date: string;
+  end_date: string;
+  full_day: boolean;
+  hours: number | null;
+  reason: string | null;
+  status: "pending" | "approved" | "denied" | "cancelled";
+  decided_note: string | null;
+  created_at: string;
+}
+
+function fmtDate(d: string) {
+  return new Date(d + "T00:00:00").toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
+export default function TimeOffQueuePage() {
+  const { data: session } = useSession();
+  const canDecide = canEditTimeData(session?.user?.role);
+
+  const [status, setStatus] = useState("pending");
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch(`/api/management/timeoff?status=${status}`);
+    setRows(res.ok ? await res.json() : []);
+    setLoading(false);
+  }, [status]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const decide = async (id: string, next: "approved" | "denied") => {
+    const note = next === "denied" ? window.prompt("Reason for denial (optional):") || "" : "";
+    const res = await fetch(`/api/management/timeoff/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next, decided_note: note || undefined }),
+    });
+    if (!res.ok) { alert("Failed"); return; }
+    load();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm text-muted-foreground">
+            <Link href="/management/timesheets" className="hover:underline">
+              ← Timesheets
+            </Link>
+          </div>
+          <h1 className="text-2xl font-bold">Time-off Requests</h1>
+          <p className="text-muted-foreground">Approve or deny requests from your team.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Status</span>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="denied">Denied</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Employee</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Dates</TableHead>
+            <TableHead>Length</TableHead>
+            <TableHead>Reason</TableHead>
+            <TableHead>Submitted</TableHead>
+            <TableHead>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {loading && (
+            <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+          )}
+          {!loading && rows.length === 0 && (
+            <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No {status} requests.</TableCell></TableRow>
+          )}
+          {rows.map((r) => (
+            <TableRow key={r.id}>
+              <TableCell>
+                <div className="font-medium">{r.profile?.name || r.profile?.email}</div>
+                <div className="text-xs text-muted-foreground">{r.profile?.email}</div>
+              </TableCell>
+              <TableCell><Badge variant="outline">{r.type}</Badge></TableCell>
+              <TableCell>
+                {fmtDate(r.start_date)}
+                {r.start_date !== r.end_date && <> – {fmtDate(r.end_date)}</>}
+              </TableCell>
+              <TableCell>
+                {r.full_day ? "Full day" : `${r.hours}h`}
+              </TableCell>
+              <TableCell className="text-sm text-muted-foreground">{r.reason || "—"}</TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                {new Date(r.created_at).toLocaleDateString()}
+              </TableCell>
+              <TableCell>
+                {status === "pending" && canDecide ? (
+                  <div className="flex gap-1">
+                    <Button size="sm" onClick={() => decide(r.id, "approved")}>
+                      <Check className="h-4 w-4 mr-1" />Approve
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => decide(r.id, "denied")}>
+                      <X className="h-4 w-4 mr-1" />Deny
+                    </Button>
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    {r.decided_note || (status !== "pending" ? status : "—")}
+                  </span>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
