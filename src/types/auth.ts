@@ -16,6 +16,7 @@ export interface UserProfile {
   office: Office | null;
   department: Department | null;
   is_it: boolean;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }

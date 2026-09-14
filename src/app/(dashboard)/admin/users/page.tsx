@@ -28,7 +28,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, UserX, UserCheck } from "lucide-react";
 import type { Department, Office, UserProfile, UserRole } from "@/types/auth";
 
 interface LauncherRole {
@@ -69,13 +69,19 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Admins can toggle "show inactive" to reveal deactivated accounts.
+  // Managers never see this control and always get the active-only list.
+  const [showInactive, setShowInactive] = useState(false);
 
   const assignableRoles = viewerIsAdmin
     ? roles
     : roles.filter((r) => r.name !== "admin");
 
-  const fetchUsers = async () => {
-    const res = await fetch("/api/users");
+  const fetchUsers = async (opts: { includeInactive?: boolean } = {}) => {
+    const url = opts.includeInactive
+      ? "/api/users?includeInactive=1"
+      : "/api/users";
+    const res = await fetch(url);
     if (res.ok) setUsers(await res.json());
   };
 
@@ -85,9 +91,9 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsers({ includeInactive: viewerIsAdmin && showInactive });
     fetchRoles();
-  }, []);
+  }, [viewerIsAdmin, showInactive]);
 
   const openNew = () => {
     setEditing(null);
@@ -166,7 +172,7 @@ export default function AdminUsersPage() {
     }
 
     setDialogOpen(false);
-    fetchUsers();
+    fetchUsers({ includeInactive: viewerIsAdmin && showInactive });
   };
 
   const handleDelete = async (user: UserProfile) => {
@@ -177,7 +183,27 @@ export default function AdminUsersPage() {
       alert(body.error || "Failed to delete user");
       return;
     }
-    fetchUsers();
+    fetchUsers({ includeInactive: viewerIsAdmin && showInactive });
+  };
+
+  const handleToggleActive = async (user: UserProfile) => {
+    const next = !user.is_active;
+    const verb = next ? "Reactivate" : "Deactivate";
+    const consequence = next
+      ? "They'll be able to sign in again."
+      : "They'll be signed out and lose access across all apps.";
+    if (!confirm(`${verb} ${user.email}? ${consequence}`)) return;
+    const res = await fetch(`/api/users/${user.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: next }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(typeof body.error === "string" ? body.error : `Failed to ${verb.toLowerCase()} user`);
+      return;
+    }
+    fetchUsers({ includeInactive: viewerIsAdmin && showInactive });
   };
 
   return (
@@ -189,7 +215,19 @@ export default function AdminUsersPage() {
             Invite users, edit names, change roles, and remove accounts.
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <div className="flex items-center gap-3">
+          {viewerIsAdmin && (
+            <Label className="flex items-center gap-2 font-normal text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+              />
+              Show inactive
+            </Label>
+          )}
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={openNew}>
               <Plus className="mr-2 h-4 w-4" />
@@ -326,6 +364,7 @@ export default function AdminUsersPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Table>
@@ -348,14 +387,28 @@ export default function AdminUsersPage() {
             const lockedByRole = !viewerIsAdmin && targetIsAdmin;
             const editDisabled = lockedByRole;
             const deleteDisabled = isSelf || lockedByRole;
+            const toggleActiveDisabled = isSelf || lockedByRole;
+            const inactive = user.is_active === false;
             const deleteTitle = isSelf
               ? "You cannot remove yourself"
               : lockedByRole
                 ? "Only admins can remove an admin account"
                 : "Remove user";
+            const toggleActiveTitle = isSelf
+              ? "You cannot deactivate yourself"
+              : lockedByRole
+                ? "Only admins can change an admin's status"
+                : inactive
+                  ? "Reactivate user"
+                  : "Deactivate user";
             return (
-              <TableRow key={user.id}>
-                <TableCell className="font-medium">{user.name || "—"}</TableCell>
+              <TableRow key={user.id} className={inactive ? "opacity-60" : undefined}>
+                <TableCell className="font-medium">
+                  <span className="flex items-center gap-2">
+                    {user.name || "—"}
+                    {inactive && <Badge variant="destructive">Inactive</Badge>}
+                  </span>
+                </TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>
                   {user.office ? (
@@ -412,6 +465,15 @@ export default function AdminUsersPage() {
                       onClick={() => openEdit(user)}
                     >
                       <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={toggleActiveDisabled}
+                      title={toggleActiveTitle}
+                      onClick={() => handleToggleActive(user)}
+                    >
+                      {inactive ? <UserCheck className="h-4 w-4" /> : <UserX className="h-4 w-4" />}
                     </Button>
                     <Button
                       variant="ghost"

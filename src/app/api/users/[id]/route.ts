@@ -10,7 +10,11 @@ const updateSchema = z.object({
   office: z.enum(["Harbor", "Marion", "BST", "RnD"]).nullable().optional(),
   department: z.enum(["SALES TEAM", "BST", "RnD"]).nullable().optional(),
   is_it: z.boolean().optional(),
+  is_active: z.boolean().optional(),
 });
+
+const USER_COLUMNS =
+  "id, email, name:full_name, role, office, department, is_it, is_active, created_at, updated_at";
 
 export async function PUT(
   req: NextRequest,
@@ -37,6 +41,7 @@ export async function PUT(
   if (parsed.data.office !== undefined) updates.office = parsed.data.office;
   if (parsed.data.department !== undefined) updates.department = parsed.data.department;
   if (parsed.data.is_it !== undefined) updates.is_it = parsed.data.is_it;
+  if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active;
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
@@ -46,9 +51,11 @@ export async function PUT(
     parsed.data.role !== undefined ||
     parsed.data.office !== undefined ||
     parsed.data.department !== undefined ||
-    parsed.data.is_it !== undefined;
+    parsed.data.is_it !== undefined ||
+    parsed.data.is_active !== undefined;
   const viewerIsAdmin = isAdmin(session.user.role);
   const needsPrefetch = !viewerIsAdmin || securityChange;
+  const deactivating = parsed.data.is_active === false;
 
   if (needsPrefetch) {
     const { data: before } = await supabase
@@ -85,11 +92,18 @@ export async function PUT(
     }
   }
 
+  // Deactivation also bumps signed_out_at so the launcher jwt callback
+  // ejects the user on their very next request rather than waiting for a
+  // natural token refresh.
+  if (deactivating) {
+    updates.signed_out_at = new Date().toISOString();
+  }
+
   const { data, error } = await supabase
     .from("profiles")
     .update(updates)
     .eq("id", id)
-    .select("id, email, name:full_name, role, office, department, is_it, created_at, updated_at")
+    .select(USER_COLUMNS)
     .single();
 
   if (error) {

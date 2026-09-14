@@ -126,11 +126,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id")
+          .select("id, is_active")
           .eq("email", user.email.toLowerCase())
           .single();
 
         if (!profile) return false;
+        if (profile.is_active === false) return false;
       } catch {
         // If Supabase is unavailable, fall back to denying
         return false;
@@ -236,10 +237,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: current } = await supabase
           .from("profiles")
-          .select("role, office, department, is_it, session_version, signed_out_at")
+          .select("role, office, department, is_it, is_active, session_version, signed_out_at")
           .eq("id", profileId)
           .single();
         if (current) {
+          // Deactivated: eject the session immediately. Returning null makes
+          // the middleware bounce them to /login on the next request.
+          if (current.is_active === false) return null;
+
           // Force-signout check: the nightly midnight cron bumps signed_out_at
           // for every profile. Any token issued before that timestamp is
           // treated as expired — returning null invalidates the session and

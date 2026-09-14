@@ -15,6 +15,22 @@ export async function GET(
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
+  const { appId } = await params;
+  const supabase = createAdminClient();
+
+  // Active gate: an inactive user shouldn't be able to mint fresh SSO tokens
+  // for downstream apps even if their launcher JWT hasn't ticked over yet.
+  // The jwt callback also ejects them, but this is belt-and-suspenders in
+  // case a token still has valid claims for a few seconds.
+  const { data: viewer } = await supabase
+    .from("profiles")
+    .select("is_active")
+    .eq("id", session.user.profileId)
+    .single();
+  if (viewer?.is_active === false) {
+    return NextResponse.redirect(new URL("/login?deactivated=1", req.url));
+  }
+
   // Clock gate: admins bypass so they can debug apps outside work hours.
   // Everyone else must be clocked in — refusing to mint SSO tokens ensures
   // downstream apps can't be reached fresh while a rep is off the clock.
@@ -26,9 +42,6 @@ export async function GET(
       return NextResponse.redirect(back);
     }
   }
-
-  const { appId } = await params;
-  const supabase = createAdminClient();
 
   // Check role access
   const { data: access } = await supabase

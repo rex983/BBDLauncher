@@ -13,19 +13,32 @@ const createSchema = z.object({
   is_it: z.boolean().optional(),
 });
 
-export async function GET() {
+const USER_COLUMNS =
+  "id, email, name:full_name, role, office, department, is_it, is_active, created_at, updated_at";
+
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user || !canManageContent(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const supabase = createAdminClient();
-  // The shared profiles table uses `full_name`; alias it as `name` for the UI.
-  const { data: users } = await supabase
-    .from("profiles")
-    .select("id, email, name:full_name, role, office, department, is_it, created_at, updated_at")
-    .order("email");
+  const viewerIsAdmin = isAdmin(session.user.role);
+  // Managers only ever see active users. Admins default to active but can
+  // opt into the full list with ?includeInactive=1 (used by the admin UI's
+  // "Show inactive" toggle).
+  const includeInactive =
+    viewerIsAdmin && req.nextUrl.searchParams.get("includeInactive") === "1";
 
+  const supabase = createAdminClient();
+  let query = supabase
+    .from("profiles")
+    .select(USER_COLUMNS)
+    .order("email");
+  if (!includeInactive) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data: users } = await query;
   return NextResponse.json(users || []);
 }
 
@@ -77,7 +90,7 @@ export async function POST(req: NextRequest) {
       is_it: is_it ?? false,
       approved: true,
     })
-    .select("id, email, name:full_name, role, office, department, is_it, created_at, updated_at")
+    .select(USER_COLUMNS)
     .single();
 
   if (error) {
