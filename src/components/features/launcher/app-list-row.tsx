@@ -2,7 +2,7 @@
 
 import { forwardRef } from "react";
 import { useSession } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
+import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { Badge } from "@/components/ui/badge";
 import { GripVertical, Star } from "lucide-react";
 import type { LauncherApp } from "@/types/app";
@@ -39,9 +39,8 @@ export const AppListRow = forwardRef<HTMLDivElement, AppListRowProps>(
     ref
   ) {
     const { data: session } = useSession();
-    const searchParams = useSearchParams();
+    const { viewAs } = useRolePreview();
     const actualRole = session?.user?.role;
-    const viewAs = searchParams.get("viewAs");
     const effectiveRole = actualRole === "admin" && viewAs ? viewAs : actualRole;
     const showSsoBadge = effectiveRole === "admin";
     const firstLetter = app.name.charAt(0).toUpperCase();

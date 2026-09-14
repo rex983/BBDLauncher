@@ -137,20 +137,8 @@ export default async function DashboardPage({
           You need to clock in before launching applications.
         </div>
       )}
-      {(viewAs && viewAs !== session.user.role) || viewAsOfficeValid ? (
-        <div className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded space-x-2">
-          {viewAs && viewAs !== session.user.role && (
-            <span>
-              Viewing as <span className="font-medium">{viewAs}</span> role
-            </span>
-          )}
-          {viewAsOfficeValid && (
-            <span>
-              · Office: <span className="font-medium">{viewAsOfficeValid}</span>
-            </span>
-          )}
-        </div>
-      ) : null}
+      {/* Preview banner is rendered globally in (dashboard)/layout.tsx so
+          it stays visible on every route while a preview is active. */}
       <TimeClockShell>
         <SectionedAppGrid apps={apps} sections={sections} isAdmin={canEditDashboard} />
         {links.length > 0 && (

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import {
@@ -12,6 +12,10 @@ import {
   isAdmin as isAdminRole,
 } from "@/lib/auth/permissions";
 import type { UserRole } from "@/types/auth";
+import {
+  buildPreviewHref,
+  useRolePreview,
+} from "@/components/features/launcher/role-preview-context";
 import {
   LayoutGrid,
   Settings,
@@ -50,18 +54,23 @@ const adminItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const actualRole = session?.user?.role;
   const isAdmin = isAdminRole(actualRole);
-  const viewAs = searchParams.get("viewAs");
+  const { viewAs, viewAsOffice, exitPreview } = useRolePreview();
   const isViewingAsOtherRole = isAdmin && !!viewAs && viewAs !== actualRole;
-  // When admins preview another role, show the sidebar that role would see.
+  const isViewingAsOtherOffice = isAdmin && !!viewAsOffice;
+  const isPreviewing = isViewingAsOtherRole || isViewingAsOtherOffice;
   const effectiveRole = (isViewingAsOtherRole ? viewAs : actualRole) as UserRole | undefined;
   const showAdminNav = canManageContent(effectiveRole);
-  const visibleAdminItems = adminItems.filter((item) => canAccessAdminPath(effectiveRole, item.href));
+  const visibleAdminItems = adminItems.filter((item) =>
+    canAccessAdminPath(effectiveRole, item.href)
+  );
   const showManagementNav = canViewTimeData(effectiveRole);
-  const visibleManagementItems = managementItems.filter((item) => canAccessManagementPath(effectiveRole, item.href));
+  const visibleManagementItems = managementItems.filter((item) =>
+    canAccessManagementPath(effectiveRole, item.href)
+  );
+  const preview = { viewAs, viewAsOffice };
 
   return (
     <aside className="w-64 border-r bg-background min-h-[calc(100vh-4rem)]">
@@ -69,7 +78,7 @@ export function Sidebar() {
         {navItems.map((item) => (
           <Link
             key={item.href}
-            href={item.href}
+            href={buildPreviewHref(item.href, preview)}
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
               pathname === item.href
@@ -90,7 +99,7 @@ export function Sidebar() {
             {visibleManagementItems.map((item) => (
               <Link
                 key={item.href}
-                href={item.href}
+                href={buildPreviewHref(item.href, preview)}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   pathname.startsWith(item.href)
@@ -113,7 +122,7 @@ export function Sidebar() {
             {visibleAdminItems.map((item) => (
               <Link
                 key={item.href}
-                href={item.href}
+                href={buildPreviewHref(item.href, preview)}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   pathname.startsWith(item.href)
@@ -128,14 +137,15 @@ export function Sidebar() {
           </>
         )}
 
-        {isViewingAsOtherRole && (
+        {isPreviewing && (
           <div className="mt-6 px-3">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            <button
+              type="button"
+              onClick={exitPreview}
+              className="flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               Exit role preview
-            </Link>
+            </button>
           </div>
         )}
       </nav>

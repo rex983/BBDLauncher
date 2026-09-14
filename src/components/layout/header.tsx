@@ -16,11 +16,18 @@ import Link from "next/link";
 import { useTheme } from "next-themes";
 import { LogOut, Settings, Shield, Sun, Moon, UserCircle } from "lucide-react";
 import { canManageContent } from "@/lib/auth/permissions";
+import {
+  buildPreviewHref,
+  useRolePreview,
+} from "@/components/features/launcher/role-preview-context";
 
 export function Header() {
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
   const user = session?.user;
+  const { viewAs, viewAsOffice } = useRolePreview();
+  const preview = { viewAs, viewAsOffice };
+  const dashboardHref = buildPreviewHref("/dashboard", preview);
 
   const initials = user?.name
     ? user.name
@@ -33,7 +40,7 @@ export function Header() {
   return (
     <header className="border-b bg-background">
       <div className="flex h-16 items-center px-6">
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link href={dashboardHref} className="flex items-center gap-2">
           <Image src="/logo-icon.png" alt="BBD" width={32} height={32} className="rounded" />
           <span className="font-semibold text-lg">BBD Launcher</span>
         </Link>

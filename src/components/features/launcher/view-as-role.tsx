@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Eye } from "lucide-react";
+import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 
 interface ViewAsRoleProps {
   roles: { name: string; display_name: string }[];
@@ -18,20 +19,27 @@ interface ViewAsRoleProps {
 export function ViewAsRole({ roles, currentRole }: ViewAsRoleProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const viewAs = searchParams.get("viewAs");
+  const { viewAs: ctxViewAs, setViewAs } = useRolePreview();
 
   const handleChange = (value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
     if (value === currentRole) {
-      router.push("/dashboard");
+      setViewAs(null);
+      params.delete("viewAs");
     } else {
-      router.push(`/dashboard?viewAs=${value}`);
+      setViewAs(value);
+      params.set("viewAs", value);
     }
+    const qs = params.toString();
+    router.push(qs ? `/dashboard?${qs}` : "/dashboard");
   };
+
+  const current = ctxViewAs || currentRole;
 
   return (
     <div className="flex items-center gap-2">
       <Eye className="h-4 w-4 text-muted-foreground" />
-      <Select value={viewAs || currentRole} onValueChange={handleChange}>
+      <Select value={current} onValueChange={handleChange}>
         <SelectTrigger className="w-[180px] h-8 text-sm">
           <SelectValue placeholder="View as role..." />
         </SelectTrigger>

@@ -2,7 +2,7 @@
 
 import { forwardRef } from "react";
 import { useSession } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
+import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GripVertical, Star } from "lucide-react";
@@ -40,9 +40,8 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
     ref
   ) {
     const { data: session } = useSession();
-    const searchParams = useSearchParams();
+    const { viewAs } = useRolePreview();
     const actualRole = session?.user?.role;
-    const viewAs = searchParams.get("viewAs");
     // Honor admin's "view as" preview so admins see exactly what each role sees.
     const effectiveRole = actualRole === "admin" && viewAs ? viewAs : actualRole;
     const showSsoBadge = effectiveRole === "admin";
