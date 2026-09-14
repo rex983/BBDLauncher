@@ -12,12 +12,12 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
   computeState, formatDuration, STATUS_LABEL,
   type PunchEventType, type TimePunch,
@@ -66,6 +66,9 @@ export default function EmployeeDetailPage({
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // When null the dialog is in Add mode; otherwise it's editing an existing
+  // punch and PATCHes /api/management/timesheets/punches/[editingId].
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     event_type: "clock_in" as PunchEventType,
     occurred_at: isoToLocalInput(new Date().toISOString()),
@@ -92,19 +95,51 @@ export default function EmployeeDetailPage({
 
   const state = computeState(punches);
 
-  const addPunch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const res = await fetch(`/api/management/timesheets/employee/${profileId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event_type: form.event_type,
-        occurred_at: localInputToISO(form.occurred_at),
-        note: form.note || undefined,
-      }),
+  const openAdd = () => {
+    setEditingId(null);
+    setForm({
+      event_type: "clock_in",
+      occurred_at: isoToLocalInput(new Date().toISOString()),
+      note: "",
     });
-    if (!res.ok) { alert("Failed to add punch"); return; }
+    setDialogOpen(true);
+  };
+
+  const openEdit = (p: TimePunch) => {
+    setEditingId(p.id);
+    setForm({
+      event_type: p.event_type,
+      occurred_at: isoToLocalInput(p.occurred_at),
+      note: p.note ?? "",
+    });
+    setDialogOpen(true);
+  };
+
+  const submitPunch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const body = JSON.stringify({
+      event_type: form.event_type,
+      occurred_at: localInputToISO(form.occurred_at),
+      note: form.note || (editingId ? null : undefined),
+    });
+    const res = editingId
+      ? await fetch(`/api/management/timesheets/punches/${editingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body,
+        })
+      : await fetch(`/api/management/timesheets/employee/${profileId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      alert(typeof b.error === "string" ? b.error : editingId ? "Edit failed" : "Failed to add punch");
+      return;
+    }
     setDialogOpen(false);
+    setEditingId(null);
     load();
   };
 
@@ -156,52 +191,7 @@ export default function EmployeeDetailPage({
             </SelectContent>
           </Select>
           {canEdit && (
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button><Plus className="mr-2 h-4 w-4" />Add punch</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add punch (admin edit)</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={addPunch} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Event</Label>
-                    <Select
-                      value={form.event_type}
-                      onValueChange={(v) => setForm({ ...form, event_type: v as PunchEventType })}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {EVENT_TYPES.map((e) =>
-                          <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>,
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Time</Label>
-                    <Input
-                      type="datetime-local"
-                      value={form.occurred_at}
-                      onChange={(e) => setForm({ ...form, occurred_at: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Note (optional)</Label>
-                    <Input
-                      value={form.note}
-                      onChange={(e) => setForm({ ...form, note: e.target.value })}
-                      placeholder="e.g. Forgot to clock out — adjusted"
-                    />
-                  </div>
-                  <div className="flex justify-end">
-                    <Button type="submit">Add</Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <Button onClick={openAdd}><Plus className="mr-2 h-4 w-4" />Add punch</Button>
           )}
         </div>
       </div>
@@ -218,6 +208,61 @@ export default function EmployeeDetailPage({
       {!loading && days_desc.length === 0 && (
         <p className="text-muted-foreground">No punches in this window.</p>
       )}
+
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(o) => {
+          setDialogOpen(o);
+          if (!o) setEditingId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingId ? "Edit punch" : "Add punch"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitPunch} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Event</Label>
+              <Select
+                value={form.event_type}
+                onValueChange={(v) => setForm({ ...form, event_type: v as PunchEventType })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {EVENT_TYPES.map((e) => (
+                    <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Time</Label>
+              <Input
+                type="datetime-local"
+                value={form.occurred_at}
+                onChange={(e) => setForm({ ...form, occurred_at: e.target.value })}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                {editingId
+                  ? "Adjust the actual clock-in/out time — the punch will be marked as an admin edit."
+                  : "Backfill a missing punch — use this when an employee forgot."}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Note (optional)</Label>
+              <Input
+                value={form.note}
+                onChange={(e) => setForm({ ...form, note: e.target.value })}
+                placeholder="e.g. Employee arrived at 10:00, forgot to punch"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit">{editingId ? "Save" : "Add"}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {days_desc.map(([day, list]) => (
         <section key={day} className="space-y-2">
@@ -249,9 +294,24 @@ export default function EmployeeDetailPage({
                   <TableCell className="text-muted-foreground text-sm">{p.note || "—"}</TableCell>
                   <TableCell>
                     {canEdit && (
-                      <Button variant="ghost" size="icon" onClick={() => deletePunch(p.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(p)}
+                          title="Edit this punch"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deletePunch(p.id)}
+                          title="Delete this punch"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>
