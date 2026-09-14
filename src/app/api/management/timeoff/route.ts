@@ -19,14 +19,26 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const status = url.searchParams.get("status") || "pending";
+  // Admin-only overlay filters (scope.office/department already dominate
+  // for manager-tier viewers, so these only apply when scope is unbounded).
+  const officeFilter = url.searchParams.get("office");
+  const departmentFilter = url.searchParams.get("department");
 
   const supabase = createAdminClient();
   let profileQuery = supabase
     .from("profiles")
     .select("id, email, name:full_name, office, department")
     .eq("is_active", true);
-  if (scope.department) profileQuery = profileQuery.eq("department", scope.department);
-  if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
+  if (scope.department) {
+    profileQuery = profileQuery.eq("department", scope.department);
+  } else if (departmentFilter) {
+    profileQuery = profileQuery.eq("department", departmentFilter);
+  }
+  if (scope.office) {
+    profileQuery = profileQuery.eq("office", scope.office);
+  } else if (officeFilter) {
+    profileQuery = profileQuery.eq("office", officeFilter);
+  }
   const { data: profiles } = await profileQuery;
   const profileIds = (profiles || []).map((p) => p.id);
   if (profileIds.length === 0) return NextResponse.json([]);

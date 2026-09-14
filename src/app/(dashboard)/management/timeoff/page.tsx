@@ -12,6 +12,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { canEditTimeData } from "@/lib/auth/permissions";
+import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { Check, X } from "lucide-react";
 
 interface Row {
@@ -36,6 +37,7 @@ function fmtDate(d: string) {
 export default function TimeOffQueuePage() {
   const { data: session } = useSession();
   const canDecide = canEditTimeData(session?.user?.role);
+  const { viewAsOffice } = useRolePreview();
 
   const [status, setStatus] = useState("pending");
   const [rows, setRows] = useState<Row[]>([]);
@@ -43,10 +45,12 @@ export default function TimeOffQueuePage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/management/timeoff?status=${status}`);
+    const params = new URLSearchParams({ status });
+    if (viewAsOffice) params.set("office", viewAsOffice);
+    const res = await fetch(`/api/management/timeoff?${params.toString()}`);
     setRows(res.ok ? await res.json() : []);
     setLoading(false);
-  }, [status]);
+  }, [status, viewAsOffice]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -14,6 +14,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { canEditTimeData } from "@/lib/auth/permissions";
+import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { Pencil } from "lucide-react";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -46,6 +47,7 @@ function fmt(t: string) {
 export default function SchedulesPage() {
   const { data: session } = useSession();
   const canEdit = canEditTimeData(session?.user?.role);
+  const { viewAsOffice } = useRolePreview();
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -53,12 +55,16 @@ export default function SchedulesPage() {
   const [form, setForm] = useState<Record<number, { start: string; end: string; enabled: boolean }>>({});
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/management/schedules");
+    // Forward the admin's preview-office (if any) so this page shows what a
+    // manager in that office would see. Real managers get office-scoped
+    // server-side regardless of this param.
+    const qs = viewAsOffice ? `?office=${encodeURIComponent(viewAsOffice)}` : "";
+    const res = await fetch(`/api/management/schedules${qs}`);
     if (!res.ok) return;
     const data = await res.json();
     setProfiles(data.profiles);
     setSchedules(data.schedules);
-  }, []);
+  }, [viewAsOffice]);
 
   useEffect(() => { load(); }, [load]);
 

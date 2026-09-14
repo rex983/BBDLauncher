@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatDuration, STATUS_LABEL, type LiveState } from "@/lib/timesheets/state";
+import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import type { Department, Office } from "@/types/auth";
 
 interface Row {
@@ -54,12 +55,19 @@ export default function TimesheetsTodayPage() {
   // locked to their own on both axes server-side; the UI reflects that with
   // read-only badges.
   const isAdmin = viewerRole === "admin";
+  const { viewAsOffice } = useRolePreview();
 
   const [rows, setRows] = useState<Row[]>([]);
   const [office, setOffice] = useState<string>(ALL);
   const [department, setDepartment] = useState<string>(ALL);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
+
+  // When the admin's role-preview specifies an office, drive the picker off
+  // it so this page renders what a manager in that office would see.
+  useEffect(() => {
+    if (isAdmin && viewAsOffice) setOffice(viewAsOffice);
+  }, [isAdmin, viewAsOffice]);
 
   useEffect(() => {
     const params = new URLSearchParams();

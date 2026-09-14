@@ -18,7 +18,7 @@ const deleteSchema = z.object({
   weekday: z.number().int().min(0).max(6),
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user || !canViewTimeData(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -31,14 +31,28 @@ export async function GET() {
   );
   if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
 
+  // Admin-only overlay filters. Managers already have office/dept baked into
+  // scope; letting them pass ?office= wouldn't grant more (scope.office wins)
+  // but rejecting the branch keeps the intent obvious.
+  const officeFilter = req.nextUrl.searchParams.get("office");
+  const departmentFilter = req.nextUrl.searchParams.get("department");
+
   const supabase = createAdminClient();
   let profileQuery = supabase
     .from("profiles")
     .select("id, email, name:full_name, office, department")
     .eq("is_active", true)
     .order("email");
-  if (scope.department) profileQuery = profileQuery.eq("department", scope.department);
-  if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
+  if (scope.department) {
+    profileQuery = profileQuery.eq("department", scope.department);
+  } else if (departmentFilter) {
+    profileQuery = profileQuery.eq("department", departmentFilter);
+  }
+  if (scope.office) {
+    profileQuery = profileQuery.eq("office", scope.office);
+  } else if (officeFilter) {
+    profileQuery = profileQuery.eq("office", officeFilter);
+  }
 
   const { data: profiles, error: pErr } = await profileQuery;
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
