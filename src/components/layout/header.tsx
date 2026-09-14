@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import Image from "next/image";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { LogOut, Settings, Shield, Sun, Moon } from "lucide-react";
+import { LogOut, Settings, Shield, Sun, Moon, UserCircle } from "lucide-react";
 import { canManageContent } from "@/lib/auth/permissions";
 
 export function Header() {
@@ -78,6 +78,12 @@ export function Header() {
                 </div>
               </div>
               <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/profile">
+                  <UserCircle className="mr-2 h-4 w-4" />
+                  My Profile
+                </Link>
+              </DropdownMenuItem>
               {canManageContent(user?.role) && (
                 <DropdownMenuItem asChild>
                   <Link href="/admin/apps">
