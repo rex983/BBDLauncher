@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageContent } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { lookup } from "dns/promises";
+import { isIP } from "net";
 
 const ALLOWED_TYPES = new Set([
   "image/png",
@@ -29,6 +31,58 @@ const FETCH_TIMEOUT_MS = 8_000;
 const USER_AGENT =
   "Mozilla/5.0 (compatible; BBDLauncherFaviconBot/1.0; +https://bbd-launcher.vercel.app)";
 
+// SSRF defense: reject any outbound fetch whose resolved host lands in a
+// private/loopback/link-local range. Admin-only endpoint, but this stops a
+// compromised admin (or an admin who pastes an intranet URL by accident)
+// from turning the launcher into an internal-network scanner.
+function isPrivateIPv4(ip: string): boolean {
+  const parts = ip.split(".").map((n) => parseInt(n, 10));
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return true;
+  const [a, b] = parts;
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 0) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  if (a >= 224) return true; // multicast + reserved
+  return false;
+}
+
+function isPrivateIPv6(ip: string): boolean {
+  const lower = ip.toLowerCase();
+  if (lower === "::" || lower === "::1") return true;
+  if (lower.startsWith("fe80:") || lower.startsWith("fe80::")) return true; // link-local
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return true;         // ULA
+  if (lower.startsWith("ff")) return true;                                    // multicast
+  if (lower.startsWith("::ffff:")) {                                          // IPv4-mapped
+    const v4 = lower.slice(7);
+    return isIP(v4) === 4 ? isPrivateIPv4(v4) : true;
+  }
+  return false;
+}
+
+async function isPublicHost(hostname: string): Promise<boolean> {
+  // If it's already a literal IP, check it directly — never let a raw private
+  // IP through even if DNS isn't involved.
+  const version = isIP(hostname);
+  if (version === 4) return !isPrivateIPv4(hostname);
+  if (version === 6) return !isPrivateIPv6(hostname);
+
+  try {
+    const addrs = await lookup(hostname, { all: true, verbatim: false });
+    if (addrs.length === 0) return false;
+    for (const { address, family } of addrs) {
+      if (family === 4 && isPrivateIPv4(address)) return false;
+      if (family === 6 && isPrivateIPv6(address)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface IconCandidate {
   href: string;
   size: number;
@@ -36,6 +90,10 @@ interface IconCandidate {
 }
 
 async function fetchWithTimeout(url: string, init?: RequestInit) {
+  const parsed = new URL(url);
+  if (!(await isPublicHost(parsed.hostname))) {
+    throw new Error("Refusing to fetch private/loopback host");
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -140,6 +198,13 @@ export async function POST(req: NextRequest) {
     }
   } catch {
     return NextResponse.json({ error: "Invalid url" }, { status: 400 });
+  }
+
+  if (!(await isPublicHost(target.hostname))) {
+    return NextResponse.json(
+      { error: "URL host is not publicly reachable" },
+      { status: 400 }
+    );
   }
 
   let candidates: IconCandidate[] = [];

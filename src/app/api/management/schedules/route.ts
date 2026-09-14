@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { canViewTimeData, canEditTimeData, timeDataScope } from "@/lib/auth/permissions";
+import { canViewTimeData, timeDataScope } from "@/lib/auth/permissions";
+import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -48,28 +49,15 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canEditTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-  const scope = timeDataScope(session.user.role, session.user.department);
-  if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
-
   const parsed = upsertSchema.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
-  if (scope.department) {
-    const { data: target } = await supabase
-      .from("profiles").select("department").eq("id", parsed.data.profile_id).single();
-    if (!target || target.department !== scope.department) {
-      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-    }
-  }
+  const gate = await requireTimeDataAccess(parsed.data.profile_id, "edit");
+  if (!gate.ok) return gate.response;
 
-  const { data, error } = await supabase
+  const { data, error } = await gate.supabase
     .from("work_schedules")
     .upsert(
       {
@@ -89,28 +77,15 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canEditTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-  const scope = timeDataScope(session.user.role, session.user.department);
-  if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
-
   const parsed = deleteSchema.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
-  if (scope.department) {
-    const { data: target } = await supabase
-      .from("profiles").select("department").eq("id", parsed.data.profile_id).single();
-    if (!target || target.department !== scope.department) {
-      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-    }
-  }
+  const gate = await requireTimeDataAccess(parsed.data.profile_id, "edit");
+  if (!gate.ok) return gate.response;
 
-  const { error } = await supabase
+  const { error } = await gate.supabase
     .from("work_schedules")
     .delete()
     .eq("profile_id", parsed.data.profile_id)

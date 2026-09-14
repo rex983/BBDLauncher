@@ -26,23 +26,23 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  // Join in the requester's department so scope check + row fetch is one round trip.
   const supabase = createAdminClient();
   const { data: reqRow } = await supabase
     .from("time_off_requests")
-    .select("profile_id, status")
+    .select("profile_id, status, profiles!inner(department)")
     .eq("id", id)
-    .single();
+    .single<{
+      profile_id: string;
+      status: string;
+      profiles: { department: string | null };
+    }>();
   if (!reqRow) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (reqRow.status !== "pending") {
     return NextResponse.json({ error: "Already decided" }, { status: 409 });
   }
-
-  if (scope.department) {
-    const { data: profile } = await supabase
-      .from("profiles").select("department").eq("id", reqRow.profile_id).single();
-    if (!profile || profile.department !== scope.department) {
-      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-    }
+  if (scope.department && reqRow.profiles.department !== scope.department) {
+    return NextResponse.json({ error: "Out of scope" }, { status: 403 });
   }
 
   const { data, error } = await supabase

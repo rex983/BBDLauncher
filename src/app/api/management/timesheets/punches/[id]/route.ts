@@ -14,6 +14,8 @@ const patchSchema = z.object({
   note: z.string().nullable().optional(),
 });
 
+// Fetch the target punch and its owner's department in one query so the
+// scope check doesn't cost a second round trip.
 async function loadPunchWithScope(id: string) {
   const session = await auth();
   if (!session?.user || !canEditTimeData(session.user.role)) return null;
@@ -24,19 +26,18 @@ async function loadPunchWithScope(id: string) {
   const supabase = createAdminClient();
   const { data: punch } = await supabase
     .from("time_punches")
-    .select("id, profile_id, event_type, occurred_at")
+    .select("id, profile_id, event_type, occurred_at, profiles!inner(department)")
     .eq("id", id)
-    .single();
+    .single<{
+      id: string;
+      profile_id: string;
+      event_type: string;
+      occurred_at: string;
+      profiles: { department: string | null };
+    }>();
   if (!punch) return null;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, department")
-    .eq("id", punch.profile_id)
-    .single();
-  if (!profile) return null;
-
-  if (scope.department && profile.department !== scope.department) return null;
+  if (scope.department && punch.profiles.department !== scope.department) return null;
   return { session, supabase, punch };
 }
 

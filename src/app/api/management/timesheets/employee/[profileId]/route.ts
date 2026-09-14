@@ -1,37 +1,30 @@
-import { auth } from "@/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { canViewTimeData, canEditTimeData, timeDataScope } from "@/lib/auth/permissions";
+import { requireTimeDataAccessWithProfile } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-async function checkScope(profileId: string) {
-  const session = await auth();
-  if (!session?.user || !canViewTimeData(session.user.role)) return null;
-
-  const scope = timeDataScope(session.user.role, session.user.department);
-  if (!scope.allowed) return null;
-
-  const supabase = createAdminClient();
-  const { data: target } = await supabase
-    .from("profiles")
-    .select("id, email, name:full_name, role, office, department, created_at")
-    .eq("id", profileId)
-    .single();
-
-  if (!target) return null;
-  // Non-admin managers can only touch profiles in their own department.
-  if (scope.department && target.department !== scope.department) return null;
-
-  return { session, target, supabase };
+interface EmployeeRow {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  office: string | null;
+  department: string | null;
+  created_at: string;
 }
+
+const EMPLOYEE_COLUMNS = "id, email, name:full_name, role, office, department, created_at";
 
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ profileId: string }> },
 ) {
   const { profileId } = await ctx.params;
-  const gate = await checkScope(profileId);
-  if (!gate) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  const gate = await requireTimeDataAccessWithProfile<EmployeeRow>(
+    profileId,
+    "view",
+    EMPLOYEE_COLUMNS,
+  );
+  if (!gate.ok) return gate.response;
 
   const url = new URL(req.url);
   const from = url.searchParams.get("from");
@@ -77,14 +70,14 @@ export async function POST(
   ctx: { params: Promise<{ profileId: string }> },
 ) {
   const { profileId } = await ctx.params;
-  const gate = await checkScope(profileId);
-  if (!gate) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  if (!canEditTimeData(gate.session.user.role)) {
-    return NextResponse.json({ error: "Read-only role" }, { status: 403 });
-  }
+  const gate = await requireTimeDataAccessWithProfile<EmployeeRow>(
+    profileId,
+    "edit",
+    EMPLOYEE_COLUMNS,
+  );
+  if (!gate.ok) return gate.response;
 
-  const body = await req.json();
-  const parsed = punchSchema.safeParse(body);
+  const parsed = punchSchema.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
