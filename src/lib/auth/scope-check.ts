@@ -29,11 +29,11 @@ export type ScopeGateWithTarget<T> = OkWithTarget<T> | Fail;
 // Gate a request against the time-data authz stack in one call:
 //   1. session exists
 //   2. role has view/edit permission
-//   3. viewer has a valid department scope
-//   4. (optional) target profile falls within that scope
+//   3. viewer has a valid (department, office) scope
+//   4. (optional) target profile is active AND falls within both scope axes
 //
 // Pass null for targetProfileId when the route touches a list, not a specific
-// employee — the target-department check is skipped.
+// employee — the target check is skipped.
 export async function requireTimeDataAccess(
   targetProfileId: string | null,
   need: Need,
@@ -41,24 +41,27 @@ export async function requireTimeDataAccess(
   const base = await enterScope(need);
   if (!base.ok) return base;
 
-  if (targetProfileId && base.scope.department) {
+  if (targetProfileId && (base.scope.department || base.scope.office)) {
     const { data } = await base.supabase
       .from("profiles")
-      .select("department")
+      .select("department, office, is_active")
       .eq("id", targetProfileId)
       .single();
-    if (!data || data.department !== base.scope.department) {
-      return outOfScope();
-    }
+    if (!data) return outOfScope();
+    if (data.is_active === false) return outOfScope();
+    if (base.scope.department && data.department !== base.scope.department) return outOfScope();
+    if (base.scope.office && data.office !== base.scope.office) return outOfScope();
   }
 
   return base;
 }
 
 // Same as requireTimeDataAccess but fetches the target profile with the given
-// columns AND enforces department scope on the returned row — one query, not
-// two. `selectColumns` must include `department` so the scope check works.
-export async function requireTimeDataAccessWithProfile<T extends { department: string | null }>(
+// columns AND enforces scope on the returned row — one query, not two.
+// `selectColumns` must include `department`, `office`, and `is_active`.
+export async function requireTimeDataAccessWithProfile<
+  T extends { department: string | null; office: string | null; is_active: boolean },
+>(
   targetProfileId: string,
   need: Need,
   selectColumns: string,
@@ -77,7 +80,11 @@ export async function requireTimeDataAccessWithProfile<T extends { department: s
       response: NextResponse.json({ error: "Not found" }, { status: 404 }),
     };
   }
+  if (target.is_active === false) return outOfScope();
   if (base.scope.department && target.department !== base.scope.department) {
+    return outOfScope();
+  }
+  if (base.scope.office && target.office !== base.scope.office) {
     return outOfScope();
   }
 
@@ -94,7 +101,11 @@ async function enterScope(need: Need): Promise<ScopeGate> {
     };
   }
 
-  const scope = timeDataScope(session.user.role, session.user.department);
+  const scope = timeDataScope(
+    session.user.role,
+    session.user.department,
+    session.user.office,
+  );
   if (!scope.allowed) {
     return {
       ok: false,

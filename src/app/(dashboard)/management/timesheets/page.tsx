@@ -49,9 +49,10 @@ export default function TimesheetsTodayPage() {
   const { data: session } = useSession();
   const viewerRole = session?.user?.role;
   const viewerDepartment = session?.user?.department ?? null;
-  // Only admins can pick a department here. Manager-tier viewers are locked
-  // to their own department server-side; the UI reflects that with a
-  // read-only badge.
+  const viewerOffice = session?.user?.office ?? null;
+  // Only admins can pick a department/office here. Manager-tier viewers are
+  // locked to their own on both axes server-side; the UI reflects that with
+  // read-only badges.
   const isAdmin = viewerRole === "admin";
 
   const [rows, setRows] = useState<Row[]>([]);
@@ -62,7 +63,7 @@ export default function TimesheetsTodayPage() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (office !== ALL) params.set("office", office);
+    if (isAdmin && office !== ALL) params.set("office", office);
     if (isAdmin && department !== ALL) params.set("department", department);
     setLoading(true);
     fetch(`/api/management/timesheets/today?${params.toString()}`)
@@ -113,13 +114,17 @@ export default function TimesheetsTodayPage() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Office</span>
-          <Select value={office} onValueChange={setOffice}>
-            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All</SelectItem>
-              {offices.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {isAdmin ? (
+            <Select value={office} onValueChange={setOffice}>
+              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All</SelectItem>
+                {offices.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Badge variant="outline">{viewerOffice ?? "—"}</Badge>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Department</span>

@@ -74,22 +74,28 @@ export function canViewTimeData(role: UserRole | undefined | null): boolean {
   return canEditTimeData(role);
 }
 
-// Time-data scope is department-based: admins see everyone; a manager-tier
-// user (senior_manager, junior_manager, or legacy manager) can only see and
-// adjust punches for employees in their own department (SALES TEAM / BST /
-// RnD). A manager with no department assigned gets no access rather than
-// silently seeing everyone — assign a department in /admin/users first.
+// Time-data scope layers department + office for manager-tier users.
+// Admins see everyone (both null). A manager-tier user (senior_manager,
+// junior_manager, or legacy manager) is constrained to employees who are
+// in BOTH their department AND their office — so a SALES TEAM manager
+// stationed in Harbor doesn't see Marion's SALES TEAM roster. Managers
+// missing either assignment get no access; assign both in /admin/users.
 export type TimeDataScope =
   | { allowed: false }
-  | { allowed: true; department: Department | null };
+  | {
+      allowed: true;
+      department: Department | null;
+      office: Office | null;
+    };
 
 export function timeDataScope(
   role: UserRole | undefined | null,
   department: Department | null,
+  office: Office | null,
 ): TimeDataScope {
-  if (role === "admin") return { allowed: true, department: null };
+  if (role === "admin") return { allowed: true, department: null, office: null };
   if (isManagerTier(role)) {
-    if (department) return { allowed: true, department };
+    if (department && office) return { allowed: true, department, office };
     return { allowed: false };
   }
   return { allowed: false };

@@ -10,15 +10,23 @@ export async function GET(req: NextRequest) {
   if (!session?.user || !canViewTimeData(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
-  const scope = timeDataScope(session.user.role, session.user.department);
+  const scope = timeDataScope(
+    session.user.role,
+    session.user.department,
+    session.user.office,
+  );
   if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
 
   const url = new URL(req.url);
   const status = url.searchParams.get("status") || "pending";
 
   const supabase = createAdminClient();
-  let profileQuery = supabase.from("profiles").select("id, email, name:full_name, office, department");
+  let profileQuery = supabase
+    .from("profiles")
+    .select("id, email, name:full_name, office, department")
+    .eq("is_active", true);
   if (scope.department) profileQuery = profileQuery.eq("department", scope.department);
+  if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
   const { data: profiles } = await profileQuery;
   const profileIds = (profiles || []).map((p) => p.id);
   if (profileIds.length === 0) return NextResponse.json([]);

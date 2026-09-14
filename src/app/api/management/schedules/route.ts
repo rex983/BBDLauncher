@@ -24,15 +24,21 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const scope = timeDataScope(session.user.role, session.user.department);
+  const scope = timeDataScope(
+    session.user.role,
+    session.user.department,
+    session.user.office,
+  );
   if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
 
   const supabase = createAdminClient();
   let profileQuery = supabase
     .from("profiles")
     .select("id, email, name:full_name, office, department")
+    .eq("is_active", true)
     .order("email");
   if (scope.department) profileQuery = profileQuery.eq("department", scope.department);
+  if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
 
   const { data: profiles, error: pErr } = await profileQuery;
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });

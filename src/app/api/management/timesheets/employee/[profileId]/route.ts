@@ -9,10 +9,12 @@ interface EmployeeRow {
   role: string;
   office: string | null;
   department: string | null;
+  is_active: boolean;
   created_at: string;
 }
 
-const EMPLOYEE_COLUMNS = "id, email, name:full_name, role, office, department, created_at";
+const EMPLOYEE_COLUMNS =
+  "id, email, name:full_name, role, office, department, is_active, created_at";
 
 export async function GET(
   req: NextRequest,

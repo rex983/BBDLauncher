@@ -20,24 +20,30 @@ async function loadPunchWithScope(id: string) {
   const session = await auth();
   if (!session?.user || !canEditTimeData(session.user.role)) return null;
 
-  const scope = timeDataScope(session.user.role, session.user.department);
+  const scope = timeDataScope(
+    session.user.role,
+    session.user.department,
+    session.user.office,
+  );
   if (!scope.allowed) return null;
 
   const supabase = createAdminClient();
   const { data: punch } = await supabase
     .from("time_punches")
-    .select("id, profile_id, event_type, occurred_at, profiles!inner(department)")
+    .select("id, profile_id, event_type, occurred_at, profiles!inner(department, office, is_active)")
     .eq("id", id)
     .single<{
       id: string;
       profile_id: string;
       event_type: string;
       occurred_at: string;
-      profiles: { department: string | null };
+      profiles: { department: string | null; office: string | null; is_active: boolean };
     }>();
   if (!punch) return null;
 
+  if (punch.profiles.is_active === false) return null;
   if (scope.department && punch.profiles.department !== scope.department) return null;
+  if (scope.office && punch.profiles.office !== scope.office) return null;
   return { session, supabase, punch };
 }
 

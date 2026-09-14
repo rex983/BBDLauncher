@@ -18,7 +18,11 @@ export async function PATCH(
   if (!session?.user || !canEditTimeData(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
-  const scope = timeDataScope(session.user.role, session.user.department);
+  const scope = timeDataScope(
+    session.user.role,
+    session.user.department,
+    session.user.office,
+  );
   if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
 
   const parsed = decideSchema.safeParse(await req.json());
@@ -26,22 +30,30 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  // Join in the requester's department so scope check + row fetch is one round trip.
+  // Join in the requester's department + office so scope check + row fetch
+  // is one round trip. is_active is also carried so a manager can't approve
+  // time off for a deactivated employee.
   const supabase = createAdminClient();
   const { data: reqRow } = await supabase
     .from("time_off_requests")
-    .select("profile_id, status, profiles!inner(department)")
+    .select("profile_id, status, profiles!inner(department, office, is_active)")
     .eq("id", id)
     .single<{
       profile_id: string;
       status: string;
-      profiles: { department: string | null };
+      profiles: { department: string | null; office: string | null; is_active: boolean };
     }>();
   if (!reqRow) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (reqRow.status !== "pending") {
     return NextResponse.json({ error: "Already decided" }, { status: 409 });
   }
+  if (reqRow.profiles.is_active === false) {
+    return NextResponse.json({ error: "Employee is inactive" }, { status: 403 });
+  }
   if (scope.department && reqRow.profiles.department !== scope.department) {
+    return NextResponse.json({ error: "Out of scope" }, { status: 403 });
+  }
+  if (scope.office && reqRow.profiles.office !== scope.office) {
     return NextResponse.json({ error: "Out of scope" }, { status: 403 });
   }
 
