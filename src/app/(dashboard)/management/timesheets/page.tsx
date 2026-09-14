@@ -48,8 +48,11 @@ const statusVariant: Record<string, "default" | "secondary" | "outline" | "destr
 export default function TimesheetsTodayPage() {
   const { data: session } = useSession();
   const viewerRole = session?.user?.role;
-  const viewerOffice = session?.user?.office ?? null;
-  const canFilterAllOffices = viewerRole === "admin" || viewerOffice === "BST";
+  const viewerDepartment = session?.user?.department ?? null;
+  // Only admins can pick a department here. Manager-tier viewers are locked
+  // to their own department server-side; the UI reflects that with a
+  // read-only badge.
+  const isAdmin = viewerRole === "admin";
 
   const [rows, setRows] = useState<Row[]>([]);
   const [office, setOffice] = useState<string>(ALL);
@@ -59,14 +62,14 @@ export default function TimesheetsTodayPage() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (canFilterAllOffices && office !== ALL) params.set("office", office);
-    if (department !== ALL) params.set("department", department);
+    if (office !== ALL) params.set("office", office);
+    if (isAdmin && department !== ALL) params.set("department", department);
     setLoading(true);
     fetch(`/api/management/timesheets/today?${params.toString()}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => setRows(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
-  }, [office, department, canFilterAllOffices]);
+  }, [office, department, isAdmin]);
 
   // Tick every 30s so open sessions keep counting.
   useEffect(() => {
@@ -108,27 +111,29 @@ export default function TimesheetsTodayPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        {canFilterAllOffices && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Office</span>
-            <Select value={office} onValueChange={setOffice}>
-              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All</SelectItem>
-                {offices.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Department</span>
-          <Select value={department} onValueChange={setDepartment}>
-            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+          <span className="text-sm text-muted-foreground">Office</span>
+          <Select value={office} onValueChange={setOffice}>
+            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>All</SelectItem>
-              {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              {offices.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
             </SelectContent>
           </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Department</span>
+          {isAdmin ? (
+            <Select value={department} onValueChange={setDepartment}>
+              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All</SelectItem>
+                {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Badge variant="outline">{viewerDepartment ?? "—"}</Badge>
+          )}
         </div>
         <div className="ml-auto flex gap-3 text-sm">
           <Link href="/management/timesheets/schedules" className="text-primary hover:underline">

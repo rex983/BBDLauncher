@@ -23,15 +23,15 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const scope = timeDataScope(session.user.role, session.user.office);
+  const scope = timeDataScope(session.user.role, session.user.department);
   if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
 
   const supabase = createAdminClient();
   let profileQuery = supabase
     .from("profiles")
-    .select("id, email, name:full_name, office")
+    .select("id, email, name:full_name, office, department")
     .order("email");
-  if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
+  if (scope.department) profileQuery = profileQuery.eq("department", scope.department);
 
   const { data: profiles, error: pErr } = await profileQuery;
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user || !canEditTimeData(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
-  const scope = timeDataScope(session.user.role, session.user.office);
+  const scope = timeDataScope(session.user.role, session.user.department);
   if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
 
   const parsed = upsertSchema.safeParse(await req.json());
@@ -61,10 +61,10 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createAdminClient();
-  if (scope.office) {
+  if (scope.department) {
     const { data: target } = await supabase
-      .from("profiles").select("office").eq("id", parsed.data.profile_id).single();
-    if (!target || target.office !== scope.office) {
+      .from("profiles").select("department").eq("id", parsed.data.profile_id).single();
+    if (!target || target.department !== scope.department) {
       return NextResponse.json({ error: "Out of scope" }, { status: 403 });
     }
   }
@@ -93,7 +93,7 @@ export async function DELETE(req: NextRequest) {
   if (!session?.user || !canEditTimeData(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
-  const scope = timeDataScope(session.user.role, session.user.office);
+  const scope = timeDataScope(session.user.role, session.user.department);
   if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
 
   const parsed = deleteSchema.safeParse(await req.json());
@@ -102,10 +102,10 @@ export async function DELETE(req: NextRequest) {
   }
 
   const supabase = createAdminClient();
-  if (scope.office) {
+  if (scope.department) {
     const { data: target } = await supabase
-      .from("profiles").select("office").eq("id", parsed.data.profile_id).single();
-    if (!target || target.office !== scope.office) {
+      .from("profiles").select("department").eq("id", parsed.data.profile_id).single();
+    if (!target || target.department !== scope.department) {
       return NextResponse.json({ error: "Out of scope" }, { status: 403 });
     }
   }

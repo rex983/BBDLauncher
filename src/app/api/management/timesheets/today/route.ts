@@ -10,9 +10,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const scope = timeDataScope(session.user.role, session.user.office);
+  const scope = timeDataScope(session.user.role, session.user.department);
   if (!scope.allowed) {
-    return NextResponse.json({ error: "No office scope" }, { status: 403 });
+    return NextResponse.json({ error: "No department scope" }, { status: 403 });
   }
 
   const url = new URL(req.url);
@@ -31,11 +31,15 @@ export async function GET(req: NextRequest) {
     .select("id, email, name:full_name, role, office, department")
     .order("email");
 
-  // Enforce office scope from the viewer.
-  if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
-  // Optional additional filter from the UI (must be within scope).
-  if (officeFilter && scope.office === null) profileQuery = profileQuery.eq("office", officeFilter);
-  if (departmentFilter) profileQuery = profileQuery.eq("department", departmentFilter);
+  // Enforce department scope from the viewer. Non-admins are locked to their
+  // own department; admins can narrow via the ?department query param.
+  if (scope.department) {
+    profileQuery = profileQuery.eq("department", scope.department);
+  } else if (departmentFilter) {
+    profileQuery = profileQuery.eq("department", departmentFilter);
+  }
+  // Optional office narrowing — always allowed on top of the department scope.
+  if (officeFilter) profileQuery = profileQuery.eq("office", officeFilter);
 
   const { data: profiles, error: pErr } = await profileQuery;
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });

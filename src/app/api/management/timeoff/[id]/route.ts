@@ -18,7 +18,7 @@ export async function PATCH(
   if (!session?.user || !canEditTimeData(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
-  const scope = timeDataScope(session.user.role, session.user.office);
+  const scope = timeDataScope(session.user.role, session.user.department);
   if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
 
   const parsed = decideSchema.safeParse(await req.json());
@@ -37,10 +37,10 @@ export async function PATCH(
     return NextResponse.json({ error: "Already decided" }, { status: 409 });
   }
 
-  if (scope.office) {
+  if (scope.department) {
     const { data: profile } = await supabase
-      .from("profiles").select("office").eq("id", reqRow.profile_id).single();
-    if (!profile || profile.office !== scope.office) {
+      .from("profiles").select("department").eq("id", reqRow.profile_id).single();
+    if (!profile || profile.department !== scope.department) {
       return NextResponse.json({ error: "Out of scope" }, { status: 403 });
     }
   }

@@ -1,4 +1,4 @@
-import type { Office, UserRole } from "@/types/auth";
+import type { Department, Office, UserRole } from "@/types/auth";
 
 // Routes under /admin/* that managers are allowed to access. Anything else
 // stays admin-only (e.g., /admin/roles, /admin/sso).
@@ -74,20 +74,22 @@ export function canViewTimeData(role: UserRole | undefined | null): boolean {
   return canEditTimeData(role);
 }
 
-// Time data scope mirrors analyticsScope: admins + BST managers see all,
-// other managers see their own office.
+// Time-data scope is department-based: admins see everyone; a manager-tier
+// user (senior_manager, junior_manager, or legacy manager) can only see and
+// adjust punches for employees in their own department (SALES TEAM / BST /
+// RnD). A manager with no department assigned gets no access rather than
+// silently seeing everyone — assign a department in /admin/users first.
 export type TimeDataScope =
   | { allowed: false }
-  | { allowed: true; office: Office | null };
+  | { allowed: true; department: Department | null };
 
 export function timeDataScope(
   role: UserRole | undefined | null,
-  office: Office | null,
+  department: Department | null,
 ): TimeDataScope {
-  if (role === "admin") return { allowed: true, office: null };
+  if (role === "admin") return { allowed: true, department: null };
   if (isManagerTier(role)) {
-    if (office === "BST") return { allowed: true, office: null };
-    if (office) return { allowed: true, office };
+    if (department) return { allowed: true, department };
     return { allowed: false };
   }
   return { allowed: false };

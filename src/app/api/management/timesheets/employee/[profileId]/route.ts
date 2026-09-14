@@ -8,7 +8,7 @@ async function checkScope(profileId: string) {
   const session = await auth();
   if (!session?.user || !canViewTimeData(session.user.role)) return null;
 
-  const scope = timeDataScope(session.user.role, session.user.office);
+  const scope = timeDataScope(session.user.role, session.user.department);
   if (!scope.allowed) return null;
 
   const supabase = createAdminClient();
@@ -19,7 +19,8 @@ async function checkScope(profileId: string) {
     .single();
 
   if (!target) return null;
-  if (scope.office && target.office !== scope.office) return null;
+  // Non-admin managers can only touch profiles in their own department.
+  if (scope.department && target.department !== scope.department) return null;
 
   return { session, target, supabase };
 }
