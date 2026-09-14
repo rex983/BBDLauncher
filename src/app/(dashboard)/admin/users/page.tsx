@@ -28,7 +28,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, UserX, UserCheck } from "lucide-react";
+import { Plus, Pencil, Trash2, UserX, UserCheck, ChevronDown, ChevronRight } from "lucide-react";
 import type { Department, Office, UserProfile, UserRole } from "@/types/auth";
 
 interface LauncherRole {
@@ -69,18 +69,19 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Admins can toggle "show inactive" to reveal deactivated accounts.
-  // Managers never see this control and always get the active-only list.
-  const [showInactive, setShowInactive] = useState(false);
+  // Admins get the full list split into two collapsible sections. Managers
+  // never see inactive users — the API filters them out server-side.
+  const [inactiveCollapsed, setInactiveCollapsed] = useState(true);
+  const [activeCollapsed, setActiveCollapsed] = useState(false);
 
   const assignableRoles = viewerIsAdmin
     ? roles
     : roles.filter((r) => r.name !== "admin");
 
-  const fetchUsers = async (opts: { includeInactive?: boolean } = {}) => {
-    const url = opts.includeInactive
-      ? "/api/users?includeInactive=1"
-      : "/api/users";
+  const fetchUsers = async () => {
+    // Admins always fetch the full list so both sections are populated.
+    // Managers get active-only from the API.
+    const url = viewerIsAdmin ? "/api/users?includeInactive=1" : "/api/users";
     const res = await fetch(url);
     if (res.ok) setUsers(await res.json());
   };
@@ -91,9 +92,9 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
-    fetchUsers({ includeInactive: viewerIsAdmin && showInactive });
+    fetchUsers();
     fetchRoles();
-  }, [viewerIsAdmin, showInactive]);
+  }, [viewerIsAdmin]);
 
   const openNew = () => {
     setEditing(null);
@@ -172,7 +173,7 @@ export default function AdminUsersPage() {
     }
 
     setDialogOpen(false);
-    fetchUsers({ includeInactive: viewerIsAdmin && showInactive });
+    fetchUsers();
   };
 
   const handleDelete = async (user: UserProfile) => {
@@ -183,7 +184,7 @@ export default function AdminUsersPage() {
       alert(body.error || "Failed to delete user");
       return;
     }
-    fetchUsers({ includeInactive: viewerIsAdmin && showInactive });
+    fetchUsers();
   };
 
   const handleToggleActive = async (user: UserProfile) => {
@@ -203,7 +204,119 @@ export default function AdminUsersPage() {
       alert(typeof body.error === "string" ? body.error : `Failed to ${verb.toLowerCase()} user`);
       return;
     }
-    fetchUsers({ includeInactive: viewerIsAdmin && showInactive });
+    fetchUsers();
+  };
+
+  const activeUsers = users.filter((u) => u.is_active !== false);
+  const inactiveUsers = users.filter((u) => u.is_active === false);
+
+  const renderUserRow = (user: UserProfile) => {
+    const isSelf = user.id === currentProfileId;
+    const targetIsAdmin = user.role === "admin";
+    const lockedByRole = !viewerIsAdmin && targetIsAdmin;
+    const editDisabled = lockedByRole;
+    const deleteDisabled = isSelf || lockedByRole;
+    const toggleActiveDisabled = isSelf || lockedByRole;
+    const inactive = user.is_active === false;
+    const deleteTitle = isSelf
+      ? "You cannot remove yourself"
+      : lockedByRole
+        ? "Only admins can remove an admin account"
+        : "Remove user";
+    const toggleActiveTitle = isSelf
+      ? "You cannot deactivate yourself"
+      : lockedByRole
+        ? "Only admins can change an admin's status"
+        : inactive
+          ? "Reactivate user"
+          : "Deactivate user";
+    return (
+      <TableRow key={user.id} className={inactive ? "opacity-60" : undefined}>
+        <TableCell className="font-medium">
+          <span className="flex items-center gap-2">
+            {user.name || "—"}
+            {inactive && <Badge variant="destructive">Inactive</Badge>}
+          </span>
+        </TableCell>
+        <TableCell>{user.email}</TableCell>
+        <TableCell>
+          {user.office ? (
+            <Badge variant="outline">{user.office}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+        <TableCell>
+          {user.department ? (
+            <Badge variant="outline">{user.department}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+        <TableCell>
+          <div className="flex flex-wrap gap-1">
+            <Badge variant="secondary">{user.role}</Badge>
+            {user.is_it && <Badge>IT</Badge>}
+          </div>
+        </TableCell>
+        <TableCell className="whitespace-nowrap text-muted-foreground">
+          {new Date(user.created_at).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          })}
+        </TableCell>
+        <TableCell>
+          <Select
+            value={user.role}
+            onValueChange={(v) => handleRoleChange(user.id, v as UserRole)}
+            disabled={lockedByRole}
+          >
+            <SelectTrigger className="w-[150px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {assignableRoles.map((r) => (
+                <SelectItem key={r.name} value={r.name}>
+                  {r.display_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </TableCell>
+        <TableCell>
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={editDisabled}
+              title={editDisabled ? "Only admins can edit an admin account" : "Edit user"}
+              onClick={() => openEdit(user)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={toggleActiveDisabled}
+              title={toggleActiveTitle}
+              onClick={() => handleToggleActive(user)}
+            >
+              {inactive ? <UserCheck className="h-4 w-4" /> : <UserX className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={deleteDisabled}
+              title={deleteTitle}
+              onClick={() => handleDelete(user)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </TableCell>
+      </TableRow>
+    );
   };
 
   return (
@@ -216,17 +329,6 @@ export default function AdminUsersPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {viewerIsAdmin && (
-            <Label className="flex items-center gap-2 font-normal text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-input"
-                checked={showInactive}
-                onChange={(e) => setShowInactive(e.target.checked)}
-              />
-              Show inactive
-            </Label>
-          )}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={openNew}>
@@ -367,137 +469,74 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Office</TableHead>
-            <TableHead>Department</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Added</TableHead>
-            <TableHead>Change Role</TableHead>
-            <TableHead className="w-[100px]">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {users.map((user) => {
-            const isSelf = user.id === currentProfileId;
-            const targetIsAdmin = user.role === "admin";
-            const lockedByRole = !viewerIsAdmin && targetIsAdmin;
-            const editDisabled = lockedByRole;
-            const deleteDisabled = isSelf || lockedByRole;
-            const toggleActiveDisabled = isSelf || lockedByRole;
-            const inactive = user.is_active === false;
-            const deleteTitle = isSelf
-              ? "You cannot remove yourself"
-              : lockedByRole
-                ? "Only admins can remove an admin account"
-                : "Remove user";
-            const toggleActiveTitle = isSelf
-              ? "You cannot deactivate yourself"
-              : lockedByRole
-                ? "Only admins can change an admin's status"
-                : inactive
-                  ? "Reactivate user"
-                  : "Deactivate user";
-            return (
-              <TableRow key={user.id} className={inactive ? "opacity-60" : undefined}>
-                <TableCell className="font-medium">
-                  <span className="flex items-center gap-2">
-                    {user.name || "—"}
-                    {inactive && <Badge variant="destructive">Inactive</Badge>}
-                  </span>
-                </TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>
-                  {user.office ? (
-                    <Badge variant="outline">{user.office}</Badge>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {user.department ? (
-                    <Badge variant="outline">{user.department}</Badge>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    <Badge variant="secondary">{user.role}</Badge>
-                    {user.is_it && <Badge>IT</Badge>}
-                  </div>
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">
-                  {new Date(user.created_at).toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </TableCell>
-                <TableCell>
-                  <Select
-                    value={user.role}
-                    onValueChange={(v) => handleRoleChange(user.id, v as UserRole)}
-                    disabled={lockedByRole}
-                  >
-                    <SelectTrigger className="w-[150px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assignableRoles.map((r) => (
-                        <SelectItem key={r.name} value={r.name}>
-                          {r.display_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={editDisabled}
-                      title={editDisabled ? "Only admins can edit an admin account" : "Edit user"}
-                      onClick={() => openEdit(user)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={toggleActiveDisabled}
-                      title={toggleActiveTitle}
-                      onClick={() => handleToggleActive(user)}
-                    >
-                      {inactive ? <UserCheck className="h-4 w-4" /> : <UserX className="h-4 w-4" />}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={deleteDisabled}
-                      title={deleteTitle}
-                      onClick={() => handleDelete(user)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+      {renderUserSection({
+        title: "Active",
+        users: activeUsers,
+        collapsed: activeCollapsed,
+        onToggle: () => setActiveCollapsed((v) => !v),
+        emptyMessage: "No active users.",
+        renderRow: renderUserRow,
+      })}
+
+      {viewerIsAdmin && renderUserSection({
+        title: "Inactive",
+        users: inactiveUsers,
+        collapsed: inactiveCollapsed,
+        onToggle: () => setInactiveCollapsed((v) => !v),
+        emptyMessage: "No inactive users.",
+        renderRow: renderUserRow,
+      })}
+    </div>
+  );
+}
+
+interface SectionArgs {
+  title: string;
+  users: UserProfile[];
+  collapsed: boolean;
+  onToggle: () => void;
+  emptyMessage: string;
+  renderRow: (user: UserProfile) => React.ReactNode;
+}
+
+function renderUserSection({ title, users, collapsed, onToggle, emptyMessage, renderRow }: SectionArgs) {
+  return (
+    <section key={title} className="space-y-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 text-left text-sm font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+      >
+        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        <span>{title}</span>
+        <Badge variant="outline" className="ml-1">{users.length}</Badge>
+      </button>
+      {!collapsed && (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Office</TableHead>
+              <TableHead>Department</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Added</TableHead>
+              <TableHead>Change Role</TableHead>
+              <TableHead className="w-[100px]">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {users.map(renderRow)}
+            {users.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  {emptyMessage}
                 </TableCell>
               </TableRow>
-            );
-          })}
-          {users.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                No users yet.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
+            )}
+          </TableBody>
+        </Table>
+      )}
+    </section>
   );
 }
