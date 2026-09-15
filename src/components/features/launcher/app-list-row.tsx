@@ -1,10 +1,8 @@
 "use client";
 
 import { forwardRef } from "react";
-import { useSession } from "next-auth/react";
-import { useRolePreview } from "@/components/features/launcher/role-preview-context";
-import { Badge } from "@/components/ui/badge";
 import { GripVertical, Star } from "lucide-react";
+import { SsoBadge } from "@/components/features/launcher/sso-badge";
 import type { LauncherApp } from "@/types/app";
 
 interface AppListRowProps {
@@ -16,14 +14,6 @@ interface AppListRowProps {
   onToggleFavorite?: (appId: string) => void;
   showDragHandle?: boolean;
 }
-
-const ssoBadgeVariant: Record<string, "default" | "secondary" | "outline"> = {
-  saml: "default",
-  oauth: "secondary",
-  jwt: "default",
-  direct_link: "outline",
-  none: "outline",
-};
 
 export const AppListRow = forwardRef<HTMLDivElement, AppListRowProps>(
   function AppListRow(
@@ -38,11 +28,6 @@ export const AppListRow = forwardRef<HTMLDivElement, AppListRowProps>(
     },
     ref
   ) {
-    const { data: session } = useSession();
-    const { viewAs } = useRolePreview();
-    const actualRole = session?.user?.role;
-    const effectiveRole = actualRole === "admin" && viewAs ? viewAs : actualRole;
-    const showSsoBadge = effectiveRole === "admin";
     const firstLetter = app.name.charAt(0).toUpperCase();
     const href = `/api/launch/${app.id}`;
 
@@ -105,14 +90,7 @@ export const AppListRow = forwardRef<HTMLDivElement, AppListRowProps>(
                 </p>
               )}
             </div>
-            {showSsoBadge && app.sso_type !== "none" && (
-              <Badge
-                variant={ssoBadgeVariant[app.sso_type] || "outline"}
-                className="text-[10px] px-1.5 py-0 flex-shrink-0"
-              >
-                {app.sso_type.toUpperCase()}
-              </Badge>
-            )}
+            <SsoBadge ssoType={app.sso_type} className="text-[10px] px-1.5 py-0 flex-shrink-0" />
           </a>
           {showDragHandle && (
             <div

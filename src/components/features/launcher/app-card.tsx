@@ -1,11 +1,9 @@
 "use client";
 
 import { forwardRef } from "react";
-import { useSession } from "next-auth/react";
-import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { GripVertical, Star } from "lucide-react";
+import { SsoBadge } from "@/components/features/launcher/sso-badge";
 import type { LauncherApp } from "@/types/app";
 
 interface AppCardProps {
@@ -17,14 +15,6 @@ interface AppCardProps {
   onToggleFavorite?: (appId: string) => void;
   showDragHandle?: boolean;
 }
-
-const ssoBadgeVariant: Record<string, "default" | "secondary" | "outline"> = {
-  saml: "default",
-  oauth: "secondary",
-  jwt: "default",
-  direct_link: "outline",
-  none: "outline",
-};
 
 export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
   function AppCard(
@@ -39,12 +29,6 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
     },
     ref
   ) {
-    const { data: session } = useSession();
-    const { viewAs } = useRolePreview();
-    const actualRole = session?.user?.role;
-    // Honor admin's "view as" preview so admins see exactly what each role sees.
-    const effectiveRole = actualRole === "admin" && viewAs ? viewAs : actualRole;
-    const showSsoBadge = effectiveRole === "admin";
     const firstLetter = app.name.charAt(0).toUpperCase();
 
     // Always route through /api/launch so every click is logged and access
@@ -120,11 +104,7 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
                   </p>
                 )}
               </div>
-              {showSsoBadge && app.sso_type !== "none" && (
-                <Badge variant={ssoBadgeVariant[app.sso_type] || "outline"} className="text-[10px] px-1.5 py-0">
-                  {app.sso_type.toUpperCase()}
-                </Badge>
-              )}
+              <SsoBadge ssoType={app.sso_type} className="text-[10px] px-1.5 py-0" />
             </a>
           </CardContent>
         </Card>

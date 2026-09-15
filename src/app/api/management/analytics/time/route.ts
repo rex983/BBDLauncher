@@ -1,6 +1,4 @@
-import { auth } from "@/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { canViewTimeData, timeDataScope } from "@/lib/auth/permissions";
+import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { type TimePunch } from "@/lib/timesheets/state";
 import {
   computeDayWorkedMs,
@@ -23,16 +21,9 @@ const ALLOWED_WEEK_COUNTS = new Set([1, 2, 4, 12]);
 const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canViewTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-  const scope = timeDataScope(
-    session.user.role,
-    session.user.department,
-    session.user.office,
-  );
-  if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
+  const gate = await requireTimeDataAccess(null, "view");
+  if (!gate.ok) return gate.response;
+  const { session, supabase, scope } = gate;
 
   const url = new URL(req.url);
   const weeksParam = Number(url.searchParams.get("weeks") ?? "4");
@@ -43,7 +34,6 @@ export async function GET(req: NextRequest) {
   const includeInactive =
     isAdmin && url.searchParams.get("includeInactive") === "1";
 
-  const supabase = createAdminClient();
   const now = new Date();
   const thisWeekStart = startOfWeekSundayInZone(now);
   const rangeStart = new Date(thisWeekStart.getTime() - (weeks - 1) * MS_PER_WEEK);

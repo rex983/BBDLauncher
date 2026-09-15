@@ -1,6 +1,4 @@
-import { auth } from "@/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { canEditTimeData, timeDataScope } from "@/lib/auth/permissions";
+import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -14,16 +12,9 @@ export async function PATCH(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const session = await auth();
-  if (!session?.user || !canEditTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-  const scope = timeDataScope(
-    session.user.role,
-    session.user.department,
-    session.user.office,
-  );
-  if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
+  const gate = await requireTimeDataAccess(null, "edit");
+  if (!gate.ok) return gate.response;
+  const { session, supabase, scope } = gate;
 
   const parsed = decideSchema.safeParse(await req.json());
   if (!parsed.success) {
@@ -33,7 +24,6 @@ export async function PATCH(
   // Join in the requester's department + office so scope check + row fetch
   // is one round trip. is_active is also carried so a manager can't approve
   // time off for a deactivated employee.
-  const supabase = createAdminClient();
   const { data: reqRow } = await supabase
     .from("time_off_requests")
     .select("profile_id, status, profiles!inner(department, office, is_active)")

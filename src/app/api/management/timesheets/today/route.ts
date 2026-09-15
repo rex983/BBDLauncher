@@ -1,35 +1,21 @@
-import { auth } from "@/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { canViewTimeData, timeDataScope } from "@/lib/auth/permissions";
+import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { computeState, type TimePunch } from "@/lib/timesheets/state";
-import { computeWeeklyHours, startOfWeekSunday } from "@/lib/timesheets/weekly";
-import { startOfDayInZone } from "@/lib/timesheets/tz";
+import { computeWeeklyHours } from "@/lib/timesheets/weekly";
+import { startOfDayInZone, startOfWeekSundayInZone } from "@/lib/timesheets/tz";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canViewTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-
-  const scope = timeDataScope(
-    session.user.role,
-    session.user.department,
-    session.user.office,
-  );
-  if (!scope.allowed) {
-    return NextResponse.json({ error: "No scope" }, { status: 403 });
-  }
+  const gate = await requireTimeDataAccess(null, "view");
+  if (!gate.ok) return gate.response;
+  const { supabase, scope } = gate;
 
   const url = new URL(req.url);
   const officeFilter = url.searchParams.get("office");
   const departmentFilter = url.searchParams.get("department");
 
-  const supabase = createAdminClient();
-
   const now = new Date();
   const startOfDay = startOfDayInZone(now);
-  const weekStart = startOfWeekSunday(now);
+  const weekStart = startOfWeekSundayInZone(now);
 
   let profileQuery = supabase
     .from("profiles")

@@ -23,7 +23,16 @@ export async function getMyStateToday(profileId: string): Promise<{
 }
 
 // Returns true if the profile is currently clocked in (working / lunch / break).
+// Reads only the single latest punch — no day-fold needed for a boolean.
 export async function isClockedIn(profileId: string): Promise<boolean> {
-  const { state } = await getMyStateToday(profileId);
-  return state.status !== "clocked_out";
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from("time_punches")
+    .select("event_type")
+    .eq("profile_id", profileId)
+    .order("occurred_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return false;
+  return data.event_type !== "clock_out";
 }

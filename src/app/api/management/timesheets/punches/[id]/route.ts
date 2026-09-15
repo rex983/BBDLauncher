@@ -1,6 +1,4 @@
-import { auth } from "@/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { canEditTimeData, timeDataScope } from "@/lib/auth/permissions";
+import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -17,18 +15,10 @@ const patchSchema = z.object({
 // Fetch the target punch and its owner's department in one query so the
 // scope check doesn't cost a second round trip.
 async function loadPunchWithScope(id: string) {
-  const session = await auth();
-  if (!session?.user || !canEditTimeData(session.user.role)) return null;
+  const gate = await requireTimeDataAccess(null, "edit");
+  if (!gate.ok) return null;
 
-  const scope = timeDataScope(
-    session.user.role,
-    session.user.department,
-    session.user.office,
-  );
-  if (!scope.allowed) return null;
-
-  const supabase = createAdminClient();
-  const { data: punch } = await supabase
+  const { data: punch } = await gate.supabase
     .from("time_punches")
     .select("id, profile_id, event_type, occurred_at, profiles!inner(department, office, is_active)")
     .eq("id", id)
@@ -42,9 +32,9 @@ async function loadPunchWithScope(id: string) {
   if (!punch) return null;
 
   if (punch.profiles.is_active === false) return null;
-  if (scope.department && punch.profiles.department !== scope.department) return null;
-  if (scope.office && punch.profiles.office !== scope.office) return null;
-  return { session, supabase, punch };
+  if (gate.scope.department && punch.profiles.department !== gate.scope.department) return null;
+  if (gate.scope.office && punch.profiles.office !== gate.scope.office) return null;
+  return { session: gate.session, supabase: gate.supabase, punch };
 }
 
 export async function PATCH(

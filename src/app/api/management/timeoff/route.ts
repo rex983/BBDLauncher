@@ -1,21 +1,12 @@
-import { auth } from "@/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { canViewTimeData, timeDataScope } from "@/lib/auth/permissions";
+import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 
 // List time-off requests for everyone in the viewer's department scope.
 // Filter by status via ?status=pending|approved|denied|cancelled (default: pending).
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canViewTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-  const scope = timeDataScope(
-    session.user.role,
-    session.user.department,
-    session.user.office,
-  );
-  if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
+  const gate = await requireTimeDataAccess(null, "view");
+  if (!gate.ok) return gate.response;
+  const { supabase, scope } = gate;
 
   const url = new URL(req.url);
   const status = url.searchParams.get("status") || "pending";
@@ -24,7 +15,6 @@ export async function GET(req: NextRequest) {
   const officeFilter = url.searchParams.get("office");
   const departmentFilter = url.searchParams.get("department");
 
-  const supabase = createAdminClient();
   let profileQuery = supabase
     .from("profiles")
     .select("id, email, name:full_name, office, department")
@@ -45,7 +35,9 @@ export async function GET(req: NextRequest) {
 
   const { data: requests, error } = await supabase
     .from("time_off_requests")
-    .select("*")
+    .select(
+      "id, profile_id, type, start_date, end_date, full_day, hours, status, reason, decided_note, decided_by, decided_at, created_at",
+    )
     .in("profile_id", profileIds)
     .eq("status", status)
     .order("start_date", { ascending: true });

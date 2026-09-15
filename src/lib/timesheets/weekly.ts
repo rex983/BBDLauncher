@@ -1,16 +1,7 @@
 import { computeState, type TimePunch } from "./state";
-import {
-  localDateInZone,
-  scheduledTimeInZone,
-  startOfWeekSundayInZone,
-} from "./tz";
+import { localDateInZone, scheduledTimeInZone } from "./tz";
 
 export const OVERTIME_THRESHOLD_MS = 40 * 60 * 60 * 1000; // 40h
-
-// Sunday 00:00 ET of the calendar week containing `date`.
-export function startOfWeekSunday(date: Date): Date {
-  return startOfWeekSundayInZone(date);
-}
 
 export interface WeeklyHours {
   worked_ms: number;

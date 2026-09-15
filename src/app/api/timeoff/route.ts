@@ -19,7 +19,9 @@ export async function GET() {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("time_off_requests")
-    .select("*")
+    .select(
+      "id, type, start_date, end_date, full_day, hours, status, reason, decided_note, decided_at, created_at",
+    )
     .eq("profile_id", session.user.profileId)
     .order("start_date", { ascending: false });
 

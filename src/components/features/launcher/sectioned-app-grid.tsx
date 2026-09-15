@@ -12,18 +12,12 @@ import {
   type DragStartEvent,
   DragOverlay,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  rectSortingStrategy,
-  verticalListSortingStrategy,
-  arrayMove,
-} from "@dnd-kit/sortable";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { SortableAppCard } from "./sortable-app-card";
 import { AppCard } from "./app-card";
-import { SortableAppListRow } from "./sortable-app-list-row";
 import { AppListRow } from "./app-list-row";
+import { AppGrid, type ViewType } from "./app-grid";
+import { applyReorderUpdates, computeReorderUpdates } from "./reorder";
 import { Search, ChevronDown, ChevronRight, Star, LayoutGrid, List } from "lucide-react";
 import type { LauncherApp, LauncherSection } from "@/types/app";
 
@@ -32,8 +26,6 @@ interface SectionedAppGridProps {
   sections: LauncherSection[];
   isAdmin: boolean;
 }
-
-type ViewType = "cards" | "list";
 
 const FAVORITES_KEY = "bbd-favorites";
 const COLLAPSE_KEY = "bbd-section-collapse";
@@ -129,11 +121,6 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
     setViewType(savedView === "list" ? "list" : "cards");
   }, []);
 
-  const changeViewType = (next: ViewType) => {
-    setViewType(next);
-    writeJSON(VIEW_TYPE_KEY, next);
-  };
-
   useEffect(() => {
     setWorkingApps(apps);
   }, [apps]);
@@ -141,6 +128,11 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
+
+  const changeViewType = (next: ViewType) => {
+    setViewType(next);
+    writeJSON(VIEW_TYPE_KEY, next);
+  };
 
   const toggleFavorite = (appId: string) => {
     setFavorites((prev) => {
@@ -170,7 +162,6 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
     );
   }, [workingApps, search]);
 
-  // Group by section_id.
   const appsBySection = useMemo(() => {
     const map = new Map<string | null, LauncherApp[]>();
     for (const app of filteredApps) {
@@ -178,7 +169,6 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(app);
     }
-    // Ensure deterministic order within a section by display_order.
     for (const list of map.values()) {
       list.sort((a, b) => a.display_order - b.display_order);
     }
@@ -191,7 +181,6 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
   }, [filteredApps, favorites]);
 
   const unsortedApps = appsBySection.get(null) || [];
-
   const isSearching = search.trim().length > 0;
   const effectiveCollapsed = (id: string) => (isSearching ? false : !!collapsed[id]);
 
@@ -204,85 +193,22 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
     const { active, over } = event;
     if (!over) return;
 
-    const activeId = String(active.id);
-    const overId = String(over.id);
-    if (activeId === overId) return;
-
-    // Determine target section: either a section container id or another app id.
-    const sectionIds = new Set<string>([
+    const sectionContainerIds = new Set<string>([
       UNSORTED_ID,
       ...sections.map((s) => s.id),
     ]);
 
-    let targetSectionId: string | null;
-    let targetAppId: string | null = null;
-
-    if (sectionIds.has(overId)) {
-      targetSectionId = overId === UNSORTED_ID ? null : overId;
-    } else {
-      // Dropped on another app — adopt that app's section.
-      const targetApp = workingApps.find((a) => a.id === overId);
-      if (!targetApp) return;
-      targetSectionId = targetApp.section_id;
-      targetAppId = overId;
-    }
-
-    const movingApp = workingApps.find((a) => a.id === activeId);
-    if (!movingApp) return;
-
-    // Compute the new ordered list for the target section.
-    const targetList = workingApps
-      .filter((a) => (a.section_id ?? null) === targetSectionId && a.id !== activeId)
-      .sort((a, b) => a.display_order - b.display_order);
-
-    let insertIndex = targetList.length;
-    if (targetAppId) {
-      const idx = targetList.findIndex((a) => a.id === targetAppId);
-      if (idx >= 0) insertIndex = idx;
-    }
-
-    // If moving within the same section, use arrayMove for natural reorder.
-    const sameSection = (movingApp.section_id ?? null) === targetSectionId;
-    let nextTargetOrder: LauncherApp[];
-    if (sameSection && targetAppId) {
-      const original = workingApps
-        .filter((a) => (a.section_id ?? null) === targetSectionId)
-        .sort((a, b) => a.display_order - b.display_order);
-      const oldIndex = original.findIndex((a) => a.id === activeId);
-      const newIndex = original.findIndex((a) => a.id === targetAppId);
-      nextTargetOrder = arrayMove(original, oldIndex, newIndex);
-    } else {
-      const moved = { ...movingApp, section_id: targetSectionId };
-      nextTargetOrder = [
-        ...targetList.slice(0, insertIndex),
-        moved,
-        ...targetList.slice(insertIndex),
-      ];
-    }
-
-    // Build the updates: reassign section + reindex display_order for the target section.
-    const updates = nextTargetOrder.map((a, idx) => ({
-      id: a.id,
-      section_id: targetSectionId,
-      display_order: idx,
-    }));
-
-    // Optimistic update; revert if the server rejects.
-    const previous = workingApps;
-    setWorkingApps((prev) => {
-      const byId = new Map(prev.map((a) => [a.id, a]));
-      for (const u of updates) {
-        const existing = byId.get(u.id);
-        if (existing) {
-          byId.set(u.id, {
-            ...existing,
-            section_id: u.section_id,
-            display_order: u.display_order,
-          });
-        }
-      }
-      return Array.from(byId.values());
+    const updates = computeReorderUpdates({
+      apps: workingApps,
+      activeId: String(active.id),
+      overId: String(over.id),
+      sectionContainerIds,
+      unsortedId: UNSORTED_ID,
     });
+    if (!updates) return;
+
+    const previous = workingApps;
+    setWorkingApps((prev) => applyReorderUpdates(prev, updates));
 
     try {
       const res = await fetch("/api/apps/reorder", {
@@ -302,50 +228,8 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
     ? workingApps.find((a) => a.id === activeDragId)
     : null;
 
-  const renderGrid = (list: LauncherApp[], sortable: boolean) => {
-    if (viewType === "list") {
-      return (
-        <SortableContext
-          items={list.map((a) => a.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="flex flex-col gap-1.5">
-            {list.map((app) => (
-              <SortableAppListRow
-                key={app.id}
-                app={app}
-                isFavorite={favorites.includes(app.id)}
-                onToggleFavorite={toggleFavorite}
-                sortable={sortable}
-              />
-            ))}
-          </div>
-        </SortableContext>
-      );
-    }
-    return (
-      <SortableContext
-        items={list.map((a) => a.id)}
-        strategy={rectSortingStrategy}
-      >
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-          {list.map((app) => (
-            <SortableAppCard
-              key={app.id}
-              app={app}
-              isFavorite={favorites.includes(app.id)}
-              onToggleFavorite={toggleFavorite}
-              sortable={sortable}
-            />
-          ))}
-        </div>
-      </SortableContext>
-    );
-  };
-
   const content = (
     <div className="space-y-6">
-      {/* Favorites — always pinned at the top */}
       {favoriteApps.length > 0 && (
         <div className="space-y-2">
           <SectionHeader
@@ -361,31 +245,13 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
           {!effectiveCollapsed(FAVORITES_ID) && (
             <div id={`section-${FAVORITES_ID}`}>
               {/* Favorites grid is never droppable/sortable — it's a per-user view. */}
-              {viewType === "list" ? (
-                <div className="flex flex-col gap-1.5">
-                  {favoriteApps.map((app) => (
-                    <AppListRow
-                      key={app.id}
-                      app={app}
-                      isFavorite
-                      onToggleFavorite={toggleFavorite}
-                      showDragHandle={false}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-                  {favoriteApps.map((app) => (
-                    <AppCard
-                      key={app.id}
-                      app={app}
-                      isFavorite
-                      onToggleFavorite={toggleFavorite}
-                      showDragHandle={false}
-                    />
-                  ))}
-                </div>
-              )}
+              <AppGrid
+                apps={favoriteApps}
+                viewType={viewType}
+                favorites={favorites}
+                onToggleFavorite={toggleFavorite}
+                showDragHandle={false}
+              />
             </div>
           )}
         </div>
@@ -408,12 +274,16 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
                 <DroppableSection id={section.id} enabled={isAdmin}>
                   {list.length === 0 ? (
                     <div className="text-xs text-muted-foreground border border-dashed rounded-md p-4 text-center">
-                      {isAdmin
-                        ? "Drop apps here"
-                        : "No apps in this section."}
+                      {isAdmin ? "Drop apps here" : "No apps in this section."}
                     </div>
                   ) : (
-                    renderGrid(list, isAdmin)
+                    <AppGrid
+                      apps={list}
+                      viewType={viewType}
+                      favorites={favorites}
+                      onToggleFavorite={toggleFavorite}
+                      sortable={isAdmin}
+                    />
                   )}
                 </DroppableSection>
               </div>
@@ -434,7 +304,13 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
           {!effectiveCollapsed(UNSORTED_ID) && (
             <div id={`section-${UNSORTED_ID}`}>
               <DroppableSection id={UNSORTED_ID} enabled={isAdmin}>
-                {renderGrid(unsortedApps, isAdmin)}
+                <AppGrid
+                  apps={unsortedApps}
+                  viewType={viewType}
+                  favorites={favorites}
+                  onToggleFavorite={toggleFavorite}
+                  sortable={isAdmin}
+                />
               </DroppableSection>
             </div>
           )}

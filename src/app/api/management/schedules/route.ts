@@ -1,6 +1,3 @@
-import { auth } from "@/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { canViewTimeData, timeDataScope } from "@/lib/auth/permissions";
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -19,17 +16,9 @@ const deleteSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canViewTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-
-  const scope = timeDataScope(
-    session.user.role,
-    session.user.department,
-    session.user.office,
-  );
-  if (!scope.allowed) return NextResponse.json({ error: "No scope" }, { status: 403 });
+  const gate = await requireTimeDataAccess(null, "view");
+  if (!gate.ok) return gate.response;
+  const { supabase, scope } = gate;
 
   // Admin-only overlay filters. Managers already have office/dept baked into
   // scope; letting them pass ?office= wouldn't grant more (scope.office wins)
@@ -37,7 +26,6 @@ export async function GET(req: NextRequest) {
   const officeFilter = req.nextUrl.searchParams.get("office");
   const departmentFilter = req.nextUrl.searchParams.get("department");
 
-  const supabase = createAdminClient();
   let profileQuery = supabase
     .from("profiles")
     .select("id, email, name:full_name, office, department")
