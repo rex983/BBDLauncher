@@ -1,4 +1,5 @@
 import { requireTimeDataAccessWithProfile } from "@/lib/auth/scope-check";
+import { startOfDayInZone } from "@/lib/timesheets/tz";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -33,9 +34,9 @@ export async function GET(
   const to = url.searchParams.get("to");
 
   const now = new Date();
-  const defaultFrom = new Date(now);
+  const todayStart = startOfDayInZone(now);
+  const defaultFrom = new Date(todayStart);
   defaultFrom.setDate(defaultFrom.getDate() - 7);
-  defaultFrom.setHours(0, 0, 0, 0);
 
   const startISO = from ? new Date(from).toISOString() : defaultFrom.toISOString();
   const endISO = to ? new Date(to).toISOString() : now.toISOString();

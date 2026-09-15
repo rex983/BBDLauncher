@@ -1,23 +1,11 @@
 import { computeState, type TimePunch } from "./state";
+import { localDateInZone, startOfWeekSundayInZone } from "./tz";
 
 export const OVERTIME_THRESHOLD_MS = 40 * 60 * 60 * 1000; // 40h
 
-// Sunday 00:00 in server-local time for whatever week `date` falls in. We
-// don't try to be tz-aware yet — the whole timesheet stack assumes ET,
-// which is what Vercel's cron runs in.
+// Sunday 00:00 ET of the calendar week containing `date`.
 export function startOfWeekSunday(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - d.getDay());
-  return d;
-}
-
-export function endOfWeekSaturday(date: Date): Date {
-  const start = startOfWeekSunday(date);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
-  return end;
+  return startOfWeekSundayInZone(date);
 }
 
 export interface WeeklyHours {
@@ -26,8 +14,8 @@ export interface WeeklyHours {
   is_overtime: boolean;
 }
 
-// Bucket punches by local day and fold each day into its own state so an
-// open shift at week-end can't leak into a sibling day. Then sum daily
+// Bucket punches by ET-local day and fold each day into its own state so
+// an open shift at week-end can't leak into a sibling day. Then sum daily
 // worked_ms and derive overtime = max(0, total - 40h).
 export function computeWeeklyHours(
   punches: TimePunch[],
@@ -35,7 +23,7 @@ export function computeWeeklyHours(
 ): WeeklyHours {
   const buckets = new Map<string, TimePunch[]>();
   for (const p of punches) {
-    const key = new Date(p.occurred_at).toLocaleDateString();
+    const key = localDateInZone(new Date(p.occurred_at));
     const list = buckets.get(key) || [];
     list.push(p);
     buckets.set(key, list);

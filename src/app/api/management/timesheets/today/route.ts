@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { canViewTimeData, timeDataScope } from "@/lib/auth/permissions";
 import { computeState, type TimePunch } from "@/lib/timesheets/state";
 import { computeWeeklyHours, startOfWeekSunday } from "@/lib/timesheets/weekly";
+import { startOfDayInZone } from "@/lib/timesheets/tz";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -27,8 +28,7 @@ export async function GET(req: NextRequest) {
   const supabase = createAdminClient();
 
   const now = new Date();
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDay = startOfDayInZone(now);
   const weekStart = startOfWeekSunday(now);
 
   let profileQuery = supabase

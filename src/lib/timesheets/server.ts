@@ -1,14 +1,15 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { computeState, type TimePunch, type LiveState } from "./state";
+import { startOfDayInZone } from "./tz";
 
-// Fetches today's punches for a profile and folds them into current state.
+// Fetches today's (ET-day) punches for a profile and folds them into
+// current state.
 export async function getMyStateToday(profileId: string): Promise<{
   state: LiveState;
   punches: TimePunch[];
 }> {
   const supabase = createAdminClient();
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDay = startOfDayInZone(new Date());
 
   const { data } = await supabase
     .from("time_punches")

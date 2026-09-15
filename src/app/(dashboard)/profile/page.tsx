@@ -7,6 +7,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { computeState, formatDuration, STATUS_LABEL, type TimePunch } from "@/lib/timesheets/state";
+import { startOfDayInZone } from "@/lib/timesheets/tz";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DEFAULT_START = "10:00";
@@ -69,9 +70,10 @@ export default async function ProfilePage() {
 
   const supabase = createAdminClient();
 
-  // 14-day window for hours + activity.
+  // 14-day window for hours + activity. Day boundaries follow ET so
+  // "today" here matches what the timesheet stack reports.
   const now = new Date();
-  const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+  const startOfToday = startOfDayInZone(now);
   const from14 = new Date(startOfToday); from14.setDate(from14.getDate() - 14);
 
   const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes] = await Promise.all([

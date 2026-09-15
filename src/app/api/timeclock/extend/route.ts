@@ -1,5 +1,10 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  localDateInZone,
+  scheduledTimeInZone,
+  weekdayInZone,
+} from "@/lib/timesheets/tz";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -22,8 +27,8 @@ export async function POST(req: NextRequest) {
 
   const supabase = createAdminClient();
   const now = new Date();
-  const weekday = now.getDay();
-  const localDate = toLocalDate(now);
+  const weekday = weekdayInZone(now);
+  const localDate = localDateInZone(now);
 
   // Compute today's effective end = max(scheduled end, existing extension).
   const [scheduleRes, extensionRes] = await Promise.all([
@@ -41,11 +46,9 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
   ]);
 
-  // Fall back to default 18:00 when no override exists for today.
-  const endTime = scheduleRes.data?.end_time ?? "18:00";
-  const [h, m] = endTime.split(":").map(Number);
-  const scheduledEnd = new Date(now);
-  scheduledEnd.setHours(h, m, 0, 0);
+  // Default fallback: 18:00 ET (the standard end of a BBD shift).
+  const endTime = (scheduleRes.data?.end_time ?? "18:00").slice(0, 5);
+  const scheduledEnd = scheduledTimeInZone(now, endTime);
 
   const existingExtension = extensionRes.data?.extension_until
     ? new Date(extensionRes.data.extension_until)
@@ -76,9 +79,4 @@ export async function POST(req: NextRequest) {
     extension: data,
     effective_end_iso: nextEnd.toISOString(),
   });
-}
-
-function toLocalDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

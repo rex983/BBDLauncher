@@ -1,5 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { PunchEventType } from "@/lib/timesheets/state";
+import {
+  localDateInZone,
+  scheduledTimeInZone,
+  startOfDayInZone,
+  weekdayInZone,
+} from "@/lib/timesheets/tz";
 import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 60;
@@ -25,12 +31,7 @@ function isAuthorised(req: NextRequest): boolean {
 }
 
 const DEFAULT_WORKDAYS = new Set([1, 2, 3, 4, 5]);
-const DEFAULT_END = "18:00";
-
-function toLocalDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+const DEFAULT_END = "18:00"; // ET
 
 async function handle(req: NextRequest) {
   if (!isAuthorised(req)) {
@@ -39,15 +40,15 @@ async function handle(req: NextRequest) {
 
   const supabase = createAdminClient();
   const now = new Date();
-  const weekday = now.getDay();
-  const localDate = toLocalDate(now);
-  const startOfDayIso = new Date(now).setHours(0, 0, 0, 0);
+  const weekday = weekdayInZone(now);
+  const localDate = localDateInZone(now);
+  const startOfDay = startOfDayInZone(now);
 
-  // Find everyone with a punch today whose latest event isn't clock_out.
+  // Find everyone with a punch today (ET-day) whose latest event isn't clock_out.
   const { data: today, error: recentErr } = await supabase
     .from("time_punches")
     .select("profile_id, event_type, occurred_at")
-    .gte("occurred_at", new Date(startOfDayIso).toISOString())
+    .gte("occurred_at", startOfDay.toISOString())
     .order("occurred_at", { ascending: false });
   if (recentErr) return NextResponse.json({ error: recentErr.message }, { status: 500 });
 
@@ -94,19 +95,13 @@ async function handle(req: NextRequest) {
     // Determine effective end. If they have an override for today, use it.
     // If they have any override rows but not today's, they're not scheduled
     // today — skip; nightly midnight cron will handle any straggler.
-    // If they have no override rows at all, fall back to Mon-Fri 18:00.
+    // If they have no override rows at all, fall back to Mon-Fri 18:00 ET.
     const overrideEnd = schedEndByProfile.get(profile_id);
     let scheduledEnd: Date | null = null;
     if (overrideEnd) {
-      const [h, m] = overrideEnd.split(":").map(Number);
-      const d = new Date(now);
-      d.setHours(h, m, 0, 0);
-      scheduledEnd = d;
+      scheduledEnd = scheduledTimeInZone(now, overrideEnd.slice(0, 5));
     } else if (!hasAnyOverride.has(profile_id) && DEFAULT_WORKDAYS.has(weekday)) {
-      const [h, m] = DEFAULT_END.split(":").map(Number);
-      const d = new Date(now);
-      d.setHours(h, m, 0, 0);
-      scheduledEnd = d;
+      scheduledEnd = scheduledTimeInZone(now, DEFAULT_END);
     }
     const extensionEnd = extensionByProfile.get(profile_id)
       ? new Date(extensionByProfile.get(profile_id)!)
