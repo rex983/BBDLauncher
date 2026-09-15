@@ -22,6 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { OvertimeCard } from "@/components/features/admin/overtime-card";
 
 type DestStat = {
   id: string;
@@ -215,6 +216,8 @@ export default function AdminAnalyticsPage() {
           }
         />
       </div>
+
+      <OvertimeCard />
 
       <Tabs defaultValue="apps" className="space-y-4">
         <TabsList>

@@ -33,6 +33,11 @@ interface Row {
     department: Department | null;
   };
   state: LiveState;
+  weekly: {
+    worked_ms: number;
+    overtime_ms: number;
+    is_overtime: boolean;
+  };
 }
 
 const ALL = "__all__";
@@ -167,6 +172,7 @@ export default function TimesheetsTodayPage() {
             <TableHead>Worked</TableHead>
             <TableHead>Lunch</TableHead>
             <TableHead>Breaks</TableHead>
+            <TableHead>This week</TableHead>
             <TableHead>Since</TableHead>
             <TableHead />
           </TableRow>
@@ -174,14 +180,14 @@ export default function TimesheetsTodayPage() {
         <TableBody>
           {loading && (
             <TableRow>
-              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                 Loading…
               </TableCell>
             </TableRow>
           )}
           {!loading && displayRows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                 Nobody matches this filter yet.
               </TableCell>
             </TableRow>
@@ -205,6 +211,16 @@ export default function TimesheetsTodayPage() {
               <TableCell>{formatDuration(worked)}</TableCell>
               <TableCell>{formatDuration(lunch)}</TableCell>
               <TableCell>{formatDuration(brk)}</TableCell>
+              <TableCell>
+                <span className="flex items-center gap-2">
+                  {formatDuration(row.weekly.worked_ms)}
+                  {row.weekly.is_overtime && (
+                    <Badge variant="destructive">
+                      OT +{formatDuration(row.weekly.overtime_ms)}
+                    </Badge>
+                  )}
+                </span>
+              </TableCell>
               <TableCell className="text-muted-foreground">
                 {row.state.current_span_started_at
                   ? new Date(row.state.current_span_started_at).toLocaleTimeString([], {

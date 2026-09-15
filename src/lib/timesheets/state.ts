@@ -15,7 +15,7 @@ export interface TimePunch {
   profile_id: string;
   event_type: PunchEventType;
   occurred_at: string;
-  source: "web" | "desktop" | "admin_edit";
+  source: "web" | "desktop" | "admin_edit" | "auto";
   note: string | null;
 }
 
