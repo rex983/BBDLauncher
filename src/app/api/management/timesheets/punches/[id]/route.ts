@@ -12,31 +12,40 @@ const patchSchema = z.object({
   note: z.string().nullable().optional(),
 });
 
-// Fetch the target punch and its owner's department in one query so the
-// scope check doesn't cost a second round trip. Admins skip the scope check.
+// Fetches the target punch. For non-admins, additionally fetches the punch
+// owner's profile and enforces (office ∩ department ∩ is_active). Admins
+// skip the profile fetch entirely.
 async function loadPunchWithScope(id: string) {
   const gate = await requireTimeDataAccess(null, "edit");
-  if (!gate.ok) return null;
+  if (!gate.ok) return { fail: gate.response };
 
   const { data: punch } = await gate.supabase
     .from("time_punches")
-    .select("id, profile_id, event_type, occurred_at, profiles!inner(department, office, is_active)")
+    .select("id, profile_id, event_type, occurred_at")
     .eq("id", id)
-    .single<{
-      id: string;
-      profile_id: string;
-      event_type: string;
-      occurred_at: string;
-      profiles: { department: string | null; office: string | null; is_active: boolean };
-    }>();
-  if (!punch) return null;
+    .maybeSingle();
+  if (!punch) {
+    return { fail: NextResponse.json({ error: "Punch not found" }, { status: 404 }) };
+  }
 
   if (!gate.viewerIsAdmin) {
-    if (punch.profiles.is_active === false) return null;
-    if (gate.scope.department && punch.profiles.department !== gate.scope.department) return null;
-    if (gate.scope.office && punch.profiles.office !== gate.scope.office) return null;
+    const { data: prof } = await gate.supabase
+      .from("profiles")
+      .select("department, office, is_active")
+      .eq("id", punch.profile_id)
+      .maybeSingle();
+    if (!prof || prof.is_active === false) {
+      return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
+    }
+    if (gate.scope.department && prof.department !== gate.scope.department) {
+      return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
+    }
+    if (gate.scope.office && prof.office !== gate.scope.office) {
+      return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
+    }
   }
-  return { session: gate.session, supabase: gate.supabase, punch };
+
+  return { ok: true as const, session: gate.session, supabase: gate.supabase, punch };
 }
 
 export async function PATCH(
@@ -45,7 +54,7 @@ export async function PATCH(
 ) {
   const { id } = await ctx.params;
   const gate = await loadPunchWithScope(id);
-  if (!gate) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  if (!gate.ok) return gate.fail;
 
   const parsed = patchSchema.safeParse(await req.json());
   if (!parsed.success) {
@@ -73,7 +82,7 @@ export async function DELETE(
 ) {
   const { id } = await ctx.params;
   const gate = await loadPunchWithScope(id);
-  if (!gate) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  if (!gate.ok) return gate.fail;
 
   const { error } = await gate.supabase.from("time_punches").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
