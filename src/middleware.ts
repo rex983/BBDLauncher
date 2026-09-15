@@ -7,6 +7,10 @@ const publicPaths = [
   "/api/auth",
   "/api/saml/metadata",
   "/api/sso/jwks",
+  // Cron endpoints gate themselves via CRON_SECRET / x-vercel-cron header.
+  // If middleware redirects them to /login, external cron pings return
+  // 307-then-HTML and never actually execute the handler.
+  "/api/cron",
 ];
 
 /** Only allow relative paths as callback URLs to prevent open redirect */

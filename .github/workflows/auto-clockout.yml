@@ -27,15 +27,23 @@ jobs:
     steps:
       - name: Ping /api/cron/auto-clockout
         run: |
-          curl \
+          set -euo pipefail
+          response=$(curl \
             --fail-with-body \
             --silent \
             --show-error \
             --retry 2 \
             --retry-delay 5 \
             --max-time 60 \
+            --write-out '\nHTTP_STATUS:%{http_code}\n' \
             -X POST \
             -H "Authorization: Bearer $CRON_SECRET" \
-            https://bbd-launcher.vercel.app/api/cron/auto-clockout
+            https://bbd-launcher.vercel.app/api/cron/auto-clockout)
+          echo "$response"
+          status=$(echo "$response" | tail -1 | cut -d: -f2)
+          if [ "$status" != "200" ]; then
+            echo "::error::Expected HTTP 200, got $status"
+            exit 1
+          fi
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
