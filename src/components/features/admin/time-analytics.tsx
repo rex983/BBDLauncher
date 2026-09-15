@@ -64,13 +64,13 @@ const DEPARTMENTS: Department[] = ["SALES TEAM", "BST", "RnD"];
 type SortKey = "total" | "overtime" | "name";
 
 function fmtWeekLabel(iso: string) {
-  return new Date(iso).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-  });
+  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-export default function TimeAnalyticsPage() {
+// Time-data analytics widget. Rendered inside /admin/analytics as its own
+// tab; sources data from /api/management/analytics/time. Scope is enforced
+// server-side (admin sees all, managers see their office ∩ department).
+export function TimeAnalytics() {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "admin";
   const viewerOffice = session?.user?.office ?? null;
@@ -106,72 +106,63 @@ export default function TimeAnalyticsPage() {
     const sorted = [...data.rows];
     if (sort === "total") sorted.sort((a, b) => b.total_ms - a.total_ms);
     else if (sort === "overtime") sorted.sort((a, b) => b.overtime_ms - a.overtime_ms);
-    else if (sort === "name") sorted.sort((a, b) =>
-      (a.profile.name || a.profile.email).localeCompare(b.profile.name || b.profile.email),
-    );
+    else if (sort === "name")
+      sorted.sort((a, b) =>
+        (a.profile.name || a.profile.email).localeCompare(b.profile.name || b.profile.email),
+      );
     return sorted;
   }, [data, sort]);
 
-  const rangeLabel = RANGE_OPTIONS.find((r) => r.value === weeks)?.label ?? `${weeks} weeks`;
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Time Analytics</h1>
-          <p className="text-muted-foreground text-sm">
-            Hours worked, overtime, and shift totals across your scope. {rangeLabel}.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Select value={String(weeks)} onValueChange={(v) => setWeeks(Number(v))}>
-            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {RANGE_OPTIONS.map((r) => (
-                <SelectItem key={r.value} value={String(r.value)}>{r.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Office</span>
-            {isAdmin ? (
-              <Select value={office} onValueChange={setOffice}>
-                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All</SelectItem>
-                  {OFFICES.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Badge variant="outline">{viewerOffice ?? "—"}</Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Department</span>
-            {isAdmin ? (
-              <Select value={department} onValueChange={setDepartment}>
-                <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All</SelectItem>
-                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Badge variant="outline">{viewerDepartment ?? "—"}</Badge>
-            )}
-          </div>
-          {isAdmin && (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-input"
-                checked={includeInactive}
-                onChange={(e) => setIncludeInactive(e.target.checked)}
-              />
-              Include inactive
-            </label>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Select value={String(weeks)} onValueChange={(v) => setWeeks(Number(v))}>
+          <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {RANGE_OPTIONS.map((r) => (
+              <SelectItem key={r.value} value={String(r.value)}>{r.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Office</span>
+          {isAdmin ? (
+            <Select value={office} onValueChange={setOffice}>
+              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All</SelectItem>
+                {OFFICES.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Badge variant="outline">{viewerOffice ?? "—"}</Badge>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Department</span>
+          {isAdmin ? (
+            <Select value={department} onValueChange={setDepartment}>
+              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All</SelectItem>
+                {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Badge variant="outline">{viewerDepartment ?? "—"}</Badge>
+          )}
+        </div>
+        {isAdmin && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-input"
+              checked={includeInactive}
+              onChange={(e) => setIncludeInactive(e.target.checked)}
+            />
+            Include inactive
+          </label>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -187,7 +178,7 @@ export default function TimeAnalyticsPage() {
         <Stat
           label="Overtime hours"
           value={loading || !data ? "…" : formatDuration(data.summary.total_overtime_ms)}
-          sub={data ? `${data.summary.in_overtime_count} employees over 40h/wk` : undefined}
+          sub={data ? `${data.summary.in_overtime_count} over 40h/wk` : undefined}
           highlight={!!data && data.summary.in_overtime_count > 0}
         />
         <Stat
@@ -233,7 +224,10 @@ export default function TimeAnalyticsPage() {
               </TableHeader>
               <TableBody>
                 {rows.map((row) => (
-                  <TableRow key={row.profile.id} className={row.profile.is_active === false ? "opacity-60" : undefined}>
+                  <TableRow
+                    key={row.profile.id}
+                    className={row.profile.is_active === false ? "opacity-60" : undefined}
+                  >
                     <TableCell className="font-medium">
                       <Link
                         href={`/management/timesheets/${row.profile.id}`}
@@ -274,7 +268,11 @@ export default function TimeAnalyticsPage() {
                       row.weeks.map((w) => (
                         <TableCell key={w.week_start} className="text-sm">
                           <span className="flex items-center gap-1">
-                            {w.worked_ms > 0 ? formatDuration(w.worked_ms) : <span className="text-muted-foreground">—</span>}
+                            {w.worked_ms > 0 ? (
+                              formatDuration(w.worked_ms)
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                             {w.overtime_ms > 0 && <Badge variant="destructive">OT</Badge>}
                           </span>
                         </TableCell>
@@ -288,7 +286,7 @@ export default function TimeAnalyticsPage() {
       </Card>
 
       <p className="text-xs text-muted-foreground">
-        Weeks run Sunday–Saturday, ET. Overtime is any time past 40 hours in a week. Backfills and admin edits are included in the totals.
+        Weeks run Sunday–Saturday, ET. Overtime is any time past 40 hours in a week.
       </p>
     </div>
   );

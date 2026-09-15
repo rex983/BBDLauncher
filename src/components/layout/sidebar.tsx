@@ -38,7 +38,6 @@ const navItems = [
 const managementItems = [
   { href: "/management/timesheets", label: "Timesheets", icon: Clock },
   { href: "/management/timeoff", label: "Time-off Queue", icon: CalendarCheck },
-  { href: "/analytics", label: "Time Analytics", icon: BarChart3 },
 ];
 
 const adminItems = [
@@ -68,13 +67,8 @@ export function Sidebar() {
     canAccessAdminPath(effectiveRole, item.href)
   );
   const showManagementNav = canViewTimeData(effectiveRole);
-  // /analytics is gated by canViewTimeData at the layout level, not
-  // canAccessManagementPath — treat it as visible whenever the Management
-  // nav is visible.
   const visibleManagementItems = managementItems.filter((item) =>
-    item.href.startsWith("/analytics")
-      ? canViewTimeData(effectiveRole)
-      : canAccessManagementPath(effectiveRole, item.href)
+    canAccessManagementPath(effectiveRole, item.href)
   );
   const preview = { viewAs, viewAsOffice };
 

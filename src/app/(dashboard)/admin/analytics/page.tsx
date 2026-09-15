@@ -22,7 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { OvertimeCard } from "@/components/features/admin/overtime-card";
+import { TimeAnalytics } from "@/components/features/admin/time-analytics";
 
 type DestStat = {
   id: string;
@@ -217,14 +217,13 @@ export default function AdminAnalyticsPage() {
         />
       </div>
 
-      <OvertimeCard />
-
       <Tabs defaultValue="apps" className="space-y-4">
         <TabsList>
           <TabsTrigger value="apps">By App</TabsTrigger>
           <TabsTrigger value="links">By Link</TabsTrigger>
           <TabsTrigger value="users">By User</TabsTrigger>
           <TabsTrigger value="recent">Recent Activity</TabsTrigger>
+          <TabsTrigger value="time">Time &amp; Hours</TabsTrigger>
         </TabsList>
 
         <TabsContent value="apps" className="space-y-3">
@@ -391,6 +390,10 @@ export default function AdminAnalyticsPage() {
               )}
             </TableBody>
           </Table>
+        </TabsContent>
+
+        <TabsContent value="time" className="space-y-3">
+          <TimeAnalytics />
         </TabsContent>
       </Tabs>
     </div>
