@@ -139,10 +139,16 @@ export async function GET(
         role: session.user.role,
       };
 
-      // Apply custom attribute mapping if configured
+      // Apply custom attribute mapping if configured. Whitelist which
+      // session.user fields can be exposed — matches the SAML SP-initiated
+      // path so a stale mapping row can't accidentally leak future claims.
+      const ALLOWED_USER_FIELDS = new Set([
+        "email", "name", "role", "office", "department", "is_it", "profileId",
+      ]);
       if (ssoConfig.attribute_mapping) {
         const mapping = ssoConfig.attribute_mapping as Record<string, string>;
         for (const [samlAttr, userField] of Object.entries(mapping)) {
+          if (!ALLOWED_USER_FIELDS.has(userField)) continue;
           const value = (session.user as Record<string, unknown>)[userField];
           if (value) attributes[samlAttr] = String(value);
         }

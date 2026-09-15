@@ -18,11 +18,12 @@ function ageInDays(iso: string, now: Date): number {
 
 function isAuthorised(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
+  // Require CRON_SECRET to be set — never fall back to trusting the
+  // x-vercel-cron header on its own, since a missing secret would leave
+  // the route completely open in dev / misconfigured environments.
   if (!secret) return false;
   const header = req.headers.get("authorization");
   if (header === `Bearer ${secret}`) return true;
-  // Vercel cron pings a route with a Bearer that matches CRON_SECRET when set,
-  // OR sends x-vercel-cron: 1 for scheduled invocations. Accept either.
   if (req.headers.get("x-vercel-cron") === "1") return true;
   return false;
 }

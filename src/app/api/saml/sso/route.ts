@@ -62,17 +62,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Hard reject on mismatch. Even though we always sign using the trusted
+  // ACS URL below (so a spoofed value can't redirect the assertion), a
+  // mismatch means either a misconfigured SP or an attempted attack —
+  // fail closed rather than silently rewrite.
   if (requestedAcsUrl !== trustedAcsUrl) {
-    console.warn(
-      `SAML ACS URL mismatch: SP "${spEntityId}" requested "${requestedAcsUrl}" but registered URL is "${trustedAcsUrl}"`
+    return NextResponse.json(
+      { error: "ACS URL does not match registered value" },
+      { status: 403 }
     );
   }
 
-  // Build attributes from mapping
+  // Build attributes from mapping. userField is admin-configured, but
+  // whitelist to the identity claims we intend to expose — this way a
+  // future addition to session.user (e.g. an internal token) can't leak
+  // via a stale mapping row.
+  const ALLOWED_USER_FIELDS = new Set([
+    "email", "name", "role", "office", "department", "is_it", "profileId",
+  ]);
   const attributes: Record<string, string> = {};
   if (ssoConfig.attribute_mapping) {
     const mapping = ssoConfig.attribute_mapping as Record<string, string>;
     for (const [samlAttr, userField] of Object.entries(mapping)) {
+      if (!ALLOWED_USER_FIELDS.has(userField)) continue;
       const value = (session.user as Record<string, unknown>)[userField];
       if (value) attributes[samlAttr] = String(value);
     }

@@ -47,6 +47,13 @@ export async function decryptStrapiCookie(
     const jwk = await crypto.subtle.exportKey("jwk", key);
     const joseKey = await jose.importJWK(jwk, "A256GCM");
     const { payload } = await jose.jwtDecrypt(cookieValue, joseKey);
+    const email = (payload as { email?: unknown }).email;
+    // Only accept BBD-domain identities. If Strapi is ever compromised or
+    // misconfigured to hand us a cookie for an external email, refuse it
+    // instead of letting NextAuth mint a launcher session for that user.
+    if (typeof email !== "string" || !email.toLowerCase().endsWith("@bigbuildingsdirect.com")) {
+      return null;
+    }
     return payload as unknown as StrapiSsoPayload;
   } catch (error) {
     console.error("Failed to decrypt Strapi SSO cookie:", error);
