@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { PunchEventType } from "@/lib/timesheets/state";
+import { localDateInZone, scheduledTimeInZone } from "@/lib/timesheets/tz";
 import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 60;
@@ -52,26 +53,40 @@ async function handle(req: NextRequest) {
     return NextResponse.json({ error: recentErr.message }, { status: 500 });
   }
 
-  const latest = new Map<string, PunchEventType>();
+  // Track (latest event, latest event time) per profile so we can
+  // backdate the clock_out to the same ET-local day as the last event.
+  // Without the backdate, midnight cron clockouts land on the day AFTER
+  // the clock_in, so weekly bucketing never sees a matching pair.
+  const latest = new Map<string, { eventType: PunchEventType; occurredAt: string }>();
   for (const row of recent || []) {
     if (!latest.has(row.profile_id)) {
-      latest.set(row.profile_id, row.event_type as PunchEventType);
+      latest.set(row.profile_id, {
+        eventType: row.event_type as PunchEventType,
+        occurredAt: row.occurred_at as string,
+      });
     }
   }
-  const stillOnClock: string[] = [];
-  for (const [profile_id, eventType] of latest) {
-    if (eventType !== "clock_out") stillOnClock.push(profile_id);
+  const stillOnClock: { profile_id: string; occurred_at: string }[] = [];
+  for (const [profile_id, info] of latest) {
+    if (info.eventType === "clock_out") continue;
+    // End of the ET-local day the last event occurred on, minus 1 ms.
+    const dayKey = localDateInZone(new Date(info.occurredAt));
+    const [y, m, d] = dayKey.split("-").map(Number);
+    const nextDayNoon = new Date(Date.UTC(y, m - 1, d + 1, 12, 0, 0));
+    const nextDayMidnight = scheduledTimeInZone(nextDayNoon, "00:00");
+    const endOfDay = new Date(nextDayMidnight.getTime() - 1);
+    stillOnClock.push({ profile_id, occurred_at: endOfDay.toISOString() });
   }
 
   let clockedOut = 0;
   if (stillOnClock.length > 0) {
     const { error: insertErr } = await supabase.from("time_punches").insert(
-      stillOnClock.map((profile_id) => ({
-        profile_id,
+      stillOnClock.map((row) => ({
+        profile_id: row.profile_id,
         event_type: "clock_out",
-        occurred_at: now.toISOString(),
-        source: "admin_edit",
-        note: "Auto clock-out by nightly cron",
+        occurred_at: row.occurred_at,
+        source: "auto",
+        note: "Auto clock-out at end of day (nightly cron)",
       })),
     );
     if (insertErr) {

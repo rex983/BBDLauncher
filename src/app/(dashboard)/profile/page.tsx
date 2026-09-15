@@ -7,7 +7,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { computeState, formatDuration, STATUS_LABEL, type TimePunch } from "@/lib/timesheets/state";
-import { startOfDayInZone } from "@/lib/timesheets/tz";
+import { computeDayWorkedMs } from "@/lib/timesheets/weekly";
+import { startOfDayInZone, localDateInZone } from "@/lib/timesheets/tz";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DEFAULT_START = "10:00";
@@ -138,10 +139,11 @@ export default async function ProfilePage() {
   const todayPunches = punches14.filter((p) => new Date(p.occurred_at) >= startOfToday);
   const todayState = computeState(todayPunches, now);
 
-  // 14-day totals: bucket punches by local day, fold each day independently.
+  // 14-day totals: bucket punches by ET-local day, fold each day
+  // independently with the day-end cap so stranded open shifts don't leak.
   const dayBuckets = new Map<string, TimePunch[]>();
   for (const p of punches14) {
-    const key = new Date(p.occurred_at).toLocaleDateString();
+    const key = localDateInZone(new Date(p.occurred_at));
     const list = dayBuckets.get(key) || [];
     list.push(p);
     dayBuckets.set(key, list);
@@ -149,9 +151,17 @@ export default async function ProfilePage() {
   let worked14 = 0;
   let lunch14 = 0;
   let break14 = 0;
-  for (const list of dayBuckets.values()) {
-    const s = computeState(list, now);
-    worked14 += s.worked_ms;
+  const todayKey = localDateInZone(now);
+  for (const [dayKey, list] of dayBuckets) {
+    worked14 += computeDayWorkedMs(list, dayKey, now);
+    // Lunch/break spans use the same cap semantics.
+    const capNow = dayKey === todayKey ? now : new Date(startOfToday);
+    if (dayKey !== todayKey) {
+      const [y, m, d] = dayKey.split("-").map(Number);
+      const dayEnd = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
+      capNow.setTime(dayEnd.getTime());
+    }
+    const s = computeState(list, capNow);
     lunch14 += s.lunch_ms;
     break14 += s.break_ms;
   }

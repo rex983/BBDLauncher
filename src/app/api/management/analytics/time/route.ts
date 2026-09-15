@@ -1,8 +1,9 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canViewTimeData, timeDataScope } from "@/lib/auth/permissions";
-import { computeState, type TimePunch } from "@/lib/timesheets/state";
+import { type TimePunch } from "@/lib/timesheets/state";
 import {
+  computeDayWorkedMs,
   OVERTIME_THRESHOLD_MS,
 } from "@/lib/timesheets/weekly";
 import { localDateInZone, startOfWeekSundayInZone } from "@/lib/timesheets/tz";
@@ -134,7 +135,7 @@ export async function GET(req: NextRequest) {
     const weekTotals = profileWeeks.map((dayBuckets, idx) => {
       let weekTotal = 0;
       for (const day of dayBuckets) {
-        weekTotal += computeState(day.punches, now).worked_ms;
+        weekTotal += computeDayWorkedMs(day.punches, day.date, now);
       }
       const overtime = Math.max(0, weekTotal - OVERTIME_THRESHOLD_MS);
       profileTotal += weekTotal;
