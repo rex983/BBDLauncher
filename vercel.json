@@ -7,10 +7,6 @@
     {
       "path": "/api/cron/midnight-signout",
       "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/cron/auto-clockout",
-      "schedule": "0 23 * * *"
     }
   ]
 }

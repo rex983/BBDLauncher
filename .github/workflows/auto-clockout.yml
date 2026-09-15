@@ -1,0 +1,41 @@
+# Every 5 minutes, poke the launcher's auto-clockout endpoint so any
+# employee who is past their (scheduled + extension) end time gets a
+# clock_out punch backdated to that end time.
+#
+# Lives here (not vercel.json) because Vercel's Hobby tier only allows
+# daily crons. GitHub Actions gives us 5-min granularity for free, and
+# the endpoint's isAuthorised() already accepts an Authorization Bearer
+# header identical to the Vercel-cron path.
+#
+# Setup: add repo secret CRON_SECRET (same value as the Vercel env var).
+
+name: Auto Clockout
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: auto-clockout
+  cancel-in-progress: false
+
+jobs:
+  fire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping /api/cron/auto-clockout
+        run: |
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --retry 2 \
+            --retry-delay 5 \
+            --max-time 60 \
+            -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            https://bbd-launcher.vercel.app/api/cron/auto-clockout
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
