@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   canEditTimeData,
   canViewTimeData,
+  isAdmin,
   timeDataScope,
   type TimeDataScope,
 } from "@/lib/auth/permissions";
@@ -17,6 +18,7 @@ interface OkBase {
   session: Session;
   supabase: SupabaseClient;
   scope: TimeDataScope & { allowed: true };
+  viewerIsAdmin: boolean;
 }
 interface Fail {
   ok: false;
@@ -30,16 +32,18 @@ export type ScopeGateWithTarget<T> = OkWithTarget<T> | Fail;
 //   1. session exists
 //   2. role has view/edit permission
 //   3. viewer has a valid (department, office) scope
-//   4. (optional) target profile is active AND falls within both scope axes
+//   4. (optional) target profile falls within both scope axes AND is active
 //
-// Pass null for targetProfileId when the route touches a list, not a specific
-// employee — the target check is skipped.
+// Admins bypass step 4 entirely — they can view/edit anyone, including
+// inactive users and themselves. Pass null for targetProfileId when the
+// route touches a list, not a specific employee.
 export async function requireTimeDataAccess(
   targetProfileId: string | null,
   need: Need,
 ): Promise<ScopeGate> {
   const base = await enterScope(need);
   if (!base.ok) return base;
+  if (base.viewerIsAdmin) return base;
 
   if (targetProfileId && (base.scope.department || base.scope.office)) {
     const { data } = await base.supabase
@@ -59,6 +63,7 @@ export async function requireTimeDataAccess(
 // Same as requireTimeDataAccess but fetches the target profile with the given
 // columns AND enforces scope on the returned row — one query, not two.
 // `selectColumns` must include `department`, `office`, and `is_active`.
+// Admins skip the scope+active checks but still get the target row.
 export async function requireTimeDataAccessWithProfile<
   T extends { department: string | null; office: string | null; is_active: boolean },
 >(
@@ -80,12 +85,15 @@ export async function requireTimeDataAccessWithProfile<
       response: NextResponse.json({ error: "Not found" }, { status: 404 }),
     };
   }
-  if (target.is_active === false) return outOfScope();
-  if (base.scope.department && target.department !== base.scope.department) {
-    return outOfScope();
-  }
-  if (base.scope.office && target.office !== base.scope.office) {
-    return outOfScope();
+
+  if (!base.viewerIsAdmin) {
+    if (target.is_active === false) return outOfScope();
+    if (base.scope.department && target.department !== base.scope.department) {
+      return outOfScope();
+    }
+    if (base.scope.office && target.office !== base.scope.office) {
+      return outOfScope();
+    }
   }
 
   return { ...base, target };
@@ -113,7 +121,13 @@ async function enterScope(need: Need): Promise<ScopeGate> {
     };
   }
 
-  return { ok: true, session, supabase: createAdminClient(), scope };
+  return {
+    ok: true,
+    session,
+    supabase: createAdminClient(),
+    scope,
+    viewerIsAdmin: isAdmin(session.user.role),
+  };
 }
 
 function outOfScope(): Fail {

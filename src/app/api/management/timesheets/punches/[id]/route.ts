@@ -13,7 +13,7 @@ const patchSchema = z.object({
 });
 
 // Fetch the target punch and its owner's department in one query so the
-// scope check doesn't cost a second round trip.
+// scope check doesn't cost a second round trip. Admins skip the scope check.
 async function loadPunchWithScope(id: string) {
   const gate = await requireTimeDataAccess(null, "edit");
   if (!gate.ok) return null;
@@ -31,9 +31,11 @@ async function loadPunchWithScope(id: string) {
     }>();
   if (!punch) return null;
 
-  if (punch.profiles.is_active === false) return null;
-  if (gate.scope.department && punch.profiles.department !== gate.scope.department) return null;
-  if (gate.scope.office && punch.profiles.office !== gate.scope.office) return null;
+  if (!gate.viewerIsAdmin) {
+    if (punch.profiles.is_active === false) return null;
+    if (gate.scope.department && punch.profiles.department !== gate.scope.department) return null;
+    if (gate.scope.office && punch.profiles.office !== gate.scope.office) return null;
+  }
   return { session: gate.session, supabase: gate.supabase, punch };
 }
 

@@ -14,7 +14,7 @@ export async function PATCH(
   const { id } = await ctx.params;
   const gate = await requireTimeDataAccess(null, "edit");
   if (!gate.ok) return gate.response;
-  const { session, supabase, scope } = gate;
+  const { session, supabase, scope, viewerIsAdmin } = gate;
 
   const parsed = decideSchema.safeParse(await req.json());
   if (!parsed.success) {
@@ -37,14 +37,16 @@ export async function PATCH(
   if (reqRow.status !== "pending") {
     return NextResponse.json({ error: "Already decided" }, { status: 409 });
   }
-  if (reqRow.profiles.is_active === false) {
-    return NextResponse.json({ error: "Employee is inactive" }, { status: 403 });
-  }
-  if (scope.department && reqRow.profiles.department !== scope.department) {
-    return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-  }
-  if (scope.office && reqRow.profiles.office !== scope.office) {
-    return NextResponse.json({ error: "Out of scope" }, { status: 403 });
+  if (!viewerIsAdmin) {
+    if (reqRow.profiles.is_active === false) {
+      return NextResponse.json({ error: "Employee is inactive" }, { status: 403 });
+    }
+    if (scope.department && reqRow.profiles.department !== scope.department) {
+      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
+    }
+    if (scope.office && reqRow.profiles.office !== scope.office) {
+      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
+    }
   }
 
   const { data, error } = await supabase
