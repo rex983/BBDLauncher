@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyTimeOffSubmitted } from "@/lib/slack/notify";
 import { TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -97,5 +98,21 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Fire the Slack notification without awaiting so a slow webhook can't
+  // stretch the user's submit latency. Failures are logged inside notify.
+  void notifyTimeOffSubmitted({
+    employeeName: session.user.name || session.user.email || "Unknown",
+    employeeEmail: session.user.email || "",
+    type: parsed.data.type,
+    subcategory: sub,
+    startDate: parsed.data.start_date,
+    endDate: parsed.data.end_date,
+    fullDay: parsed.data.full_day,
+    hours: parsed.data.hours ?? null,
+    reason: parsed.data.reason ?? null,
+    attachmentCount: attachments.length,
+  });
+
   return NextResponse.json(data, { status: 201 });
 }
