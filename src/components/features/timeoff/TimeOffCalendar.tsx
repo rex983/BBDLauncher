@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
@@ -29,20 +28,27 @@ interface Request {
   reason: string | null;
 }
 
+// Tailwind background + text pairs, keyed by type. Kept as a full class name
+// so JIT can pick them up — don't build these strings dynamically.
 const TYPE_COLOR: Record<TimeOffType, string> = {
-  vacation: "bg-sky-500/80 text-white",
-  sick: "bg-rose-500/80 text-white",
-  personal: "bg-amber-500/80 text-white",
-  parental: "bg-violet-500/80 text-white",
-  other: "bg-slate-500/80 text-white",
+  vacation: "bg-sky-500/85 text-white",
+  sick: "bg-rose-500/85 text-white",
+  personal: "bg-amber-500/85 text-white",
+  parental: "bg-violet-500/85 text-white",
+  other: "bg-slate-500/85 text-white",
 };
 
-const STATUS_RING: Record<TimeOffStatus, string> = {
+const STATUS_MOD: Record<TimeOffStatus, string> = {
   approved: "",
-  pending: "ring-2 ring-inset ring-yellow-500/70",
+  pending: "ring-2 ring-inset ring-yellow-500/80",
   denied: "opacity-40 line-through",
-  cancelled: "opacity-30",
+  cancelled: "opacity-25",
 };
+
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const EVENT_ROW_HEIGHT = 22; // px — matches the pill's h-5 + margin
+const EVENT_TOP_OFFSET = 26; // px — leaves room for the date number
+const MAX_VISIBLE_ROWS = 4;
 
 function isoDate(d: Date) {
   const yyyy = d.getFullYear();
@@ -51,29 +57,61 @@ function isoDate(d: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function monthStart(anchor: Date) {
-  return new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-}
-function monthEnd(anchor: Date) {
-  return new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+function addDays(d: Date, n: number) {
+  const c = new Date(d);
+  c.setDate(c.getDate() + n);
+  return c;
 }
 
-function eachDay(from: Date, to: Date): string[] {
-  const out: string[] = [];
-  const c = new Date(from);
-  while (c <= to) {
-    out.push(isoDate(c));
-    c.setDate(c.getDate() + 1);
+function startOfWeek(d: Date) {
+  const c = new Date(d);
+  c.setDate(c.getDate() - c.getDay()); // Sunday
+  c.setHours(0, 0, 0, 0);
+  return c;
+}
+
+// Build the 6x7 grid that renders one month. Includes leading/trailing days
+// from the sibling months so every row has 7 columns (Google-Calendar style).
+function buildMonthGrid(anchor: Date) {
+  const firstOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const gridStart = startOfWeek(firstOfMonth);
+  const weeks: Date[][] = [];
+  for (let w = 0; w < 6; w++) {
+    const row: Date[] = [];
+    for (let d = 0; d < 7; d++) row.push(addDays(gridStart, w * 7 + d));
+    weeks.push(row);
+  }
+  return { weeks, gridStart, gridEnd: addDays(gridStart, 41) };
+}
+
+// Overlap check: [aStart, aEnd] intersects [bStart, bEnd].
+function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string) {
+  return aStart <= bEnd && aEnd >= bStart;
+}
+
+interface WeekEvent {
+  request: Request;
+  profile: Profile | undefined;
+  colStart: number; // 0-6 within the week
+  colEnd: number;   // 0-6 inclusive
+  row: number;      // vertical stacking index
+  clippedLeft: boolean;  // event started before this week
+  clippedRight: boolean; // event ends after this week
+}
+
+// Greedy row assignment: earliest colStart first, drop into the lowest row
+// that has no collision. Google Calendar does the same thing.
+function assignRows(events: Omit<WeekEvent, "row">[]): WeekEvent[] {
+  const sorted = [...events].sort((a, b) => a.colStart - b.colStart);
+  const rowEnds: number[] = [];
+  const out: WeekEvent[] = [];
+  for (const e of sorted) {
+    let r = 0;
+    while (r < rowEnds.length && rowEnds[r] >= e.colStart) r++;
+    rowEnds[r] = e.colEnd;
+    out.push({ ...e, row: r });
   }
   return out;
-}
-
-// Expand a request into all ISO dates it covers, inclusive.
-function coveredDates(r: Request): string[] {
-  const start = new Date(r.start_date + "T00:00:00");
-  const end = new Date(r.end_date + "T00:00:00");
-  if (end < start) return [r.start_date];
-  return eachDay(start, end);
 }
 
 export function TimeOffCalendar() {
@@ -83,9 +121,11 @@ export function TimeOffCalendar() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPending, setShowPending] = useState(true);
+  const [expandedWeek, setExpandedWeek] = useState<number | null>(null);
 
-  const from = isoDate(monthStart(anchor));
-  const to = isoDate(monthEnd(anchor));
+  const { weeks, gridStart, gridEnd } = useMemo(() => buildMonthGrid(anchor), [anchor]);
+  const from = isoDate(gridStart);
+  const to = isoDate(gridEnd);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,142 +149,204 @@ export function TimeOffCalendar() {
     return () => { cancelled = true; };
   }, [from, to, showPending, viewAsOffice]);
 
-  // Map [profileId + isoDate] -> Request for O(1) cell lookup.
-  const cellMap = useMemo(() => {
-    const m = new Map<string, Request>();
-    for (const r of requests) {
-      for (const d of coveredDates(r)) {
-        m.set(`${r.profile_id}|${d}`, r);
-      }
-    }
+  const profileById = useMemo(() => {
+    const m = new Map<string, Profile>();
+    for (const p of profiles) m.set(p.id, p);
     return m;
-  }, [requests]);
+  }, [profiles]);
 
-  // Only render employees who actually have time off this month — otherwise
-  // the calendar is a wall of empty rows.
-  const relevantProfiles = useMemo(() => {
-    const ids = new Set(requests.map((r) => r.profile_id));
-    return profiles
-      .filter((p) => ids.has(p.id))
-      .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
-  }, [profiles, requests]);
+  // Compute stacked events per week — a request spanning multiple weeks
+  // shows up in each week clipped to that week's bounds.
+  const weekEvents = useMemo(() => {
+    return weeks.map((week) => {
+      const weekStartISO = isoDate(week[0]);
+      const weekEndISO = isoDate(week[6]);
+      const raw: Omit<WeekEvent, "row">[] = [];
+      for (const r of requests) {
+        if (!overlaps(r.start_date, r.end_date, weekStartISO, weekEndISO)) continue;
+        // Clip to week; compute column indices from clipped dates.
+        const clippedLeft = r.start_date < weekStartISO;
+        const clippedRight = r.end_date > weekEndISO;
+        const startClipped = clippedLeft ? weekStartISO : r.start_date;
+        const endClipped = clippedRight ? weekEndISO : r.end_date;
+        const colStart = week.findIndex((d) => isoDate(d) === startClipped);
+        const colEnd = week.findIndex((d) => isoDate(d) === endClipped);
+        if (colStart < 0 || colEnd < 0) continue;
+        raw.push({
+          request: r,
+          profile: profileById.get(r.profile_id),
+          colStart,
+          colEnd,
+          clippedLeft,
+          clippedRight,
+        });
+      }
+      return assignRows(raw);
+    });
+  }, [weeks, requests, profileById]);
 
-  const days = eachDay(monthStart(anchor), monthEnd(anchor));
-  const todayISO = isoDate(new Date());
+  const currentMonth = anchor.getMonth();
   const monthLabel = anchor.toLocaleDateString([], { month: "long", year: "numeric" });
+  const todayISOStr = isoDate(new Date());
 
   const shift = (delta: number) => {
     setAnchor((a) => new Date(a.getFullYear(), a.getMonth() + delta, 1));
+    setExpandedWeek(null);
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={() => shift(-1)} aria-label="Previous month">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="min-w-[180px] text-center font-medium">{monthLabel}</div>
+          <div className="min-w-[180px] text-center text-lg font-semibold">{monthLabel}</div>
           <Button variant="outline" size="icon" onClick={() => shift(1)} aria-label="Next month">
             <ChevronRight className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setAnchor(new Date())}>
+          <Button variant="ghost" size="sm" onClick={() => { setAnchor(new Date()); setExpandedWeek(null); }}>
             Today
           </Button>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={showPending}
-            onChange={(e) => setShowPending(e.target.checked)}
-          />
-          Show pending
-        </label>
+        <div className="flex items-center gap-3">
+          <Legend />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={showPending}
+              onChange={(e) => setShowPending(e.target.checked)}
+            />
+            Show pending
+          </label>
+        </div>
       </div>
 
-      <Legend />
+      <div className="border rounded-md overflow-hidden bg-card">
+        <div className="grid grid-cols-7 border-b bg-muted/60 text-xs font-medium">
+          {WEEKDAY_LABELS.map((l) => (
+            <div key={l} className="px-2 py-1 text-center border-r last:border-r-0">
+              {l}
+            </div>
+          ))}
+        </div>
 
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading calendar…</p>
-      ) : relevantProfiles.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No time off in this month.</p>
-      ) : (
-        <div className="overflow-x-auto border rounded-md">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-muted/60">
-                <th className="sticky left-0 z-10 bg-muted/60 text-left p-2 border-r min-w-[160px]">
-                  Employee
-                </th>
-                {days.map((d) => {
-                  const dt = new Date(d + "T00:00:00");
-                  const dow = dt.getDay();
-                  const isWeekend = dow === 0 || dow === 6;
-                  const isToday = d === todayISO;
-                  return (
-                    <th
-                      key={d}
+        {loading && (
+          <div className="p-6 text-sm text-muted-foreground text-center">Loading calendar…</div>
+        )}
+
+        {!loading && weeks.map((week, wi) => {
+          const events = weekEvents[wi];
+          const isExpanded = expandedWeek === wi;
+          const rowCount = events.reduce((max, e) => Math.max(max, e.row + 1), 0);
+          const visibleRows = isExpanded ? rowCount : Math.min(rowCount, MAX_VISIBLE_ROWS);
+          const cellMinHeight = EVENT_TOP_OFFSET + Math.max(visibleRows, 1) * EVENT_ROW_HEIGHT + 8;
+          const overflowCount = rowCount - MAX_VISIBLE_ROWS;
+
+          return (
+            <div
+              key={wi}
+              className="relative grid grid-cols-7 border-b last:border-b-0"
+              style={{ minHeight: `${cellMinHeight}px` }}
+            >
+              {week.map((day, di) => {
+                const isOther = day.getMonth() !== currentMonth;
+                const dayISO = isoDate(day);
+                const isToday = dayISO === todayISOStr;
+                const isWeekend = di === 0 || di === 6;
+                return (
+                  <div
+                    key={di}
+                    className={[
+                      "border-r last:border-r-0 p-1 text-xs",
+                      isOther ? "bg-muted/20 text-muted-foreground/60" : "",
+                      isWeekend && !isOther ? "bg-muted/10" : "",
+                    ].join(" ")}
+                  >
+                    <div
                       className={[
-                        "p-1 border-r text-center font-normal min-w-[28px]",
-                        isWeekend ? "bg-muted/40" : "",
-                        isToday ? "outline outline-1 outline-primary" : "",
+                        "inline-flex items-center justify-center h-6 w-6 rounded-full text-xs",
+                        isToday ? "bg-primary text-primary-foreground font-semibold" : "",
                       ].join(" ")}
                     >
-                      <div className="text-[10px] text-muted-foreground">
-                        {["S", "M", "T", "W", "T", "F", "S"][dow]}
-                      </div>
-                      <div>{dt.getDate()}</div>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {relevantProfiles.map((p) => (
-                <tr key={p.id} className="border-t">
-                  <td className="sticky left-0 z-10 bg-background border-r p-2 whitespace-nowrap">
-                    <Link
-                      href={`/management/timesheets/${p.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {p.name || p.email}
-                    </Link>
-                    <div className="text-[10px] text-muted-foreground">{p.office}</div>
-                  </td>
-                  {days.map((d) => {
-                    const r = cellMap.get(`${p.id}|${d}`);
-                    if (!r) {
-                      const dow = new Date(d + "T00:00:00").getDay();
-                      const isWeekend = dow === 0 || dow === 6;
-                      return (
-                        <td
-                          key={d}
-                          className={`border-r ${isWeekend ? "bg-muted/30" : ""}`}
-                        />
-                      );
-                    }
-                    const label = `${p.name || p.email} — ${TIME_OFF_TYPE_LABEL[r.type]}${r.subcategory ? ` (${r.subcategory})` : ""}${r.reason ? `\n${r.reason}` : ""} [${r.status}]`;
-                    return (
-                      <td key={d} className="border-r p-0">
-                        <div
-                          title={label}
-                          className={[
-                            "h-6 mx-0.5 my-0.5 rounded-sm text-[10px] flex items-center justify-center px-1",
-                            TYPE_COLOR[r.type],
-                            STATUS_RING[r.status],
-                          ].join(" ")}
-                        >
-                          {r.full_day ? "" : `${r.hours}h`}
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                      {day.getDate()}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {events
+                .filter((e) => isExpanded || e.row < MAX_VISIBLE_ROWS)
+                .map((e, ei) => (
+                  <EventBar key={`${wi}-${ei}`} event={e} />
+                ))}
+
+              {!isExpanded && overflowCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedWeek(wi)}
+                  className="absolute right-1 text-[10px] text-muted-foreground hover:text-foreground underline"
+                  style={{
+                    bottom: 2,
+                  }}
+                >
+                  +{overflowCount} more
+                </button>
+              )}
+              {isExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedWeek(null)}
+                  className="absolute right-1 text-[10px] text-muted-foreground hover:text-foreground underline"
+                  style={{ bottom: 2 }}
+                >
+                  Show less
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Hover a bar for details. Approved requests are solid; pending have a yellow ring.
+      </p>
+    </div>
+  );
+}
+
+function EventBar({ event }: { event: WeekEvent }) {
+  const r = event.request;
+  const p = event.profile;
+  const label = `${p?.name || p?.email || "Unknown"} — ${TIME_OFF_TYPE_LABEL[r.type]}${
+    r.subcategory ? ` (${r.subcategory})` : ""
+  }\n${r.start_date}${r.start_date !== r.end_date ? ` – ${r.end_date}` : ""}${
+    r.reason ? `\n${r.reason}` : ""
+  }\n[${r.status}]`;
+
+  // Percent-based positioning so the bar spans its actual grid columns.
+  const leftPct = (event.colStart / 7) * 100;
+  const widthPct = ((event.colEnd - event.colStart + 1) / 7) * 100;
+
+  return (
+    <div
+      className={[
+        "absolute h-5 rounded-sm px-1.5 text-[10px] leading-5 truncate cursor-default",
+        TYPE_COLOR[r.type],
+        STATUS_MOD[r.status],
+        event.clippedLeft ? "rounded-l-none border-l-2 border-l-white/40" : "",
+        event.clippedRight ? "rounded-r-none border-r-2 border-r-white/40" : "",
+      ].join(" ")}
+      style={{
+        left: `calc(${leftPct}% + 2px)`,
+        width: `calc(${widthPct}% - 4px)`,
+        top: `${EVENT_TOP_OFFSET + event.row * EVENT_ROW_HEIGHT}px`,
+      }}
+      title={label}
+    >
+      {r.full_day
+        ? (p?.name || p?.email || "—")
+        : `${p?.name || p?.email || "—"} · ${r.hours}h`}
     </div>
   );
 }
@@ -258,18 +360,14 @@ function Legend() {
     { type: "other", label: "Other" },
   ];
   return (
-    <div className="flex flex-wrap items-center gap-3 text-xs">
+    <div className="flex flex-wrap items-center gap-2 text-xs">
       {items.map((i) => (
         <div key={i.type} className="flex items-center gap-1">
           <span className={`inline-block h-3 w-3 rounded-sm ${TYPE_COLOR[i.type]}`} />
-          <span>{i.label}</span>
+          <span className="text-muted-foreground">{i.label}</span>
         </div>
       ))}
-      <div className="flex items-center gap-1">
-        <span className="inline-block h-3 w-3 rounded-sm bg-slate-300 ring-2 ring-inset ring-yellow-500/70" />
-        <span>Pending</span>
-      </div>
-      <Badge variant="outline" className="text-[10px]">Hover a cell for details</Badge>
+      <Badge variant="outline" className="text-[10px]">Hover for details</Badge>
     </div>
   );
 }
