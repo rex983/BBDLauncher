@@ -114,7 +114,7 @@ function assignRows(events: Omit<WeekEvent, "row">[]): WeekEvent[] {
   return out;
 }
 
-export function TimeOffCalendar() {
+export function TimeOffCalendar({ refreshKey = 0 }: { refreshKey?: number } = {}) {
   const { viewAsOffice } = useRolePreview();
   const [anchor, setAnchor] = useState(() => new Date());
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -147,7 +147,7 @@ export function TimeOffCalendar() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [from, to, showPending, viewAsOffice]);
+  }, [from, to, showPending, viewAsOffice, refreshKey]);
 
   const profileById = useMemo(() => {
     const m = new Map<string, Profile>();

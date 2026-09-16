@@ -48,7 +48,7 @@ interface EmployeeRow {
   latestReasons: string[];
 }
 
-export function TimeOffSummary() {
+export function TimeOffSummary({ refreshKey = 0 }: { refreshKey?: number } = {}) {
   const { viewAsOffice } = useRolePreview();
 
   const currentYear = new Date().getFullYear();
@@ -80,7 +80,7 @@ export function TimeOffSummary() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [from, to, viewAsOffice]);
+  }, [from, to, viewAsOffice, refreshKey]);
 
   const rows: EmployeeRow[] = useMemo(() => {
     const byId = new Map<string, EmployeeRow>();

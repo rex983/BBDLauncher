@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,13 @@ function fmtDate(d: string) {
 }
 
 export default function TimeOffManagementPage() {
+  // Bumped by RequestsQueue each time a request is approved or denied so
+  // the sibling Calendar + Summary tabs pick up the change without a full
+  // page reload. Radix Tabs keeps inactive tabs mounted, so we need an
+  // explicit signal instead of relying on remount.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const bump = useCallback(() => setRefreshKey((k) => k + 1), []);
+
   return (
     <div className="space-y-6">
       <div>
@@ -67,20 +74,20 @@ export default function TimeOffManagementPage() {
           <TabsTrigger value="summary">Summary</TabsTrigger>
         </TabsList>
         <TabsContent value="queue" className="mt-4">
-          <RequestsQueue />
+          <RequestsQueue onDecided={bump} />
         </TabsContent>
         <TabsContent value="calendar" className="mt-4">
-          <TimeOffCalendar />
+          <TimeOffCalendar refreshKey={refreshKey} />
         </TabsContent>
         <TabsContent value="summary" className="mt-4">
-          <TimeOffSummary />
+          <TimeOffSummary refreshKey={refreshKey} />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
 
-function RequestsQueue() {
+function RequestsQueue({ onDecided }: { onDecided: () => void }) {
   const { data: session } = useSession();
   const canDecide = canEditTimeData(session?.user?.role);
   const { viewAsOffice } = useRolePreview();
@@ -107,8 +114,13 @@ function RequestsQueue() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: next, decided_note: note || undefined }),
     });
-    if (!res.ok) { alert("Failed"); return; }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(typeof body.error === "string" ? body.error : "Failed to update request");
+      return;
+    }
     load();
+    onDecided();
   };
 
   return (

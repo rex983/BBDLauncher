@@ -37,9 +37,11 @@ export async function PATCH(
   if (reqRow.status !== "pending") {
     return NextResponse.json({ error: "Already decided" }, { status: 409 });
   }
-  // Segregation of duties: no one approves or denies their own request,
-  // not even an admin. Enforces the two-person rule for HR decisions.
-  if (reqRow.profile_id === session.user.profileId) {
+  // Segregation of duties: manager-tier users can't approve or deny their
+  // own request — the two-person rule for HR decisions. Admins have full
+  // authority and can self-approve, since they may be the only signer with
+  // scope over themselves.
+  if (!viewerIsAdmin && reqRow.profile_id === session.user.profileId) {
     return NextResponse.json(
       { error: "You cannot decide your own time-off request" },
       { status: 403 }
