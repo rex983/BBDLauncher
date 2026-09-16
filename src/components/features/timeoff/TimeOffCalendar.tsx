@@ -1,10 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
-import { TIME_OFF_TYPE_LABEL, type TimeOffStatus, type TimeOffType } from "@/lib/timeoff/types";
+import { canEditTimeData } from "@/lib/auth/permissions";
+import {
+  RequestDetailDialog,
+  type DetailRow,
+} from "@/components/features/timeoff/RequestDetailDialog";
+import {
+  TIME_OFF_TYPE_LABEL,
+  type TimeOffAttachment,
+  type TimeOffStatus,
+  type TimeOffType,
+} from "@/lib/timeoff/types";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Profile {
@@ -26,6 +37,10 @@ interface Request {
   hours: number | null;
   status: TimeOffStatus;
   reason: string | null;
+  decided_note: string | null;
+  decided_at: string | null;
+  created_at: string;
+  attachments: TimeOffAttachment[] | null;
 }
 
 // Tailwind background + text pairs, keyed by type. Kept as a full class name
@@ -116,12 +131,16 @@ function assignRows(events: Omit<WeekEvent, "row">[]): WeekEvent[] {
 
 export function TimeOffCalendar({ refreshKey = 0 }: { refreshKey?: number } = {}) {
   const { viewAsOffice } = useRolePreview();
+  const { data: session } = useSession();
+  const canManage = canEditTimeData(session?.user?.role);
   const [anchor, setAnchor] = useState(() => new Date());
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPending, setShowPending] = useState(true);
   const [expandedWeek, setExpandedWeek] = useState<number | null>(null);
+  const [selected, setSelected] = useState<DetailRow | null>(null);
+  const [localRefreshKey, setLocalRefreshKey] = useState(0);
 
   const { weeks, gridStart, gridEnd } = useMemo(() => buildMonthGrid(anchor), [anchor]);
   const from = isoDate(gridStart);
@@ -147,7 +166,7 @@ export function TimeOffCalendar({ refreshKey = 0 }: { refreshKey?: number } = {}
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [from, to, showPending, viewAsOffice, refreshKey]);
+  }, [from, to, showPending, viewAsOffice, refreshKey, localRefreshKey]);
 
   const profileById = useMemo(() => {
     const m = new Map<string, Profile>();
@@ -278,7 +297,11 @@ export function TimeOffCalendar({ refreshKey = 0 }: { refreshKey?: number } = {}
               {events
                 .filter((e) => isExpanded || e.row < MAX_VISIBLE_ROWS)
                 .map((e, ei) => (
-                  <EventBar key={`${wi}-${ei}`} event={e} />
+                  <EventBar
+                    key={`${wi}-${ei}`}
+                    event={e}
+                    onClick={() => setSelected(toDetailRow(e.request, e.profile))}
+                  />
                 ))}
 
               {!isExpanded && overflowCount > 0 && (
@@ -309,13 +332,43 @@ export function TimeOffCalendar({ refreshKey = 0 }: { refreshKey?: number } = {}
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Hover a bar for details. Approved requests are solid; pending have a yellow ring.
+        Hover a bar for a quick peek. Click a bar to open, edit, or delete the request.
       </p>
+
+      <RequestDetailDialog
+        row={selected}
+        onClose={() => setSelected(null)}
+        canDecide={canManage}
+        canEdit={canManage}
+        onChanged={() => setLocalRefreshKey((k) => k + 1)}
+      />
     </div>
   );
 }
 
-function EventBar({ event }: { event: WeekEvent }) {
+function toDetailRow(r: Request, p: Profile | undefined): DetailRow {
+  return {
+    id: r.id,
+    profile_id: r.profile_id,
+    profile: p
+      ? { name: p.name, email: p.email, office: p.office }
+      : null,
+    type: r.type,
+    subcategory: r.subcategory,
+    start_date: r.start_date,
+    end_date: r.end_date,
+    full_day: r.full_day,
+    hours: r.hours,
+    reason: r.reason,
+    status: r.status,
+    decided_note: r.decided_note,
+    decided_at: r.decided_at,
+    created_at: r.created_at,
+    attachments: r.attachments,
+  };
+}
+
+function EventBar({ event, onClick }: { event: WeekEvent; onClick: () => void }) {
   const r = event.request;
   const p = event.profile;
   const label = `${p?.name || p?.email || "Unknown"} — ${TIME_OFF_TYPE_LABEL[r.type]}${
@@ -329,9 +382,12 @@ function EventBar({ event }: { event: WeekEvent }) {
   const widthPct = ((event.colEnd - event.colStart + 1) / 7) * 100;
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       className={[
-        "absolute h-5 rounded-sm px-1.5 text-[10px] leading-5 truncate cursor-default",
+        "absolute h-5 rounded-sm px-1.5 text-[10px] leading-5 truncate text-left cursor-pointer",
+        "hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary/60",
         TYPE_COLOR[r.type],
         STATUS_MOD[r.status],
         event.clippedLeft ? "rounded-l-none border-l-2 border-l-white/40" : "",
@@ -347,7 +403,7 @@ function EventBar({ event }: { event: WeekEvent }) {
       {r.full_day
         ? (p?.name || p?.email || "—")
         : `${p?.name || p?.email || "—"} · ${r.hours}h`}
-    </div>
+    </button>
   );
 }
 

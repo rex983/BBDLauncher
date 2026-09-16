@@ -6,9 +6,6 @@ import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,7 +14,10 @@ import { useRolePreview } from "@/components/features/launcher/role-preview-cont
 import { TimeOffCalendar } from "@/components/features/timeoff/TimeOffCalendar";
 import { TimeOffSummary } from "@/components/features/timeoff/TimeOffSummary";
 import {
-  TIME_OFF_SUBCATEGORY_HINTS,
+  RequestDetailDialog,
+  type DetailRow,
+} from "@/components/features/timeoff/RequestDetailDialog";
+import {
   TIME_OFF_TYPE_LABEL,
   type TimeOffAttachment,
   type TimeOffStatus,
@@ -48,18 +48,34 @@ function fmtDate(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
-function fmtDateTime(iso: string) {
-  return new Date(iso).toLocaleString([], {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  });
+function toDetailRow(r: Row): DetailRow {
+  return {
+    id: r.id,
+    profile_id: r.profile_id,
+    profile: r.profile
+      ? { name: r.profile.name, email: r.profile.email, office: r.profile.office }
+      : null,
+    type: r.type,
+    subcategory: r.subcategory,
+    start_date: r.start_date,
+    end_date: r.end_date,
+    full_day: r.full_day,
+    hours: r.hours,
+    reason: r.reason,
+    status: r.status,
+    decided_note: r.decided_note,
+    decided_by: r.decided_by,
+    decided_at: r.decided_at,
+    created_at: r.created_at,
+    attachments: r.attachments,
+  };
 }
 
 export default function TimeOffManagementPage() {
-  // Bumped by RequestsQueue each time a request is approved or denied so
-  // the sibling Calendar + Summary tabs pick up the change without a full
-  // page reload. Radix Tabs keeps inactive tabs mounted, so we need an
-  // explicit signal instead of relying on remount.
+  // Bumped by RequestsQueue each time a request is approved, denied,
+  // edited, or deleted so the sibling Calendar + Summary tabs pick up the
+  // change without a full page reload. Radix Tabs keeps inactive tabs
+  // mounted, so we need an explicit signal instead of relying on remount.
   const [refreshKey, setRefreshKey] = useState(0);
   const bump = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -84,7 +100,7 @@ export default function TimeOffManagementPage() {
           <TabsTrigger value="summary">Summary</TabsTrigger>
         </TabsList>
         <TabsContent value="queue" className="mt-4">
-          <RequestsQueue onDecided={bump} />
+          <RequestsQueue onChanged={bump} />
         </TabsContent>
         <TabsContent value="calendar" className="mt-4">
           <TimeOffCalendar refreshKey={refreshKey} />
@@ -99,9 +115,9 @@ export default function TimeOffManagementPage() {
 
 type SectionKey = "pending" | "approved" | "denied";
 
-function RequestsQueue({ onDecided }: { onDecided: () => void }) {
+function RequestsQueue({ onChanged }: { onChanged: () => void }) {
   const { data: session } = useSession();
-  const canDecide = canEditTimeData(session?.user?.role);
+  const canManage = canEditTimeData(session?.user?.role);
   const { viewAsOffice } = useRolePreview();
 
   const [pending, setPending] = useState<Row[]>([]);
@@ -114,7 +130,6 @@ function RequestsQueue({ onDecided }: { onDecided: () => void }) {
     denied: false,
   });
   const [selected, setSelected] = useState<Row | null>(null);
-  const [decideBusy, setDecideBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,9 +151,8 @@ function RequestsQueue({ onDecided }: { onDecided: () => void }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Keep the dialog in sync when the underlying row moves between
-  // sections (e.g., pending -> approved after a decision made from
-  // inside the dialog). We look up the current row by id after each load.
+  // If the dialog is open on a row that just changed sections after a
+  // decision, keep the reference fresh from whichever bucket it moved to.
   const allRows = useMemo(
     () => [...pending, ...approved, ...denied],
     [pending, approved, denied],
@@ -149,27 +163,25 @@ function RequestsQueue({ onDecided }: { onDecided: () => void }) {
     if (fresh && fresh !== selected) setSelected(fresh);
   }, [allRows, selected]);
 
-  const decide = async (id: string, next: "approved" | "denied", note?: string) => {
-    setDecideBusy(true);
+  const decideFromRow = async (id: string, next: "approved" | "denied") => {
+    const note = next === "denied" ? window.prompt("Reason for denial (optional):") || "" : "";
     const res = await fetch(`/api/management/timeoff/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: next, decided_note: note || undefined }),
     });
-    setDecideBusy(false);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       alert(typeof body.error === "string" ? body.error : "Failed to update request");
       return;
     }
-    setSelected(null);
     await load();
-    onDecided();
+    onChanged();
   };
 
-  const decideFromRow = async (id: string, next: "approved" | "denied") => {
-    const note = next === "denied" ? window.prompt("Reason for denial (optional):") || "" : "";
-    await decide(id, next, note);
+  const handleDialogChanged = async () => {
+    await load();
+    onChanged();
   };
 
   const toggle = (k: SectionKey) => setOpen((o) => ({ ...o, [k]: !o[k] }));
@@ -187,7 +199,7 @@ function RequestsQueue({ onDecided }: { onDecided: () => void }) {
           rows={pending}
           loading={loading}
           section="pending"
-          canDecide={canDecide}
+          canDecide={canManage}
           onRowClick={setSelected}
           onDecide={decideFromRow}
           emptyLabel="No pending requests."
@@ -228,13 +240,12 @@ function RequestsQueue({ onDecided }: { onDecided: () => void }) {
         />
       </Section>
 
-      <DetailDialog
-        row={selected}
+      <RequestDetailDialog
+        row={selected ? toDetailRow(selected) : null}
         onClose={() => setSelected(null)}
-        canDecide={canDecide}
-        busy={decideBusy}
-        onApprove={(id) => decide(id, "approved")}
-        onDeny={(id, note) => decide(id, "denied", note)}
+        canDecide={canManage}
+        canEdit={canManage}
+        onChanged={handleDialogChanged}
       />
     </div>
   );
@@ -381,170 +392,4 @@ function RowTable({
       </TableBody>
     </Table>
   );
-}
-
-function DetailDialog({
-  row,
-  onClose,
-  canDecide,
-  busy,
-  onApprove,
-  onDeny,
-}: {
-  row: Row | null;
-  onClose: () => void;
-  canDecide: boolean;
-  busy: boolean;
-  onApprove: (id: string) => void;
-  onDeny: (id: string, note: string) => void;
-}) {
-  const [denyNote, setDenyNote] = useState("");
-
-  useEffect(() => {
-    // Reset the deny note whenever a new row is opened.
-    if (row) setDenyNote("");
-  }, [row?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!row) return null;
-
-  const hint = row.subcategory ? TIME_OFF_SUBCATEGORY_HINTS[row.subcategory] : undefined;
-  const employeeLabel = row.profile?.name || row.profile?.email || "Unknown";
-
-  return (
-    <Dialog open={!!row} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{employeeLabel}</DialogTitle>
-          <DialogDescription>
-            {row.profile?.email}
-            {row.profile?.office ? ` · ${row.profile.office}` : ""}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">{TIME_OFF_TYPE_LABEL[row.type]}</Badge>
-            {row.subcategory && <Badge variant="secondary">{row.subcategory}</Badge>}
-            <StatusBadge status={row.status} />
-          </div>
-
-          {hint && (
-            <p className="text-xs text-muted-foreground">{hint}</p>
-          )}
-
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <Field label="Start">{fmtDate(row.start_date)}</Field>
-            <Field label="End">{fmtDate(row.end_date)}</Field>
-            <Field label="Length">
-              {row.full_day ? "Full day(s)" : `${row.hours} hour${row.hours === 1 ? "" : "s"}`}
-            </Field>
-            <Field label="Submitted">{fmtDateTime(row.created_at)}</Field>
-            {row.decided_at && (
-              <>
-                <Field label={row.status === "approved" ? "Approved" : row.status === "denied" ? "Denied" : "Decided"}>
-                  {fmtDateTime(row.decided_at)}
-                </Field>
-                <Field label="Decided by">{row.decided_by || "—"}</Field>
-              </>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">Notes</div>
-            <div className="text-sm whitespace-pre-wrap">
-              {row.reason || <span className="text-muted-foreground">No notes provided.</span>}
-            </div>
-          </div>
-
-          {row.decided_note && (
-            <div className="space-y-1">
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                {row.status === "denied" ? "Denial reason" : "Manager note"}
-              </div>
-              <div className="text-sm whitespace-pre-wrap">{row.decided_note}</div>
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">Attachments</div>
-            {row.attachments && row.attachments.length > 0 ? (
-              <ul className="space-y-1">
-                {row.attachments.map((a) => (
-                  <li key={a.path}>
-                    <a
-                      href={`/api/timeoff/attachments/${a.path}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 text-sm underline hover:text-foreground"
-                    >
-                      <Paperclip className="h-3 w-3" />
-                      {a.filename}
-                      <span className="text-xs text-muted-foreground">
-                        ({formatBytes(a.size)})
-                      </span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">None.</p>
-            )}
-          </div>
-        </div>
-
-        {row.status === "pending" && canDecide && (
-          <DialogFooter className="flex-col sm:flex-row gap-2 sm:justify-between sm:items-center">
-            <div className="flex-1 w-full">
-              <input
-                type="text"
-                placeholder="Reason for denial (optional)"
-                value={denyNote}
-                onChange={(e) => setDenyNote(e.target.value)}
-                className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => onDeny(row.id, denyNote)}
-                disabled={busy}
-              >
-                <X className="h-4 w-4 mr-1" />
-                Deny
-              </Button>
-              <Button onClick={() => onApprove(row.id)} disabled={busy}>
-                <Check className="h-4 w-4 mr-1" />
-                Approve
-              </Button>
-            </div>
-          </DialogFooter>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="text-sm mt-0.5">{children}</div>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: TimeOffStatus }) {
-  const variants: Record<TimeOffStatus, "default" | "secondary" | "outline" | "destructive"> = {
-    pending: "outline",
-    approved: "default",
-    denied: "destructive",
-    cancelled: "secondary",
-  };
-  return <Badge variant={variants[status]}>{status}</Badge>;
-}
-
-function formatBytes(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
