@@ -8,20 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, LogIn, LogOut, Utensils, Coffee, Wand2 } from "lucide-react";
 import {
   computeState, formatDuration, STATUS_LABEL,
   type PunchEventType, type TimePunch,
 } from "@/lib/timesheets/state";
+import { computeDayWorkedMs } from "@/lib/timesheets/weekly";
+import { localDateInZone } from "@/lib/timesheets/tz";
 import { canEditTimeData } from "@/lib/auth/permissions";
 
 const EVENT_TYPES: { value: PunchEventType; label: string }[] = [
@@ -150,17 +150,21 @@ export default function EmployeeDetailPage({
     load();
   };
 
-  // Group punches by date for readability.
+  // Bucket punches by ET-local day (matches other timesheet math). Days
+  // render newest-first; within a day, punches stay chronological so the
+  // reader can follow the shift top-to-bottom.
+  const now = new Date();
   const byDay = new Map<string, TimePunch[]>();
   for (const p of punches) {
-    const day = new Date(p.occurred_at).toLocaleDateString();
-    const list = byDay.get(day) || [];
+    const key = localDateInZone(new Date(p.occurred_at));
+    const list = byDay.get(key) || [];
     list.push(p);
-    byDay.set(day, list);
+    byDay.set(key, list);
   }
-  const days_desc = [...byDay.entries()].sort(
-    (a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime(),
-  );
+  const days_desc = [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  for (const [, list] of days_desc) {
+    list.sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime());
+  }
 
   return (
     <div className="space-y-6">
@@ -264,64 +268,114 @@ export default function EmployeeDetailPage({
         </DialogContent>
       </Dialog>
 
-      {days_desc.map(([day, list]) => (
-        <section key={day} className="space-y-2">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            {day}
-          </h2>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Time</TableHead>
-                <TableHead>Event</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Note</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {list.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    {new Date(p.occurred_at).toLocaleTimeString([], {
-                      hour: "numeric", minute: "2-digit",
-                    })}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{p.event_type.replace("_", " ")}</Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{p.source}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{p.note || "—"}</TableCell>
-                  <TableCell>
-                    {canEdit && (
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEdit(p)}
-                          title="Edit this punch"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deletePunch(p.id)}
-                          title="Delete this punch"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+      <div className="space-y-4">
+        {days_desc.map(([dayKey, list]) => {
+          const dayState = computeState(list, dayKey === localDateInZone(now) ? now : new Date(list[list.length - 1].occurred_at));
+          const dayWorkedMs = computeDayWorkedMs(list, dayKey, now);
+          return (
+            <Card key={dayKey}>
+              <CardHeader className="flex flex-row items-center justify-between gap-4 py-3">
+                <div>
+                  <div className="text-base font-semibold">{fmtDayHeader(dayKey)}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {list.length} punch{list.length === 1 ? "" : "es"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <DayStat label="Worked" value={formatDuration(dayWorkedMs)} strong />
+                  <DayStat label="Lunch" value={formatDuration(dayState.lunch_ms)} />
+                  <DayStat label="Breaks" value={formatDuration(dayState.break_ms)} />
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <ul className="divide-y">
+                  {list.map((p) => (
+                    <li
+                      key={p.id}
+                      className="grid grid-cols-[80px_160px_80px_1fr_80px] items-center gap-3 py-2.5 group"
+                    >
+                      <div className="text-sm tabular-nums font-medium">
+                        {new Date(p.occurred_at).toLocaleTimeString([], {
+                          hour: "numeric", minute: "2-digit",
+                        })}
                       </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </section>
-      ))}
+                      <div className="flex items-center gap-2">
+                        <EventIcon type={p.event_type} />
+                        <span className="text-sm">{EVENT_LABEL[p.event_type]}</span>
+                      </div>
+                      <div className="text-sm">
+                        {p.source === "auto" ? (
+                          <span title="System-generated" className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                            <Wand2 className="h-3.5 w-3.5" />
+                            auto
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">{p.source}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-sm text-muted-foreground truncate">
+                        {p.note || <span className="opacity-60">—</span>}
+                      </div>
+                      <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                        {canEdit && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => openEdit(p)}
+                              title="Edit this punch"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => deletePunch(p.id)}
+                              title="Delete this punch"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
+}
+
+const EVENT_LABEL: Record<PunchEventType, string> = {
+  clock_in:    "Clock in",
+  clock_out:   "Clock out",
+  lunch_start: "Lunch start",
+  lunch_end:   "Lunch end",
+  break_start: "Break start",
+  break_end:   "Break end",
+};
+
+function EventIcon({ type }: { type: PunchEventType }) {
+  const cls = "h-4 w-4";
+  if (type === "clock_in")    return <LogIn    className={`${cls} text-emerald-600 dark:text-emerald-400`} />;
+  if (type === "clock_out")   return <LogOut   className={`${cls} text-rose-600 dark:text-rose-400`} />;
+  if (type === "lunch_start" || type === "lunch_end") return <Utensils className={`${cls} text-amber-600 dark:text-amber-400`} />;
+  return <Coffee className={`${cls} text-sky-600 dark:text-sky-400`} />;
+}
+
+// dayKey is a YYYY-MM-DD in ET-local — render as e.g. "Wed, Sep 16, 2026".
+function fmtDayHeader(dayKey: string) {
+  const [y, m, d] = dayKey.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString([], {
+    weekday: "short", month: "short", day: "numeric", year: "numeric",
+  });
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
@@ -329,6 +383,15 @@ function StatCard({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border bg-card p-4">
       <div className="text-xs text-muted-foreground uppercase tracking-wider">{label}</div>
       <div className="text-lg font-semibold mt-1">{value}</div>
+    </div>
+  );
+}
+
+function DayStat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="text-right">
+      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
+      <div className={`tabular-nums ${strong ? "font-semibold" : "text-muted-foreground"}`}>{value}</div>
     </div>
   );
 }
