@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
   const { data: requests, error } = await supabase
     .from("time_off_requests")
     .select(
-      "id, profile_id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_at, created_at",
+      "id, profile_id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_at, created_at, attachments",
     )
     .in("profile_id", profileIds)
     .in("status", statuses)

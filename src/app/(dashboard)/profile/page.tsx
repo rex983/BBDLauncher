@@ -76,7 +76,7 @@ export default async function ProfilePage() {
       .order("occurred_at", { ascending: true }),
     supabase
       .from("time_off_requests")
-      .select("id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, created_at")
+      .select("id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, created_at, attachments")
       .eq("profile_id", profileId)
       .order("start_date", { ascending: false })
       .limit(20),

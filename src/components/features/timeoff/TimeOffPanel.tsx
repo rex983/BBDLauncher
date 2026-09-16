@@ -18,12 +18,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   TIME_OFF_SUBCATEGORIES,
+  TIME_OFF_SUBCATEGORY_HINTS,
   TIME_OFF_TYPES,
   TIME_OFF_TYPE_LABEL,
+  type TimeOffAttachment,
   type TimeOffStatus,
   type TimeOffType,
 } from "@/lib/timeoff/types";
-import { Plus } from "lucide-react";
+import { Paperclip, Plus, X } from "lucide-react";
 
 export interface TimeOffRequest {
   id: string;
@@ -38,6 +40,7 @@ export interface TimeOffRequest {
   decided_note: string | null;
   decided_at?: string | null;
   created_at: string;
+  attachments?: TimeOffAttachment[] | null;
 }
 
 const STATUS_VARIANT: Record<TimeOffStatus, "default" | "secondary" | "outline" | "destructive"> = {
@@ -59,6 +62,12 @@ function todayISO() {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export interface TimeOffPanelProps {
@@ -88,6 +97,8 @@ export function TimeOffPanel({
     hours: "",
     reason: "",
   });
+  const [attachments, setAttachments] = useState<TimeOffAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,7 +123,28 @@ export function TimeOffPanel({
       hours: "",
       reason: "",
     });
+    setAttachments([]);
     setError(null);
+  };
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch("/api/timeoff/attachments", { method: "POST", body });
+    setUploading(false);
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      setError(typeof b.error === "string" ? b.error : "Upload failed");
+      return;
+    }
+    const meta: TimeOffAttachment = await res.json();
+    setAttachments((prev) => [...prev, meta]);
+  };
+
+  const removeAttachment = (path: string) => {
+    setAttachments((prev) => prev.filter((a) => a.path !== path));
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -130,6 +162,7 @@ export function TimeOffPanel({
         full_day: form.full_day,
         hours: form.full_day ? null : Number(form.hours),
         reason: form.reason || undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
       }),
     });
     setSubmitting(false);
@@ -212,10 +245,21 @@ export function TimeOffPanel({
                     </SelectTrigger>
                     <SelectContent>
                       {subOptions.map((s) => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                        <SelectItem
+                          key={s}
+                          value={s}
+                          title={TIME_OFF_SUBCATEGORY_HINTS[s] || undefined}
+                        >
+                          {s}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {form.subcategory && TIME_OFF_SUBCATEGORY_HINTS[form.subcategory] && (
+                    <p className="text-xs text-muted-foreground">
+                      {TIME_OFF_SUBCATEGORY_HINTS[form.subcategory]}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -278,6 +322,53 @@ export function TimeOffPanel({
                   placeholder="Anything your manager should know"
                   rows={3}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="attachments">Supporting documents (optional)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="attachments"
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.heic,.webp,.doc,.docx,.txt"
+                    disabled={uploading || attachments.length >= 10}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+                {uploading && (
+                  <p className="text-xs text-muted-foreground">Uploading…</p>
+                )}
+                {attachments.length > 0 && (
+                  <ul className="space-y-1">
+                    {attachments.map((a) => (
+                      <li
+                        key={a.path}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <Paperclip className="h-3 w-3 text-muted-foreground" />
+                        <span className="truncate flex-1">{a.filename}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatBytes(a.size)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(a.path)}
+                          className="text-muted-foreground hover:text-destructive"
+                          aria-label="Remove attachment"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  PDF, images, or Word docs. 10 MB per file, up to 10 files.
+                </p>
               </div>
 
               {error && (
@@ -351,7 +442,27 @@ export function TimeOffPanel({
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-xs">
-                    {r.reason || "—"}
+                    <div className="space-y-1">
+                      {r.reason && <div>{r.reason}</div>}
+                      {r.attachments && r.attachments.length > 0 && (
+                        <ul className="flex flex-wrap gap-2">
+                          {r.attachments.map((a) => (
+                            <li key={a.path}>
+                              <a
+                                href={`/api/timeoff/attachments/${a.path}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-xs underline hover:text-foreground"
+                              >
+                                <Paperclip className="h-3 w-3" />
+                                {a.filename}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {!r.reason && (!r.attachments || r.attachments.length === 0) && "—"}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {r.status === "pending" && (

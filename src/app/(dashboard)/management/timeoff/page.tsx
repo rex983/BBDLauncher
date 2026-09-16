@@ -16,8 +16,13 @@ import { canEditTimeData } from "@/lib/auth/permissions";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { TimeOffCalendar } from "@/components/features/timeoff/TimeOffCalendar";
 import { TimeOffSummary } from "@/components/features/timeoff/TimeOffSummary";
-import { TIME_OFF_TYPE_LABEL, type TimeOffType, type TimeOffStatus } from "@/lib/timeoff/types";
-import { Check, X } from "lucide-react";
+import {
+  TIME_OFF_TYPE_LABEL,
+  type TimeOffAttachment,
+  type TimeOffStatus,
+  type TimeOffType,
+} from "@/lib/timeoff/types";
+import { Check, Paperclip, X } from "lucide-react";
 
 interface Row {
   id: string;
@@ -33,6 +38,7 @@ interface Row {
   status: TimeOffStatus;
   decided_note: string | null;
   created_at: string;
+  attachments: TimeOffAttachment[] | null;
 }
 
 function fmtDate(d: string) {
@@ -160,7 +166,29 @@ function RequestsQueue() {
               <TableCell>
                 {r.full_day ? "Full day" : `${r.hours}h`}
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground max-w-xs">{r.reason || "—"}</TableCell>
+              <TableCell className="text-sm text-muted-foreground max-w-xs">
+                <div className="space-y-1">
+                  {r.reason && <div>{r.reason}</div>}
+                  {r.attachments && r.attachments.length > 0 && (
+                    <ul className="flex flex-wrap gap-2">
+                      {r.attachments.map((a) => (
+                        <li key={a.path}>
+                          <a
+                            href={`/api/timeoff/attachments/${a.path}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs underline hover:text-foreground"
+                          >
+                            <Paperclip className="h-3 w-3" />
+                            {a.filename}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {!r.reason && (!r.attachments || r.attachments.length === 0) && "—"}
+                </div>
+              </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {new Date(r.created_at).toLocaleDateString()}
               </TableCell>

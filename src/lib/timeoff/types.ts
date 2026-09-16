@@ -8,6 +8,17 @@
 export type TimeOffType = "vacation" | "sick" | "personal" | "parental" | "other";
 export type TimeOffStatus = "pending" | "approved" | "denied" | "cancelled";
 
+// A single uploaded document attached to a request. `path` is the storage
+// object key inside the private `time-off-attachments` bucket — never a
+// full URL. Download links are minted on demand by the /api/timeoff/
+// attachments/[...path] route.
+export interface TimeOffAttachment {
+  path: string;
+  filename: string;
+  size: number;
+  mime: string;
+}
+
 export const TIME_OFF_TYPES: { value: TimeOffType; label: string }[] = [
   { value: "vacation", label: "Vacation & Leisure" },
   { value: "sick", label: "Sick" },
@@ -21,51 +32,57 @@ export const TIME_OFF_TYPE_LABEL: Record<TimeOffType, string> = Object.fromEntri
 ) as Record<TimeOffType, string>;
 
 // Subcategory options per type. `other` has no subcategory — the user just
-// fills the notes field. All values are the canonical Google-Form phrasing.
+// fills the notes field. Values mirror the retired Google Form verbatim
+// (including plurals) so historical entries and new app entries line up.
 export const TIME_OFF_SUBCATEGORIES: Record<TimeOffType, string[]> = {
+  personal: [
+    "Illness or injury",
+    "Mental health",
+    "Appointments",
+    "Family emergencies",
+    "Personal development",
+    "Other",
+  ],
   vacation: [
-    "Planned vacation",
-    "Staycation",
-    "Sabbatical",
+    "Planned vacations",
+    "Sabbaticals",
+    "Staycations",
+  ],
+  parental: [
+    "Maternity leave",
+    "Paternity leave",
+    "Family leave",
   ],
   sick: [
     "Short-term illness",
     "Chronic illness",
-  ],
-  personal: [
-    "Personal development",
-    "Family emergency",
-    "Mental health",
-    "Appointment",
-    "Illness or injury",
-    "Other",
-  ],
-  parental: [
-    "Family leave",
-    "Maternity leave",
-    "Paternity leave",
-    "Adoption leave",
+    "Disability leave",
   ],
   other: [],
 };
 
-// Longer descriptions kept for hover / help text, matching the phrasing on
-// the original Google Form so employees see familiar language.
+// Full descriptive line from the original form. Used as the tooltip that
+// pops up on hover in the dropdown so employees see familiar guidance
+// without cluttering the option label itself.
 export const TIME_OFF_SUBCATEGORY_HINTS: Record<string, string> = {
-  "Planned vacation": "Pre-planned leisure activities and travel.",
-  "Staycation": "Relax and recharge at home or locally.",
-  "Sabbatical": "Extended period of leave for personal or professional development.",
-  "Short-term illness": "Short-term illness like the flu or a cold.",
-  "Chronic illness": "Managing a chronic illness.",
-  "Personal development": "Personal growth — a wedding, funeral, or religious holiday.",
-  "Family emergency": "Unexpected family situation like a death, illness, or birth.",
-  "Mental health": "Stress, anxiety, or depression.",
-  "Appointment": "Medical, dental, or other important appointments.",
-  "Illness or injury": "Your own illness or injury, or caring for a sick family member.",
-  "Family leave": "Caring for a child or other family member with a serious illness or injury.",
-  "Maternity leave": "Time off surrounding the birth of a child.",
-  "Paternity leave": "Time off surrounding the birth of a child.",
-  "Adoption leave": "Time off surrounding an adoption.",
+  // Personal
+  "Illness or injury": "Taking time off for their own illness or injury, or to care for a sick family member.",
+  "Mental health": "Taking time for mental health reasons, such as stress, anxiety, or depression.",
+  "Appointments": "Attending medical, dental, or other important appointments.",
+  "Family emergencies": "Dealing with unexpected family situations like a death, illness, or birth.",
+  "Personal development": "Taking time for personal growth, such as attending a wedding, a funeral, or a religious holiday.",
+  // Vacation
+  "Planned vacations": "Taking time off for pre-planned leisure activities and travel.",
+  "Sabbaticals": "Taking an extended period of leave for personal or professional development.",
+  "Staycations": "Taking time off to relax and recharge at home or in the local area.",
+  // Parental
+  "Maternity leave": "Taking time off after childbirth or adoption to care for a newborn or newly adopted child.",
+  "Paternity leave": "Taking time off to bond with a newborn or newly adopted child.",
+  "Family leave": "Taking time off to care for a child or other family member with a serious illness or injury.",
+  // Sick
+  "Short-term illness": "Taking time off for short-term illnesses like the flu or a cold.",
+  "Chronic illness": "Taking time off to manage a chronic illness.",
+  "Disability leave": "Taking time off for a long-term disability.",
 };
 
 // Business-day counter used by the manager summary. Excludes Sat/Sun so a
