@@ -25,12 +25,16 @@ export async function GET() {
   const profileIds = (profiles || []).map((p) => p.id);
   if (profileIds.length === 0) return NextResponse.json({ count: 0 });
 
-  const { count, error } = await supabase
+  // Fetch id rows and count client-side. Supabase's { count: "exact",
+  // head: true } sometimes returns count=null under PostgREST; a plain
+  // select-and-length is trivial for the low volumes involved (pending
+  // rows in the tens at most) and avoids the ambiguity.
+  const { data: rows, error } = await supabase
     .from("time_off_requests")
-    .select("id", { count: "exact", head: true })
+    .select("id")
     .in("profile_id", profileIds)
     .eq("status", "pending");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ count: count ?? 0 });
+  return NextResponse.json({ count: rows?.length ?? 0 });
 }
