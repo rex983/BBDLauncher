@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import {
   canAccessAdminPath,
   canAccessManagementPath,
@@ -52,6 +54,32 @@ const adminItems = [
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
 ];
 
+// Poll the pending-count endpoint whenever the route changes so approving
+// or denying a request in one screen updates the badge in the sidebar on
+// the next navigation. Also refreshes on a slow interval to catch new
+// submissions from other users.
+function usePendingTimeOffCount(enabled: boolean, pathname: string): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled) { setCount(0); return; }
+    let cancelled = false;
+    const fetchCount = async () => {
+      try {
+        const res = await fetch("/api/management/timeoff/pending-count", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const body = await res.json();
+        setCount(typeof body?.count === "number" ? body.count : 0);
+      } catch {
+        // Sidebar badge is decorative — swallow errors.
+      }
+    };
+    fetchCount();
+    const t = setInterval(fetchCount, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [enabled, pathname]);
+  return count;
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
@@ -71,6 +99,7 @@ export function Sidebar() {
     canAccessManagementPath(effectiveRole, item.href)
   );
   const preview = { viewAs, viewAsOffice };
+  const pendingCount = usePendingTimeOffCount(showManagementNav, pathname);
 
   return (
     <aside className="w-64 border-r bg-background min-h-[calc(100vh-4rem)]">
@@ -108,7 +137,12 @@ export function Sidebar() {
                 )}
               >
                 <item.icon className="h-4 w-4" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.href === "/management/timeoff" && pendingCount > 0 && (
+                  <Badge variant="destructive" className="ml-auto tabular-nums">
+                    {pendingCount}
+                  </Badge>
+                )}
               </Link>
             ))}
           </>

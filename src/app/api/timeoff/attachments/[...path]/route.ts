@@ -35,7 +35,11 @@ export async function GET(
     if (!canViewTimeData(session.user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    const scope = timeDataScope(session.user.role, session.user.department);
+    const scope = timeDataScope(
+      session.user.role,
+      session.user.department,
+      session.user.office,
+    );
     if (!scope.allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
