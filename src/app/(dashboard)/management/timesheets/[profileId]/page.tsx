@@ -268,74 +268,69 @@ export default function EmployeeDetailPage({
         </DialogContent>
       </Dialog>
 
-      <div className="space-y-4">
+      <div className="space-y-2">
         {days_desc.map(([dayKey, list]) => {
           const dayState = computeState(list, dayKey === localDateInZone(now) ? now : new Date(list[list.length - 1].occurred_at));
           const dayWorkedMs = computeDayWorkedMs(list, dayKey, now);
           return (
-            <Card key={dayKey}>
-              <CardHeader className="flex flex-row items-center justify-between gap-4 py-3">
-                <div>
-                  <div className="text-base font-semibold">{fmtDayHeader(dayKey)}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {list.length} punch{list.length === 1 ? "" : "es"}
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 text-sm">
+            <Card key={dayKey} className="gap-0 py-0">
+              <CardHeader className="flex flex-row items-center justify-between gap-4 px-4 py-2 border-b">
+                <div className="text-sm font-semibold">{fmtDayHeader(dayKey)}</div>
+                <div className="flex items-center gap-3 text-xs">
                   <DayStat label="Worked" value={formatDuration(dayWorkedMs)} strong />
                   <DayStat label="Lunch" value={formatDuration(dayState.lunch_ms)} />
                   <DayStat label="Breaks" value={formatDuration(dayState.break_ms)} />
                 </div>
               </CardHeader>
-              <CardContent className="pt-0">
+              <CardContent className="px-4 py-0">
                 <ul className="divide-y">
                   {list.map((p) => (
                     <li
                       key={p.id}
-                      className="grid grid-cols-[80px_160px_80px_1fr_80px] items-center gap-3 py-2.5 group"
+                      className="grid grid-cols-[72px_150px_64px_1fr_64px] items-center gap-3 py-1 group text-sm leading-tight"
                     >
-                      <div className="text-sm tabular-nums font-medium">
+                      <div className="tabular-nums font-medium">
                         {new Date(p.occurred_at).toLocaleTimeString([], {
                           hour: "numeric", minute: "2-digit",
                         })}
                       </div>
                       <div className="flex items-center gap-2">
                         <EventIcon type={p.event_type} />
-                        <span className="text-sm">{EVENT_LABEL[p.event_type]}</span>
+                        <span>{EVENT_LABEL[p.event_type]}</span>
                       </div>
-                      <div className="text-sm">
+                      <div className="text-xs">
                         {p.source === "auto" ? (
                           <span title="System-generated" className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
-                            <Wand2 className="h-3.5 w-3.5" />
+                            <Wand2 className="h-3 w-3" />
                             auto
                           </span>
                         ) : (
                           <span className="text-muted-foreground">{p.source}</span>
                         )}
                       </div>
-                      <div className="min-w-0 text-sm text-muted-foreground truncate">
+                      <div className="min-w-0 text-xs text-muted-foreground truncate">
                         {p.note || <span className="opacity-60">—</span>}
                       </div>
-                      <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex gap-0.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                         {canEdit && (
                           <>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-6 w-6"
                               onClick={() => openEdit(p)}
                               title="Edit this punch"
                             >
-                              <Pencil className="h-4 w-4" />
+                              <Pencil className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-6 w-6"
                               onClick={() => deletePunch(p.id)}
                               title="Delete this punch"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </>
                         )}
@@ -362,7 +357,7 @@ const EVENT_LABEL: Record<PunchEventType, string> = {
 };
 
 function EventIcon({ type }: { type: PunchEventType }) {
-  const cls = "h-4 w-4";
+  const cls = "h-3.5 w-3.5";
   if (type === "clock_in")    return <LogIn    className={`${cls} text-emerald-600 dark:text-emerald-400`} />;
   if (type === "clock_out")   return <LogOut   className={`${cls} text-rose-600 dark:text-rose-400`} />;
   if (type === "lunch_start" || type === "lunch_end") return <Utensils className={`${cls} text-amber-600 dark:text-amber-400`} />;
@@ -389,9 +384,9 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 function DayStat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className="text-right">
-      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
-      <div className={`tabular-nums ${strong ? "font-semibold" : "text-muted-foreground"}`}>{value}</div>
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</span>
+      <span className={`tabular-nums ${strong ? "font-semibold" : "text-muted-foreground"}`}>{value}</span>
     </div>
   );
 }
