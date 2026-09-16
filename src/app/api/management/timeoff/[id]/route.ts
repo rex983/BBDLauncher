@@ -21,18 +21,15 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  // Join in the requester's department + office so scope check + row fetch
-  // is one round trip. is_active is also carried so a manager can't approve
-  // time off for a deactivated employee.
+  // Split fetch: time_off_requests has TWO FKs to profiles (profile_id
+  // and decided_by), so `profiles!inner(...)` is ambiguous and returns no
+  // row. Fetch the request first; only join the profile when we actually
+  // need it for scope checks (i.e., non-admin viewers).
   const { data: reqRow } = await supabase
     .from("time_off_requests")
-    .select("profile_id, status, profiles!inner(department, office, is_active)")
+    .select("profile_id, status")
     .eq("id", id)
-    .single<{
-      profile_id: string;
-      status: string;
-      profiles: { department: string | null; office: string | null; is_active: boolean };
-    }>();
+    .single<{ profile_id: string; status: string }>();
   if (!reqRow) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (reqRow.status !== "pending") {
     return NextResponse.json({ error: "Already decided" }, { status: 409 });
@@ -48,13 +45,19 @@ export async function PATCH(
     );
   }
   if (!viewerIsAdmin) {
-    if (reqRow.profiles.is_active === false) {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("department, office, is_active")
+      .eq("id", reqRow.profile_id)
+      .single<{ department: string | null; office: string | null; is_active: boolean }>();
+    if (!prof) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (prof.is_active === false) {
       return NextResponse.json({ error: "Employee is inactive" }, { status: 403 });
     }
-    if (scope.department && reqRow.profiles.department !== scope.department) {
+    if (scope.department && prof.department !== scope.department) {
       return NextResponse.json({ error: "Out of scope" }, { status: 403 });
     }
-    if (scope.office && reqRow.profiles.office !== scope.office) {
+    if (scope.office && prof.office !== scope.office) {
       return NextResponse.json({ error: "Out of scope" }, { status: 403 });
     }
   }
