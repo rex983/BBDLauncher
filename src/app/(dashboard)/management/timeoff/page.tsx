@@ -11,21 +11,26 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { canEditTimeData } from "@/lib/auth/permissions";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
+import { TimeOffCalendar } from "@/components/features/timeoff/TimeOffCalendar";
+import { TimeOffSummary } from "@/components/features/timeoff/TimeOffSummary";
+import { TIME_OFF_TYPE_LABEL, type TimeOffType, type TimeOffStatus } from "@/lib/timeoff/types";
 import { Check, X } from "lucide-react";
 
 interface Row {
   id: string;
   profile_id: string;
   profile?: { email: string; name: string | null; office: string | null };
-  type: "vacation" | "sick" | "personal" | "other";
+  type: TimeOffType;
+  subcategory: string | null;
   start_date: string;
   end_date: string;
   full_day: boolean;
   hours: number | null;
   reason: string | null;
-  status: "pending" | "approved" | "denied" | "cancelled";
+  status: TimeOffStatus;
   decided_note: string | null;
   created_at: string;
 }
@@ -34,12 +39,47 @@ function fmtDate(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
-export default function TimeOffQueuePage() {
+export default function TimeOffManagementPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="text-sm text-muted-foreground">
+          <Link href="/management/timesheets" className="hover:underline">
+            ← Timesheets
+          </Link>
+        </div>
+        <h1 className="text-2xl font-bold">Time Off</h1>
+        <p className="text-muted-foreground">
+          Review requests, see who&rsquo;s off on a shared calendar, and check totals per employee.
+        </p>
+      </div>
+
+      <Tabs defaultValue="queue">
+        <TabsList>
+          <TabsTrigger value="queue">Requests</TabsTrigger>
+          <TabsTrigger value="calendar">Calendar</TabsTrigger>
+          <TabsTrigger value="summary">Summary</TabsTrigger>
+        </TabsList>
+        <TabsContent value="queue" className="mt-4">
+          <RequestsQueue />
+        </TabsContent>
+        <TabsContent value="calendar" className="mt-4">
+          <TimeOffCalendar />
+        </TabsContent>
+        <TabsContent value="summary" className="mt-4">
+          <TimeOffSummary />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function RequestsQueue() {
   const { data: session } = useSession();
   const canDecide = canEditTimeData(session?.user?.role);
   const { viewAsOffice } = useRolePreview();
 
-  const [status, setStatus] = useState("pending");
+  const [status, setStatus] = useState<TimeOffStatus>("pending");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -66,29 +106,18 @@ export default function TimeOffQueuePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-sm text-muted-foreground">
-            <Link href="/management/timesheets" className="hover:underline">
-              ← Timesheets
-            </Link>
-          </div>
-          <h1 className="text-2xl font-bold">Time-off Requests</h1>
-          <p className="text-muted-foreground">Approve or deny requests from your team.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Status</span>
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="denied">Denied</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-sm text-muted-foreground">Status</span>
+        <Select value={status} onValueChange={(v) => setStatus(v as TimeOffStatus)}>
+          <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="denied">Denied</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <Table>
@@ -116,7 +145,14 @@ export default function TimeOffQueuePage() {
                 <div className="font-medium">{r.profile?.name || r.profile?.email}</div>
                 <div className="text-xs text-muted-foreground">{r.profile?.email}</div>
               </TableCell>
-              <TableCell><Badge variant="outline">{r.type}</Badge></TableCell>
+              <TableCell>
+                <div className="flex flex-col gap-1">
+                  <Badge variant="outline" className="w-fit">{TIME_OFF_TYPE_LABEL[r.type]}</Badge>
+                  {r.subcategory && (
+                    <span className="text-xs text-muted-foreground">{r.subcategory}</span>
+                  )}
+                </div>
+              </TableCell>
               <TableCell>
                 {fmtDate(r.start_date)}
                 {r.start_date !== r.end_date && <> – {fmtDate(r.end_date)}</>}
@@ -124,7 +160,7 @@ export default function TimeOffQueuePage() {
               <TableCell>
                 {r.full_day ? "Full day" : `${r.hours}h`}
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground">{r.reason || "—"}</TableCell>
+              <TableCell className="text-sm text-muted-foreground max-w-xs">{r.reason || "—"}</TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {new Date(r.created_at).toLocaleDateString()}
               </TableCell>

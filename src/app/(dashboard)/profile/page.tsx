@@ -9,6 +9,7 @@ import {
 import { computeState, formatDuration, STATUS_LABEL, type TimePunch } from "@/lib/timesheets/state";
 import { computeDayWorkedMs } from "@/lib/timesheets/weekly";
 import { startOfDayInZone, localDateInZone } from "@/lib/timesheets/tz";
+import { TimeOffPanel, type TimeOffRequest } from "@/components/features/timeoff/TimeOffPanel";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DEFAULT_START = "10:00";
@@ -20,19 +21,6 @@ type ScheduleRow = {
   start_time: string;
   end_time: string;
   timezone: string;
-};
-
-type TimeOffRow = {
-  id: string;
-  type: "vacation" | "sick" | "personal" | "other";
-  start_date: string;
-  end_date: string;
-  full_day: boolean;
-  hours: number | null;
-  status: "pending" | "approved" | "denied" | "cancelled";
-  reason: string | null;
-  decided_note: string | null;
-  created_at: string;
 };
 
 type LaunchRow = {
@@ -56,13 +44,6 @@ function fmtTime(t: string) {
   const displayH = h % 12 === 0 ? 12 : h % 12;
   return `${displayH}:${String(m).padStart(2, "0")} ${period}`;
 }
-
-const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  pending: "outline",
-  approved: "default",
-  denied: "destructive",
-  cancelled: "secondary",
-};
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -95,7 +76,7 @@ export default async function ProfilePage() {
       .order("occurred_at", { ascending: true }),
     supabase
       .from("time_off_requests")
-      .select("id, type, start_date, end_date, full_day, hours, status, reason, decided_note, created_at")
+      .select("id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, created_at")
       .eq("profile_id", profileId)
       .order("start_date", { ascending: false })
       .limit(20),
@@ -111,7 +92,7 @@ export default async function ProfilePage() {
   const profile = profileRes.data;
   const schedules = (schedulesRes.data || []) as ScheduleRow[];
   const punches14 = (punches14Res.data || []) as TimePunch[];
-  const timeoff = (timeoffRes.data || []) as TimeOffRow[];
+  const timeoff = (timeoffRes.data || []) as TimeOffRequest[];
   const launches = (launchesRes.data || []) as LaunchRow[];
 
   // Full-week schedule with default-fallback: if the user has ANY override,
@@ -231,46 +212,11 @@ export default async function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>My time-off requests</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {timeoff.length === 0 ? (
-            <p className="text-muted-foreground text-sm">You haven&rsquo;t submitted any time-off requests.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Dates</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Length</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Notes</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {timeoff.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>
-                      {fmtDate(r.start_date)}
-                      {r.start_date !== r.end_date && <> – {fmtDate(r.end_date)}</>}
-                    </TableCell>
-                    <TableCell><Badge variant="outline">{r.type}</Badge></TableCell>
-                    <TableCell>{r.full_day ? "Full day" : `${r.hours}h`}</TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariant[r.status] || "outline"}>{r.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {r.decided_note || r.reason || "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <TimeOffPanel
+        initialRequests={timeoff}
+        title="My time off"
+        description="Submit new requests and see the status of past ones."
+      />
 
       <Card>
         <CardHeader>
