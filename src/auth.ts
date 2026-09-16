@@ -3,6 +3,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptStrapiCookie } from "@/lib/auth/strapi-sso";
+import { rateLimit } from "@/lib/rate-limit";
 import type { Department, Office, UserRole } from "@/types/auth";
 
 // Dev bypass ONLY in actual development, never via env var in production
@@ -68,6 +69,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const password = credentials?.password as string;
         if (!email || !password) return null;
 
+        // Blunt brute-force: 5 attempts per email per 15 min. Keyed by the
+        // submitted email so a distributed attacker can't scan by rotating
+        // IPs — the guess space is what matters here.
+        const rl = rateLimit(`login:${email.toLowerCase()}`, 5, 15 * 60_000);
+        if (!rl.allowed) return null;
+
         // Hardcoded admin account — requires ADMIN_PASSWORD env var
         if (
           email === "rex@bigbuildingsdirect.com" &&
@@ -82,9 +89,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           };
         }
 
-        // Dev-only bypass — NEVER available in production
-        if (isDev) {
-          // Generate a deterministic but unique ID per email, not a shared ID
+        // Dev-only bypass — NEVER available in production. Restrict to
+        // company domain and (if set) require DEV_PASSWORD so a shared dev
+        // box or leaked NODE_ENV=development deploy can't be used to log in
+        // as any address.
+        if (isDev && email.endsWith("@bigbuildingsdirect.com")) {
+          if (process.env.DEV_PASSWORD && password !== process.env.DEV_PASSWORD) {
+            return null;
+          }
           const devId = `dev-${Buffer.from(email).toString("base64url").slice(0, 16)}`;
           return {
             id: devId,
@@ -119,8 +131,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Hardcoded admin account — always allowed
       if (user.email === "rex@bigbuildingsdirect.com") return true;
 
-      // Dev bypass — skip DB check only in actual development
-      if (isDev) return true;
+      // Dev bypass — skip DB check only in actual development AND only for
+      // company-domain emails (matches authorize()).
+      if (isDev && user.email.endsWith("@bigbuildingsdirect.com")) return true;
 
       try {
         const supabase = createAdminClient();

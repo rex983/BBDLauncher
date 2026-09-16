@@ -46,6 +46,10 @@ export async function GET(
         user_id: session.user.profileId,
         link_id: id,
       });
+      return NextResponse.json(
+        { error: "Click denied: audit log unavailable" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.redirect(safeUrl);

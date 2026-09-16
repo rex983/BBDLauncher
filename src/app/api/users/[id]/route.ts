@@ -57,6 +57,23 @@ export async function PUT(
   const needsPrefetch = !viewerIsAdmin || securityChange;
   const deactivating = parsed.data.is_active === false;
 
+  // Any assigned role must be an existing entry in launcher_roles. Without
+  // this check a manager could stamp a user with an arbitrary string that
+  // downstream permission helpers wouldn't recognize.
+  if (parsed.data.role !== undefined) {
+    const { data: roleRow } = await supabase
+      .from("launcher_roles")
+      .select("name")
+      .eq("name", parsed.data.role)
+      .maybeSingle();
+    if (!roleRow) {
+      return NextResponse.json(
+        { error: "Unknown role" },
+        { status: 400 }
+      );
+    }
+  }
+
   if (needsPrefetch) {
     const { data: before } = await supabase
       .from("profiles")

@@ -27,7 +27,6 @@ export default async function DashboardPage({
   const { viewAs, viewAsOffice, clock_required } = await searchParams;
   const isAdmin = session.user.role === "admin";
   const canEditDashboard = canManageContent(session.user.role);
-  const effectiveRole = isAdmin && viewAs ? viewAs : session.user.role;
   const userOffice = session.user.office;
   const viewAsOfficeValid =
     isAdmin && viewAsOffice && (ALL_OFFICES as string[]).includes(viewAsOffice)
@@ -43,8 +42,21 @@ export default async function DashboardPage({
   let links: ImportantLink[] = [];
   let roles: { name: string; display_name: string }[] = [];
   let quote: MotivationalQuote | null = null;
+  let effectiveRole = session.user.role;
   try {
     const supabase = createAdminClient();
+
+    // Resolve view-as role first so we can validate it against known roles
+    // before we trust it in downstream queries. An arbitrary URL string
+    // must not be able to flow into DB filters or (worse) UI hints.
+    if (isAdmin && viewAs) {
+      const { data: validRole } = await supabase
+        .from("launcher_roles")
+        .select("name")
+        .eq("name", viewAs)
+        .maybeSingle();
+      if (validRole?.name) effectiveRole = validRole.name;
+    }
 
     // One round-trip: fetch role-scoped apps via join, plus sections, links,
     // active motivational quote, and (for admins) the role list — all in parallel.

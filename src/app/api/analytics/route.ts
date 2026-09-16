@@ -38,7 +38,13 @@ export async function GET(req: NextRequest) {
   }
 
   const rangeParam = req.nextUrl.searchParams.get("range") ?? "30d";
-  const days = rangeParam in RANGE_DAYS ? RANGE_DAYS[rangeParam] : 30;
+  if (!(rangeParam in RANGE_DAYS)) {
+    return NextResponse.json(
+      { error: `Invalid range. Must be one of: ${Object.keys(RANGE_DAYS).join(", ")}` },
+      { status: 400 }
+    );
+  }
+  const days = RANGE_DAYS[rangeParam];
   const sinceIso =
     days === null ? null : new Date(Date.now() - days * 86400_000).toISOString();
 

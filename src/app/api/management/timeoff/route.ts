@@ -1,6 +1,10 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 
+const VALID_STATUSES = new Set(["pending", "approved", "denied", "cancelled"]);
+const VALID_OFFICES = new Set(["Harbor", "Marion", "BST", "RnD"]);
+const VALID_DEPARTMENTS = new Set(["SALES TEAM", "BST", "RnD"]);
+
 // List time-off requests for everyone in the viewer's department scope.
 // Filter by status via ?status=pending|approved|denied|cancelled (default: pending).
 export async function GET(req: NextRequest) {
@@ -10,10 +14,19 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const status = url.searchParams.get("status") || "pending";
+  if (!VALID_STATUSES.has(status)) {
+    return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+  }
   // Admin-only overlay filters (scope.office/department already dominate
   // for manager-tier viewers, so these only apply when scope is unbounded).
   const officeFilter = url.searchParams.get("office");
   const departmentFilter = url.searchParams.get("department");
+  if (officeFilter && !VALID_OFFICES.has(officeFilter)) {
+    return NextResponse.json({ error: "Invalid office" }, { status: 400 });
+  }
+  if (departmentFilter && !VALID_DEPARTMENTS.has(departmentFilter)) {
+    return NextResponse.json({ error: "Invalid department" }, { status: 400 });
+  }
 
   let profileQuery = supabase
     .from("profiles")

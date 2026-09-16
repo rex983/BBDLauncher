@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageContent } from "@/lib/auth/permissions";
+import { rateLimit } from "@/lib/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { lookup } from "dns/promises";
@@ -63,24 +64,50 @@ function isPrivateIPv6(ip: string): boolean {
   return false;
 }
 
-async function isPublicHost(hostname: string): Promise<boolean> {
-  // If it's already a literal IP, check it directly — never let a raw private
-  // IP through even if DNS isn't involved.
+// Reject hostnames that browsers/Node normalize to loopback via octal, hex,
+// integer, or trailing-dot forms. These bypass the isIP() literal-IP check
+// because they aren't dotted-quad and thus don't classify as IPv4.
+function isSuspiciousHostname(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  if (lower === "localhost") return true;
+  if (lower.endsWith(".localhost")) return true;
+  if (lower === "0" || lower === "0.0.0.0") return true;
+  // Bare hex/octal/decimal (e.g. 0x7f000001, 017700000001, 2130706433)
+  if (/^0x[0-9a-f]+$/.test(lower)) return true;
+  if (/^0[0-7]+$/.test(lower)) return true;
+  if (/^\d+$/.test(lower)) return true;
+  // Metadata service literals (also blocked by isPrivateIPv4 for 169.254, but
+  // guard the alias forms defensively).
+  if (lower === "metadata.google.internal") return true;
+  if (lower.endsWith(".internal")) return true;
+  return false;
+}
+
+async function resolvePublicIPs(hostname: string): Promise<string[] | null> {
   const version = isIP(hostname);
-  if (version === 4) return !isPrivateIPv4(hostname);
-  if (version === 6) return !isPrivateIPv6(hostname);
+  if (version === 4) {
+    return isPrivateIPv4(hostname) ? null : [hostname];
+  }
+  if (version === 6) {
+    return isPrivateIPv6(hostname) ? null : [hostname];
+  }
+  if (isSuspiciousHostname(hostname)) return null;
 
   try {
     const addrs = await lookup(hostname, { all: true, verbatim: false });
-    if (addrs.length === 0) return false;
+    if (addrs.length === 0) return null;
     for (const { address, family } of addrs) {
-      if (family === 4 && isPrivateIPv4(address)) return false;
-      if (family === 6 && isPrivateIPv6(address)) return false;
+      if (family === 4 && isPrivateIPv4(address)) return null;
+      if (family === 6 && isPrivateIPv6(address)) return null;
     }
-    return true;
+    return addrs.map((a) => a.address);
   } catch {
-    return false;
+    return null;
   }
+}
+
+async function isPublicHost(hostname: string): Promise<boolean> {
+  return (await resolvePublicIPs(hostname)) !== null;
 }
 
 interface IconCandidate {
@@ -184,6 +211,16 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user || !canManageContent(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
+
+  // Outbound fetch per admin: this endpoint reaches arbitrary hosts, so cap
+  // it hard to prevent using the launcher as a DNS scanner or HTTP probe.
+  const rl = rateLimit(`fetch-favicon:${session.user.profileId}`, 20, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many favicon fetches" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+    );
   }
 
   let target: URL;

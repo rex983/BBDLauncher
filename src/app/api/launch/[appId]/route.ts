@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSamlAssertion, generateAutoSubmitForm } from "@/lib/saml/idp";
 import { generateSsoToken } from "@/lib/sso/jwt-issuer";
 import { isClockedIn } from "@/lib/timesheets/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -16,6 +17,17 @@ export async function GET(
   }
 
   const { appId } = await params;
+
+  // Cap SSO token minting per user+app. Well above normal use (a rep won't
+  // legitimately launch the same app 30x/min) but low enough to blunt token
+  // flooding or audit-log spam from a compromised account.
+  const rl = rateLimit(`launch:${session.user.profileId}:${appId}`, 30, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many launch requests" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+    );
+  }
   const supabase = createAdminClient();
 
   // Active gate: an inactive user shouldn't be able to mint fresh SSO tokens
@@ -84,7 +96,9 @@ export async function GET(
     );
   }
 
-  // Log the launch
+  // Log the launch. Fail closed if the audit row can't be written — the
+  // audit trail is the only forensic record of SSO token issuance and we'd
+  // rather deny a launch than mint an untraceable token.
   const { error: auditErr } = await supabase.from("launcher_sso_audit_log").insert({
     user_id: session.user.profileId,
     app_id: appId,
@@ -101,6 +115,10 @@ export async function GET(
       user_id: session.user.profileId,
       app_id: appId,
     });
+    return NextResponse.json(
+      { error: "Launch denied: audit log unavailable" },
+      { status: 500 }
+    );
   }
 
   // Defense in depth: only redirect to http(s) destinations even if a stale

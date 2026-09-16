@@ -4,6 +4,9 @@ import { computeWeeklyHours } from "@/lib/timesheets/weekly";
 import { startOfDayInZone, startOfWeekSundayInZone } from "@/lib/timesheets/tz";
 import { NextRequest, NextResponse } from "next/server";
 
+const VALID_OFFICES = new Set(["Harbor", "Marion", "BST", "RnD"]);
+const VALID_DEPARTMENTS = new Set(["SALES TEAM", "BST", "RnD"]);
+
 export async function GET(req: NextRequest) {
   const gate = await requireTimeDataAccess(null, "view");
   if (!gate.ok) return gate.response;
@@ -12,6 +15,12 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const officeFilter = url.searchParams.get("office");
   const departmentFilter = url.searchParams.get("department");
+  if (officeFilter && !VALID_OFFICES.has(officeFilter)) {
+    return NextResponse.json({ error: "Invalid office" }, { status: 400 });
+  }
+  if (departmentFilter && !VALID_DEPARTMENTS.has(departmentFilter)) {
+    return NextResponse.json({ error: "Invalid department" }, { status: 400 });
+  }
 
   const now = new Date();
   const startOfDay = startOfDayInZone(now);
