@@ -109,11 +109,7 @@ async function enterScope(need: Need): Promise<ScopeGate> {
     };
   }
 
-  const scope = timeDataScope(
-    session.user.role,
-    session.user.department,
-    session.user.office,
-  );
+  const scope = timeDataScope(session.user.role, session.user.department);
   if (!scope.allowed) {
     return {
       ok: false,
