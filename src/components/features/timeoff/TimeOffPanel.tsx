@@ -74,14 +74,26 @@ export interface TimeOffPanelProps {
   initialRequests?: TimeOffRequest[];
   title?: string;
   description?: string;
+  /**
+   * When true, only requests whose `end_date >= today` are surfaced.
+   * Past requests are hidden — used on the profile page so the panel
+   * stays focused on what's coming up.
+   */
+  upcomingOnly?: boolean;
 }
 
 export function TimeOffPanel({
   initialRequests,
   title = "My time off",
   description,
+  upcomingOnly = false,
 }: TimeOffPanelProps) {
-  const [rows, setRows] = useState<TimeOffRequest[]>(initialRequests || []);
+  const filter = (list: TimeOffRequest[]) =>
+    upcomingOnly
+      ? list.filter((r) => r.end_date >= todayISO())
+      : list;
+
+  const [rows, setRows] = useState<TimeOffRequest[]>(filter(initialRequests || []));
   const [loading, setLoading] = useState(initialRequests === undefined);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -103,9 +115,13 @@ export function TimeOffPanel({
   const load = useCallback(async () => {
     setLoading(true);
     const res = await fetch("/api/timeoff");
-    setRows(res.ok ? await res.json() : []);
+    const body: TimeOffRequest[] = res.ok ? await res.json() : [];
+    setRows(filter(body));
     setLoading(false);
-  }, []);
+    // filter is a fresh closure per render; safe to omit from deps since
+    // it depends only on `upcomingOnly` which is captured lexically.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upcomingOnly]);
 
   useEffect(() => {
     if (initialRequests === undefined) load();
@@ -397,7 +413,9 @@ export function TimeOffPanel({
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            You haven&rsquo;t submitted any time-off requests yet.
+            {upcomingOnly
+              ? "Nothing coming up — submit a request when you know a day off."
+              : "You haven\u2019t submitted any time-off requests yet."}
           </p>
         ) : (
           <Table>

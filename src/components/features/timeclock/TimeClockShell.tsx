@@ -2,14 +2,20 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Clock, LogIn, LogOut } from "lucide-react";
+import { CalendarCheck, Clock, LogIn, LogOut } from "lucide-react";
 import type { LiveState } from "@/lib/timesheets/state";
+import {
+  TIME_OFF_TYPE_LABEL,
+  type TimeOffStatus,
+  type TimeOffType,
+} from "@/lib/timeoff/types";
 
 interface Props {
   children: React.ReactNode;
@@ -20,6 +26,30 @@ interface ScheduleData {
   end_of_day_iso: string | null;
   extension_until_iso: string | null;
   effective_end_iso: string | null;
+}
+
+interface MyTimeOffRow {
+  id: string;
+  type: TimeOffType;
+  subcategory: string | null;
+  start_date: string;
+  end_date: string;
+  full_day: boolean;
+  hours: number | null;
+  status: TimeOffStatus;
+}
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function fmtRange(start: string, end: string) {
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  const s = new Date(start + "T00:00:00").toLocaleDateString([], opts);
+  if (start === end) return s;
+  const e = new Date(end + "T00:00:00").toLocaleDateString([], opts);
+  return `${s} – ${e}`;
 }
 
 const PROMPT_LEAD_MS = 5 * 60_000;
@@ -45,18 +75,31 @@ export function TimeClockShell({ children }: Props) {
   const [promptOpen, setPromptOpen] = useState(false);
   const [phase, setPhase] = useState<"ask" | "pick" | "custom">("ask");
   const [customMinutes, setCustomMinutes] = useState<string>("");
+  const [upcomingTimeOff, setUpcomingTimeOff] = useState<MyTimeOffRow[]>([]);
   const promptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadState = useCallback(async () => {
-    const [meRes, schedRes] = await Promise.all([
+    const [meRes, schedRes, toRes] = await Promise.all([
       fetch("/api/timeclock/me"),
       fetch("/api/timeclock/schedule"),
+      fetch("/api/timeoff"),
     ]);
     if (meRes.ok) {
       const data = await meRes.json();
       setState(data.state);
     }
     if (schedRes.ok) setSchedule(await schedRes.json());
+    if (toRes.ok) {
+      const rows: MyTimeOffRow[] = await toRes.json();
+      // Only requests whose window is still open — end_date >= today —
+      // and only pending or approved. Denied noise stays off the
+      // clock-in card; the user still sees it on /profile.
+      const today = todayISO();
+      const upcoming = rows
+        .filter((r) => r.end_date >= today && (r.status === "pending" || r.status === "approved"))
+        .sort((a, b) => a.start_date.localeCompare(b.start_date));
+      setUpcomingTimeOff(upcoming);
+    }
   }, []);
 
   useEffect(() => {
@@ -210,6 +253,7 @@ export function TimeClockShell({ children }: Props) {
             <Button size="lg" className="mt-6 w-full" onClick={() => punch("clock_in")} disabled={busy}>
               <LogIn className="mr-2 h-5 w-5" />Clock in
             </Button>
+            <UpcomingTimeOff rows={upcomingTimeOff} />
           </div>
         </div>
       )}
@@ -296,6 +340,39 @@ export function TimeClockShell({ children }: Props) {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// Compact list of the viewer's own upcoming time off — pending +
+// approved only. Nothing renders when there's nothing to show, so the
+// clock-in card stays clean on quiet days.
+function UpcomingTimeOff({ rows }: { rows: MyTimeOffRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="mt-6 pt-4 border-t text-left space-y-2">
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <CalendarCheck className="h-3.5 w-3.5" />
+        Upcoming time off
+      </div>
+      <ul className="space-y-1.5">
+        {rows.map((r) => (
+          <li key={r.id} className="flex items-center gap-2 text-sm">
+            <Badge
+              variant={r.status === "approved" ? "default" : "outline"}
+              className="text-[10px] capitalize"
+            >
+              {r.status}
+            </Badge>
+            <span className="font-medium">{fmtRange(r.start_date, r.end_date)}</span>
+            <span className="text-xs text-muted-foreground truncate">
+              {TIME_OFF_TYPE_LABEL[r.type]}
+              {r.subcategory ? ` · ${r.subcategory}` : ""}
+              {!r.full_day && r.hours ? ` · ${r.hours}h` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

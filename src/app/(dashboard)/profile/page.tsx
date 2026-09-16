@@ -78,7 +78,12 @@ export default async function ProfilePage() {
       .from("time_off_requests")
       .select("id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, created_at, attachments")
       .eq("profile_id", profileId)
-      .order("start_date", { ascending: false })
+      // Only rows whose window hasn't fully closed yet — end_date >= today
+      // in ET. Past requests get out of the way so this panel stays
+      // focused on what's coming up. Includes denied so the user always
+      // sees the outcome of a pending decision.
+      .gte("end_date", localDateInZone(now))
+      .order("start_date", { ascending: true })
       .limit(20),
     supabase
       .from("launcher_sso_audit_log")
@@ -214,8 +219,9 @@ export default async function ProfilePage() {
 
       <TimeOffPanel
         initialRequests={timeoff}
-        title="My time off"
-        description="Submit new requests and see the status of past ones."
+        upcomingOnly
+        title="My upcoming time off"
+        description="Submit new requests and see the status of ones that haven't happened yet."
       />
 
       <Card>
