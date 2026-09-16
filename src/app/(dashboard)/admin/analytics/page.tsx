@@ -23,6 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TimeAnalytics } from "@/components/features/admin/time-analytics";
+import { TimeOffCalendar } from "@/components/features/timeoff/TimeOffCalendar";
+import { TimeOffSummary } from "@/components/features/timeoff/TimeOffSummary";
 
 type DestStat = {
   id: string;
@@ -224,6 +226,7 @@ export default function AdminAnalyticsPage() {
           <TabsTrigger value="users">By User</TabsTrigger>
           <TabsTrigger value="recent">Recent Activity</TabsTrigger>
           <TabsTrigger value="time">Time &amp; Hours</TabsTrigger>
+          <TabsTrigger value="timeoff">Time Off</TabsTrigger>
         </TabsList>
 
         <TabsContent value="apps" className="space-y-3">
@@ -394,6 +397,23 @@ export default function AdminAnalyticsPage() {
 
         <TabsContent value="time" className="space-y-3">
           <TimeAnalytics />
+        </TabsContent>
+
+        <TabsContent value="timeoff" className="space-y-6">
+          <div>
+            <h2 className="text-lg font-semibold mb-1">Summary</h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Per-employee approved days broken down by type, plus pending totals and recent notes.
+            </p>
+            <TimeOffSummary />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold mb-1">Calendar</h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Who&rsquo;s off when — spot overlaps before approving new requests.
+            </p>
+            <TimeOffCalendar />
+          </div>
         </TabsContent>
       </Tabs>
     </div>
