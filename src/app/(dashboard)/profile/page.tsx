@@ -10,6 +10,12 @@ import { computeState, formatDuration, STATUS_LABEL, type TimePunch } from "@/li
 import { computeDayWorkedMs } from "@/lib/timesheets/weekly";
 import { startOfDayInZone, localDateInZone } from "@/lib/timesheets/tz";
 import { TimeOffPanel, type TimeOffRequest } from "@/components/features/timeoff/TimeOffPanel";
+import {
+  requestDays,
+  TIME_OFF_TYPES,
+  TIME_OFF_TYPE_LABEL,
+  type TimeOffType,
+} from "@/lib/timeoff/types";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DEFAULT_START = "10:00";
@@ -57,8 +63,10 @@ export default async function ProfilePage() {
   const now = new Date();
   const startOfToday = startOfDayInZone(now);
   const from14 = new Date(startOfToday); from14.setDate(from14.getDate() - 14);
+  const currentYear = now.getFullYear();
+  const yearStart = `${currentYear}-01-01`;
 
-  const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes] = await Promise.all([
+  const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, email, name:full_name, role, office, department, is_it, created_at")
@@ -92,6 +100,16 @@ export default async function ProfilePage() {
       .gte("created_at", from14.toISOString())
       .order("created_at", { ascending: false })
       .limit(20),
+    // YTD approved time off — powers the "Time off used" card. Filter on
+    // start_date so requests that started this year (and only this year)
+    // count. A request spanning last Dec → this Jan is rare enough that
+    // we don't try to split it across years here.
+    supabase
+      .from("time_off_requests")
+      .select("type, start_date, end_date, full_day, hours")
+      .eq("profile_id", profileId)
+      .eq("status", "approved")
+      .gte("start_date", yearStart),
   ]);
 
   const profile = profileRes.data;
@@ -99,6 +117,26 @@ export default async function ProfilePage() {
   const punches14 = (punches14Res.data || []) as TimePunch[];
   const timeoff = (timeoffRes.data || []) as TimeOffRequest[];
   const launches = (launchesRes.data || []) as LaunchRow[];
+  const ytdApproved = (ytdApprovedRes.data || []) as {
+    type: TimeOffType;
+    start_date: string;
+    end_date: string;
+    full_day: boolean;
+    hours: number | null;
+  }[];
+
+  // Fold approved rows into days-per-type. `requestDays` handles
+  // full-day (business-day count) vs partial-day (hours/8) semantics.
+  const daysByType = new Map<TimeOffType, number>();
+  for (const t of TIME_OFF_TYPES) daysByType.set(t.value, 0);
+  let totalDaysOff = 0;
+  for (const r of ytdApproved) {
+    const d = requestDays(r);
+    daysByType.set(r.type, (daysByType.get(r.type) || 0) + d);
+    totalDaysOff += d;
+  }
+  const fmtDays = (d: number) =>
+    d === 0 ? "0" : (Math.round(d * 10) / 10).toString();
 
   // Full-week schedule with default-fallback: if the user has ANY override,
   // treat missing weekdays as "not scheduled"; otherwise default to Mon-Fri 10-6.
@@ -213,6 +251,27 @@ export default async function ProfilePage() {
             {hasAnyOverride
               ? "Your manager has set custom hours. Contact them to adjust."
               : "Using the default schedule (Mon–Fri, 10:00 AM – 6:00 PM ET). Your manager can customize this."}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Time off used — {currentYear}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+            {TIME_OFF_TYPES.map((t) => (
+              <Stat
+                key={t.value}
+                label={TIME_OFF_TYPE_LABEL[t.value]}
+                value={`${fmtDays(daysByType.get(t.value) || 0)} d`}
+              />
+            ))}
+            <Stat label="Total" value={`${fmtDays(totalDaysOff)} d`} />
+          </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            Approved days only. Partial-day requests count as hours ÷ 8.
           </p>
         </CardContent>
       </Card>
