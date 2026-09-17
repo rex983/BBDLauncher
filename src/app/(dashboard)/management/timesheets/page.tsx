@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/select";
 import { formatDuration, STATUS_LABEL, type LiveState } from "@/lib/timesheets/state";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
+import { canEditTimeData } from "@/lib/auth/permissions";
+import { MarkDayOffDialog } from "@/components/features/timeoff/MarkDayOffDialog";
 import type { Department, Office } from "@/types/auth";
 
 interface Row {
@@ -60,6 +62,7 @@ export default function TimesheetsTodayPage() {
   // locked to their own on both axes server-side; the UI reflects that with
   // read-only badges.
   const isAdmin = viewerRole === "admin";
+  const canManage = canEditTimeData(viewerRole);
   const { viewAsOffice } = useRolePreview();
 
   const [rows, setRows] = useState<Row[]>([]);
@@ -117,11 +120,16 @@ export default function TimesheetsTodayPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Timesheets — Today</h1>
-        <p className="text-muted-foreground">
-          Live status and today&rsquo;s totals for everyone in your scope.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Timesheets — Today</h1>
+          <p className="text-muted-foreground">
+            Live status and today&rsquo;s totals for everyone in your scope.
+          </p>
+        </div>
+        {canManage && (
+          <MarkDayOffDialog viewAsOffice={viewAsOffice} />
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
