@@ -65,16 +65,16 @@ export const AppListRow = forwardRef<HTMLDivElement, AppListRowProps>(
             rel="noopener noreferrer"
             className="flex items-center gap-3 flex-1 min-w-0"
           >
-            <div className="h-8 w-8 flex-shrink-0 flex items-center justify-center">
+            <div className="h-10 w-10 flex-shrink-0 flex items-center justify-center">
               {app.icon_url ? (
                 <img
                   src={app.icon_url}
                   alt={app.name}
-                  className="max-h-8 max-w-8 rounded object-contain"
+                  className="max-h-10 max-w-10 rounded object-contain"
                 />
               ) : (
-                <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center">
-                  <span className="text-sm font-bold text-primary">
+                <div className="h-10 w-10 rounded bg-primary/10 flex items-center justify-center">
+                  <span className="text-base font-bold text-primary">
                     {firstLetter}
                   </span>
                 </div>

@@ -79,16 +79,16 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
               rel="noopener noreferrer"
               className="flex flex-col items-center gap-1.5 flex-1 w-full"
             >
-              <div className="h-8 w-8 flex-shrink-0 flex items-center justify-center">
+              <div className="h-12 w-12 flex-shrink-0 flex items-center justify-center">
                 {app.icon_url ? (
                   <img
                     src={app.icon_url}
                     alt={app.name}
-                    className="max-h-8 max-w-8 rounded object-contain"
+                    className="max-h-12 max-w-12 rounded object-contain"
                   />
                 ) : (
-                  <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center">
-                    <span className="text-sm font-bold text-primary">
+                  <div className="h-12 w-12 rounded bg-primary/10 flex items-center justify-center">
+                    <span className="text-lg font-bold text-primary">
                       {firstLetter}
                     </span>
                   </div>
