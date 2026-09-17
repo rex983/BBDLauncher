@@ -1,7 +1,13 @@
 import { requireTimeDataAccessWithProfile } from "@/lib/auth/scope-check";
 import { startOfDayInZone } from "@/lib/timesheets/tz";
+import { requestDays, type TimeOffType } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+
+type TimeOffByType = Record<TimeOffType, number>;
+function emptyTimeOffByType(): TimeOffByType {
+  return { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0 };
+}
 
 interface EmployeeRow {
   id: string;
@@ -41,20 +47,69 @@ export async function GET(
   const startISO = from ? new Date(from).toISOString() : defaultFrom.toISOString();
   const endISO = to ? new Date(to).toISOString() : now.toISOString();
 
-  const { data: punches, error } = await gate.supabase
-    .from("time_punches")
-    .select("id, profile_id, event_type, occurred_at, source, note, edited_by")
-    .eq("profile_id", profileId)
-    .gte("occurred_at", startISO)
-    .lte("occurred_at", endISO)
-    .order("occurred_at", { ascending: true });
+  // Time-off runs on ET-local YYYY-MM-DD dates, so bucket the window on
+  // those dates rather than the timestamp used for punches.
+  const startDate = new Date(startISO);
+  const endDate = new Date(endISO);
+  const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+  const windowFromDate = isoDate(startDate);
+  const windowToDate = isoDate(endDate);
+  const yearStart = `${now.getFullYear()}-01-01`;
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const [punchesRes, windowTimeOffRes, ytdTimeOffRes] = await Promise.all([
+    gate.supabase
+      .from("time_punches")
+      .select("id, profile_id, event_type, occurred_at, source, note, edited_by")
+      .eq("profile_id", profileId)
+      .gte("occurred_at", startISO)
+      .lte("occurred_at", endISO)
+      .order("occurred_at", { ascending: true }),
+    // Time-off entries whose window overlaps the visible range. Managers
+    // want to see "who was out on these days", including entries entered
+    // by the employee (pending, approved) and by managers (approved).
+    gate.supabase
+      .from("time_off_requests")
+      .select("id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_at, decided_by")
+      .eq("profile_id", profileId)
+      .lte("start_date", windowToDate)
+      .gte("end_date", windowFromDate)
+      .in("status", ["approved", "pending"])
+      .order("start_date", { ascending: true }),
+    // YTD approved for the stat card total.
+    gate.supabase
+      .from("time_off_requests")
+      .select("type, start_date, end_date, full_day, hours")
+      .eq("profile_id", profileId)
+      .eq("status", "approved")
+      .gte("start_date", yearStart),
+  ]);
+
+  if (punchesRes.error) return NextResponse.json({ error: punchesRes.error.message }, { status: 500 });
+  if (windowTimeOffRes.error) return NextResponse.json({ error: windowTimeOffRes.error.message }, { status: 500 });
+  if (ytdTimeOffRes.error) return NextResponse.json({ error: ytdTimeOffRes.error.message }, { status: 500 });
+
+  const ytdByType = emptyTimeOffByType();
+  for (const t of ytdTimeOffRes.data || []) {
+    const row = t as {
+      type: TimeOffType;
+      start_date: string;
+      end_date: string;
+      full_day: boolean;
+      hours: number | null;
+    };
+    ytdByType[row.type] += requestDays(row);
+  }
+  const ytdTotal =
+    ytdByType.vacation + ytdByType.sick + ytdByType.personal + ytdByType.parental + ytdByType.other;
 
   return NextResponse.json({
     profile: gate.target,
-    punches: punches || [],
+    punches: punchesRes.data || [],
     range: { from: startISO, to: endISO },
+    time_off: {
+      window: windowTimeOffRes.data || [],
+      ytd: { ...ytdByType, total: ytdTotal },
+    },
   });
 }
 

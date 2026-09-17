@@ -23,6 +23,12 @@ import {
 import { computeDayWorkedMs } from "@/lib/timesheets/weekly";
 import { localDateInZone } from "@/lib/timesheets/tz";
 import { canEditTimeData } from "@/lib/auth/permissions";
+import {
+  requestDays,
+  TIME_OFF_TYPE_LABEL,
+  type TimeOffStatus,
+  type TimeOffType,
+} from "@/lib/timeoff/types";
 
 const EVENT_TYPES: { value: PunchEventType; label: string }[] = [
   { value: "clock_in",    label: "Clock in" },
@@ -39,6 +45,44 @@ interface Profile {
   name: string | null;
   office: string | null;
   department: string | null;
+}
+
+interface WindowTimeOffRow {
+  id: string;
+  type: TimeOffType;
+  subcategory: string | null;
+  start_date: string;
+  end_date: string;
+  full_day: boolean;
+  hours: number | null;
+  status: TimeOffStatus;
+  reason: string | null;
+  decided_note: string | null;
+  decided_at: string | null;
+  decided_by: string | null;
+}
+
+type YtdBreakdown = Record<TimeOffType, number> & { total: number };
+
+const TIME_OFF_TYPES_ORDERED: TimeOffType[] = [
+  "sick",
+  "vacation",
+  "personal",
+  "parental",
+  "other",
+];
+
+function fmtDays(d: number): string {
+  if (d === 0) return "0";
+  return (Math.round(d * 10) / 10).toString();
+}
+
+function fmtDateShort(d: string) {
+  return new Date(d + "T00:00:00").toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 // Convert a UTC ISO to a value acceptable by <input type="datetime-local">.
@@ -63,6 +107,10 @@ export default function EmployeeDetailPage({
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [punches, setPunches] = useState<TimePunch[]>([]);
+  const [timeOffWindow, setTimeOffWindow] = useState<WindowTimeOffRow[]>([]);
+  const [timeOffYtd, setTimeOffYtd] = useState<YtdBreakdown>({
+    vacation: 0, sick: 0, personal: 0, parental: 0, other: 0, total: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -87,6 +135,12 @@ export default function EmployeeDetailPage({
       const data = await res.json();
       setProfile(data.profile);
       setPunches(data.punches);
+      if (data.time_off) {
+        setTimeOffWindow(data.time_off.window ?? []);
+        setTimeOffYtd(data.time_off.ytd ?? {
+          vacation: 0, sick: 0, personal: 0, parental: 0, other: 0, total: 0,
+        });
+      }
     }
     setLoading(false);
   }, [profileId, days]);
@@ -200,12 +254,102 @@ export default function EmployeeDetailPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatCard label="Status" value={STATUS_LABEL[state.status]} />
         <StatCard label={`Worked (last ${days}d)`} value={formatDuration(state.worked_ms)} />
         <StatCard label="Lunch" value={formatDuration(state.lunch_ms)} />
         <StatCard label="Breaks" value={formatDuration(state.break_ms)} />
+        <StatCard label="Time off (YTD)" value={`${fmtDays(timeOffYtd.total)} d`} />
       </div>
+
+      {timeOffYtd.total > 0 && (
+        <Card className="gap-0 py-0">
+          <CardHeader className="flex flex-row items-center justify-between px-4 py-2 border-b">
+            <div className="text-sm font-semibold">Time off used — YTD</div>
+            <div className="text-xs text-muted-foreground">
+              Approved only · partial days = hours ÷ 8
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 py-3">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              {TIME_OFF_TYPES_ORDERED.map((t) => (
+                <div key={t} className="flex items-baseline gap-1.5">
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                    {TIME_OFF_TYPE_LABEL[t]}
+                  </span>
+                  <span className="tabular-nums font-medium">
+                    {fmtDays(timeOffYtd[t])} d
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  Total
+                </span>
+                <span className="tabular-nums font-semibold">
+                  {fmtDays(timeOffYtd.total)} d
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {timeOffWindow.length > 0 && (
+        <Card className="gap-0 py-0">
+          <CardHeader className="flex flex-row items-center justify-between px-4 py-2 border-b">
+            <div className="text-sm font-semibold">
+              Time off in this window
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {timeOffWindow.length} {timeOffWindow.length === 1 ? "entry" : "entries"}
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 py-0">
+            <ul className="divide-y">
+              {timeOffWindow.map((r) => {
+                const rangeLabel =
+                  r.start_date === r.end_date
+                    ? fmtDateShort(r.start_date)
+                    : `${fmtDateShort(r.start_date)} – ${fmtDateShort(r.end_date)}`;
+                const durationLabel = r.full_day
+                  ? `${fmtDays(requestDays(r))} d`
+                  : `${r.hours}h`;
+                return (
+                  <li
+                    key={r.id}
+                    className="grid grid-cols-[220px_120px_60px_60px_1fr] items-center gap-3 py-1.5 text-sm leading-tight"
+                  >
+                    <div className="tabular-nums font-medium">{rangeLabel}</div>
+                    <div>
+                      <Badge variant="outline" className="mr-1">
+                        {TIME_OFF_TYPE_LABEL[r.type]}
+                      </Badge>
+                      {r.subcategory && (
+                        <span className="text-xs text-muted-foreground">
+                          {r.subcategory}
+                        </span>
+                      )}
+                    </div>
+                    <div className="tabular-nums text-xs">{durationLabel}</div>
+                    <div className="text-xs">
+                      <Badge
+                        variant={r.status === "approved" ? "default" : "outline"}
+                        className="capitalize"
+                      >
+                        {r.status}
+                      </Badge>
+                    </div>
+                    <div className="min-w-0 text-xs text-muted-foreground truncate">
+                      {r.reason || <span className="opacity-60">—</span>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {loading && <p className="text-muted-foreground">Loading…</p>}
 
