@@ -1,11 +1,18 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { type TimePunch } from "@/lib/timesheets/state";
 import {
-  computeDayWorkedMs,
+  computeDayTotals,
   OVERTIME_THRESHOLD_MS,
 } from "@/lib/timesheets/weekly";
 import { localDateInZone, startOfWeekSundayInZone } from "@/lib/timesheets/tz";
+import { requestDays, type TimeOffType } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
+
+const TIME_OFF_TYPES_ALL: TimeOffType[] = ["vacation", "sick", "personal", "parental", "other"];
+type TimeOffByType = Record<TimeOffType, number>;
+function emptyTimeOffByType(): TimeOffByType {
+  return { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0 };
+}
 
 // Time-data analytics for managers + admins. Returns per-employee weekly
 // totals for the last N weeks + a summary block. Scope follows the same
@@ -71,13 +78,27 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const { data: punches, error: puErr } = await supabase
-    .from("time_punches")
-    .select("id, profile_id, event_type, occurred_at, source, note")
-    .in("profile_id", profileIds)
-    .gte("occurred_at", rangeStart.toISOString())
-    .order("occurred_at", { ascending: true });
+  const [{ data: punches, error: puErr }, { data: yearOffs, error: toErr }] =
+    await Promise.all([
+      supabase
+        .from("time_punches")
+        .select("id, profile_id, event_type, occurred_at, source, note")
+        .in("profile_id", profileIds)
+        .gte("occurred_at", rangeStart.toISOString())
+        .order("occurred_at", { ascending: true }),
+      // YTD approved time-off — used for per-employee breakdown + the
+      // aggregate summary. Kept independent of the `weeks` selector
+      // because "days off this year" is what managers ask about, not
+      // "days off in the last 4 weeks".
+      supabase
+        .from("time_off_requests")
+        .select("profile_id, type, start_date, end_date, full_day, hours")
+        .in("profile_id", profileIds)
+        .eq("status", "approved")
+        .gte("start_date", `${now.getFullYear()}-01-01`),
+    ]);
   if (puErr) return NextResponse.json({ error: puErr.message }, { status: 500 });
+  if (toErr) return NextResponse.json({ error: toErr.message }, { status: 500 });
 
   // Bucket punches by (profile, week) via ET-local date.
   const weekStarts = buildWeekStarts(thisWeekStart, weeks);
@@ -118,14 +139,36 @@ export async function GET(req: NextRequest) {
     day.punches.push(p);
   }
 
+  // Fold YTD approved time-off into per-employee days-by-type. `requestDays`
+  // handles full-day (business-day count) vs partial-day (hours/8) semantics.
+  const timeOffByProfile = new Map<string, TimeOffByType>();
+  for (const t of yearOffs || []) {
+    const row = t as {
+      profile_id: string;
+      type: TimeOffType;
+      start_date: string;
+      end_date: string;
+      full_day: boolean;
+      hours: number | null;
+    };
+    const existing = timeOffByProfile.get(row.profile_id) ?? emptyTimeOffByType();
+    existing[row.type] += requestDays(row);
+    timeOffByProfile.set(row.profile_id, existing);
+  }
+
   const rows = (profiles || []).map((profile) => {
     const profileWeeks = perProfile.get(profile.id) || [];
     let profileTotal = 0;
     let profileOvertime = 0;
+    let profileLunch = 0;
+    let profileBreak = 0;
     const weekTotals = profileWeeks.map((dayBuckets, idx) => {
       let weekTotal = 0;
       for (const day of dayBuckets) {
-        weekTotal += computeDayWorkedMs(day.punches, day.date, now);
+        const t = computeDayTotals(day.punches, day.date, now);
+        weekTotal += t.worked_ms;
+        profileLunch += t.lunch_ms;
+        profileBreak += t.break_ms;
       }
       const overtime = Math.max(0, weekTotal - OVERTIME_THRESHOLD_MS);
       profileTotal += weekTotal;
@@ -136,10 +179,16 @@ export async function GET(req: NextRequest) {
         overtime_ms: overtime,
       };
     });
+    const timeOff = timeOffByProfile.get(profile.id) ?? emptyTimeOffByType();
+    const timeOffTotal =
+      timeOff.vacation + timeOff.sick + timeOff.personal + timeOff.parental + timeOff.other;
     return {
       profile,
       total_ms: profileTotal,
       overtime_ms: profileOvertime,
+      lunch_ms: profileLunch,
+      break_ms: profileBreak,
+      time_off: { ...timeOff, total: timeOffTotal },
       weeks: weekTotals,
     };
   });
@@ -149,7 +198,18 @@ export async function GET(req: NextRequest) {
   const workingProfileCount = rows.filter((r) => r.total_ms > 0).length;
   const totalMs = rows.reduce((acc, r) => acc + r.total_ms, 0);
   const totalOvertime = rows.reduce((acc, r) => acc + r.overtime_ms, 0);
+  const totalLunch = rows.reduce((acc, r) => acc + r.lunch_ms, 0);
+  const totalBreak = rows.reduce((acc, r) => acc + r.break_ms, 0);
   const inOvertimeCount = rows.filter((r) => r.overtime_ms > 0).length;
+
+  // Aggregate YTD time-off across the scope so the top-of-tab panel can
+  // show "team took N sick days this year" etc. without a second call.
+  const aggTimeOff = emptyTimeOffByType();
+  for (const r of rows) {
+    for (const t of TIME_OFF_TYPES_ALL) aggTimeOff[t] += r.time_off[t];
+  }
+  const aggTimeOffTotal =
+    aggTimeOff.vacation + aggTimeOff.sick + aggTimeOff.personal + aggTimeOff.parental + aggTimeOff.other;
 
   return NextResponse.json({
     range: {
@@ -164,10 +224,13 @@ export async function GET(req: NextRequest) {
       working_employee_count: workingProfileCount,
       total_ms: totalMs,
       total_overtime_ms: totalOvertime,
+      total_lunch_ms: totalLunch,
+      total_break_ms: totalBreak,
       in_overtime_count: inOvertimeCount,
       avg_ms_per_working_employee: workingProfileCount
         ? Math.round(totalMs / workingProfileCount)
         : 0,
+      time_off: { ...aggTimeOff, total: aggTimeOffTotal },
     },
   });
 }

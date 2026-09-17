@@ -11,8 +11,12 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { formatDuration } from "@/lib/timesheets/state";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
+import { TIME_OFF_TYPE_LABEL, type TimeOffType } from "@/lib/timeoff/types";
 import type { Department, Office } from "@/types/auth";
 
 interface WeekTotal {
@@ -20,6 +24,8 @@ interface WeekTotal {
   worked_ms: number;
   overtime_ms: number;
 }
+
+type TimeOffBreakdown = Record<TimeOffType, number> & { total: number };
 
 interface Row {
   profile: {
@@ -32,6 +38,9 @@ interface Row {
   };
   total_ms: number;
   overtime_ms: number;
+  lunch_ms: number;
+  break_ms: number;
+  time_off: TimeOffBreakdown;
   weeks: WeekTotal[];
 }
 
@@ -40,8 +49,11 @@ interface Summary {
   working_employee_count: number;
   total_ms: number;
   total_overtime_ms: number;
+  total_lunch_ms: number;
+  total_break_ms: number;
   in_overtime_count: number;
   avg_ms_per_working_employee: number;
+  time_off: TimeOffBreakdown;
 }
 
 interface Response {
@@ -49,6 +61,19 @@ interface Response {
   week_starts: string[];
   rows: Row[];
   summary: Summary;
+}
+
+const TIME_OFF_TYPES_ORDERED: TimeOffType[] = [
+  "sick",
+  "vacation",
+  "personal",
+  "parental",
+  "other",
+];
+
+function fmtDays(d: number): string {
+  if (d === 0) return "0";
+  return (Math.round(d * 10) / 10).toString();
 }
 
 const ALL = "__all__";
@@ -84,6 +109,7 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
   const [sort, setSort] = useState<SortKey>("total");
   const [data, setData] = useState<Response | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Row | null>(null);
 
   useEffect(() => {
     if (isAdmin && viewAsOffice) setOffice(viewAsOffice);
@@ -190,7 +216,47 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
           label="Employees in scope"
           value={loading || !data ? "…" : String(data.summary.employee_count)}
         />
+        <Stat
+          label="Total lunch"
+          value={loading || !data ? "…" : formatDuration(data.summary.total_lunch_ms)}
+        />
+        <Stat
+          label="Total breaks"
+          value={loading || !data ? "…" : formatDuration(data.summary.total_break_ms)}
+        />
+        <Stat
+          label="Time off (YTD)"
+          value={loading || !data ? "…" : `${fmtDays(data.summary.time_off.total)} d`}
+          sub={data ? "approved days across scope" : undefined}
+        />
+        <Stat
+          label="Sick days (YTD)"
+          value={loading || !data ? "…" : `${fmtDays(data.summary.time_off.sick)} d`}
+          sub={data ? `vs ${fmtDays(data.summary.time_off.vacation)} vac` : undefined}
+        />
       </div>
+
+      {data && data.summary.time_off.total > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Time off used — YTD</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {TIME_OFF_TYPES_ORDERED.map((t) => (
+                <Stat
+                  key={t}
+                  label={TIME_OFF_TYPE_LABEL[t]}
+                  value={`${fmtDays(data.summary.time_off[t])} d`}
+                />
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              Approved requests only. Partial-day requests count as hours ÷ 8.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -231,15 +297,13 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
                 {rows.map((row) => (
                   <TableRow
                     key={row.profile.id}
-                    className={row.profile.is_active === false ? "opacity-60" : undefined}
+                    onClick={() => setSelected(row)}
+                    className={`cursor-pointer hover:bg-muted/40 ${
+                      row.profile.is_active === false ? "opacity-60" : ""
+                    }`}
                   >
                     <TableCell className="font-medium">
-                      <Link
-                        href={`/management/timesheets/${row.profile.id}`}
-                        className="hover:underline"
-                      >
-                        {row.profile.name || row.profile.email}
-                      </Link>
+                      <div>{row.profile.name || row.profile.email}</div>
                       <div className="text-xs text-muted-foreground">
                         {row.profile.email}
                         {row.profile.is_active === false && (
@@ -293,7 +357,133 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
       <p className="text-xs text-muted-foreground">
         Weeks run Sunday–Saturday, ET. Overtime is any time past 40 hours in a week.
       </p>
+
+      <EmployeeTimeStatsDialog
+        row={selected}
+        weeks={weeks}
+        weekStarts={data?.week_starts ?? []}
+        onClose={() => setSelected(null)}
+      />
     </div>
+  );
+}
+
+function EmployeeTimeStatsDialog({
+  row,
+  weeks,
+  weekStarts,
+  onClose,
+}: {
+  row: Row | null;
+  weeks: number;
+  weekStarts: string[];
+  onClose: () => void;
+}) {
+  const open = row !== null;
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {row?.profile.name || row?.profile.email || "Employee stats"}
+          </DialogTitle>
+          {row && (
+            <div className="text-sm text-muted-foreground flex flex-wrap gap-2 mt-1">
+              <span>{row.profile.email}</span>
+              {row.profile.office && (
+                <><span>·</span><Badge variant="outline">{row.profile.office}</Badge></>
+              )}
+              {row.profile.department && (
+                <><span>·</span><Badge variant="outline">{row.profile.department}</Badge></>
+              )}
+            </div>
+          )}
+        </DialogHeader>
+
+        {row && (
+          <div className="space-y-4">
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                Time on the clock — last {weeks === 1 ? "week" : `${weeks} weeks`}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Stat label="Worked" value={formatDuration(row.total_ms)} />
+                <Stat
+                  label="Overtime"
+                  value={formatDuration(row.overtime_ms)}
+                  highlight={row.overtime_ms > 0}
+                />
+                <Stat label="Lunch" value={formatDuration(row.lunch_ms)} />
+                <Stat label="Breaks" value={formatDuration(row.break_ms)} />
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                Time off — YTD
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                {TIME_OFF_TYPES_ORDERED.map((t) => (
+                  <Stat
+                    key={t}
+                    label={TIME_OFF_TYPE_LABEL[t]}
+                    value={`${fmtDays(row.time_off[t])} d`}
+                  />
+                ))}
+                <Stat label="Total" value={`${fmtDays(row.time_off.total)} d`} />
+              </div>
+            </div>
+
+            {weeks > 1 && row.weeks.length > 0 && (
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                  Weekly breakdown
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Week of</TableHead>
+                      <TableHead>Worked</TableHead>
+                      <TableHead>Overtime</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {row.weeks.map((w, i) => (
+                      <TableRow key={w.week_start}>
+                        <TableCell className="text-sm">
+                          {fmtWeekLabel(weekStarts[i] ?? w.week_start)}
+                        </TableCell>
+                        <TableCell>
+                          {w.worked_ms > 0 ? formatDuration(w.worked_ms) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {w.overtime_ms > 0 ? (
+                            <Badge variant="destructive">+{formatDuration(w.overtime_ms)}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            <div className="pt-2 border-t flex justify-end">
+              <Link
+                href={`/management/timesheets/${row.profile.id}`}
+                className="text-sm text-primary hover:underline"
+              >
+                View full timesheet →
+              </Link>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

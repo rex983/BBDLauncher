@@ -9,16 +9,22 @@ export interface WeeklyHours {
   is_overtime: boolean;
 }
 
-// Fold one ET-local day's punches into worked_ms, capping the open-shift
-// extension at end-of-that-day. Without the cap, a clock_in with no
-// matching clock_out on the same day would accumulate hours all the way
-// to `now` — which is how a single stranded shift turns into 93h/week.
-// For today, the cap is `now` (live totals still tick).
-export function computeDayWorkedMs(
+export interface DayTotals {
+  worked_ms: number;
+  lunch_ms: number;
+  break_ms: number;
+}
+
+// Fold one ET-local day's punches into worked/lunch/break, capping the
+// open-shift extension at end-of-that-day. Without the cap, a clock_in
+// with no matching clock_out on the same day would accumulate hours all
+// the way to `now` — which is how a single stranded shift turns into
+// 93h/week. For today, the cap is `now` (live totals still tick).
+export function computeDayTotals(
   dayPunches: TimePunch[],
   dayKey: string,
   now: Date = new Date(),
-): number {
+): DayTotals {
   const todayKey = localDateInZone(now);
   let dayNow: Date;
   if (dayKey === todayKey) {
@@ -30,7 +36,19 @@ export function computeDayWorkedMs(
     const nextDayMidnight = scheduledTimeInZone(nextDayNoonUtc, "00:00");
     dayNow = new Date(nextDayMidnight.getTime() - 1);
   }
-  return computeState(dayPunches, dayNow).worked_ms;
+  const s = computeState(dayPunches, dayNow);
+  return { worked_ms: s.worked_ms, lunch_ms: s.lunch_ms, break_ms: s.break_ms };
+}
+
+// Convenience alias for callers that only care about worked time. Kept as
+// a separate name so grepping for lunch/break totals still turns up the
+// three-value helper above.
+export function computeDayWorkedMs(
+  dayPunches: TimePunch[],
+  dayKey: string,
+  now: Date = new Date(),
+): number {
+  return computeDayTotals(dayPunches, dayKey, now).worked_ms;
 }
 
 // Bucket punches by ET-local day and fold each day into its own state so
