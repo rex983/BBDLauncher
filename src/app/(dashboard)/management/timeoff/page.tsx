@@ -13,6 +13,7 @@ import { canEditTimeData } from "@/lib/auth/permissions";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { TimeOffCalendar } from "@/components/features/timeoff/TimeOffCalendar";
 import { TimeOffSummary } from "@/components/features/timeoff/TimeOffSummary";
+import { MarkDayOffDialog } from "@/components/features/timeoff/MarkDayOffDialog";
 import {
   RequestDetailDialog,
   type DetailRow,
@@ -72,6 +73,9 @@ function toDetailRow(r: Row): DetailRow {
 }
 
 export default function TimeOffManagementPage() {
+  const { data: session } = useSession();
+  const canManage = canEditTimeData(session?.user?.role);
+  const { viewAsOffice } = useRolePreview();
   // Bumped by RequestsQueue each time a request is approved, denied,
   // edited, or deleted so the sibling Calendar + Summary tabs pick up the
   // change without a full page reload. Radix Tabs keeps inactive tabs
@@ -81,16 +85,21 @@ export default function TimeOffManagementPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="text-sm text-muted-foreground">
-          <Link href="/management/timesheets" className="hover:underline">
-            ← Timesheets
-          </Link>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-sm text-muted-foreground">
+            <Link href="/management/timesheets" className="hover:underline">
+              ← Timesheets
+            </Link>
+          </div>
+          <h1 className="text-2xl font-bold">Time Off</h1>
+          <p className="text-muted-foreground">
+            Review requests, see who&rsquo;s off on a shared calendar, and check totals per employee.
+          </p>
         </div>
-        <h1 className="text-2xl font-bold">Time Off</h1>
-        <p className="text-muted-foreground">
-          Review requests, see who&rsquo;s off on a shared calendar, and check totals per employee.
-        </p>
+        {canManage && (
+          <MarkDayOffDialog onCreated={bump} viewAsOffice={viewAsOffice} />
+        )}
       </div>
 
       <Tabs defaultValue="queue">
