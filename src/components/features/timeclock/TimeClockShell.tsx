@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CalendarCheck, Clock, LogIn, LogOut } from "lucide-react";
+import { CalendarCheck, Clock, Coffee, LogIn, LogOut } from "lucide-react";
 import type { LiveState } from "@/lib/timesheets/state";
 import {
   TIME_OFF_TYPE_LABEL,
@@ -106,7 +106,7 @@ export function TimeClockShell({ children }: Props) {
     loadState().finally(() => setLoading(false));
   }, [loadState]);
 
-  const punch = async (event_type: "clock_in" | "clock_out") => {
+  const punch = async (event_type: "clock_in" | "clock_out" | "break_start" | "break_end") => {
     if (busy) return;
     setBusy(true);
     try {
@@ -130,6 +130,8 @@ export function TimeClockShell({ children }: Props) {
   };
 
   const isClockedOut = !state || state.status === "clocked_out";
+  const isOnBreak = state?.status === "on_break";
+  const isLocked = isClockedOut || isOnBreak;
 
   // Set / reset the T-5 prompt timer whenever the effective end changes.
   useEffect(() => {
@@ -211,7 +213,7 @@ export function TimeClockShell({ children }: Props) {
           <div>
             <div className="text-sm text-muted-foreground">Status</div>
             <div className="font-semibold">
-              {loading ? "…" : isClockedOut ? "Clocked out" : "Clocked in"}
+              {loading ? "…" : isClockedOut ? "Clocked out" : isOnBreak ? "On break" : "Clocked in"}
             </div>
           </div>
           {!isClockedOut && schedule?.effective_end_iso && (
@@ -226,33 +228,57 @@ export function TimeClockShell({ children }: Props) {
             <Button onClick={() => punch("clock_in")} disabled={busy}>
               <LogIn className="mr-2 h-4 w-4" />Clock in
             </Button>
-          ) : (
-            <Button variant="outline" onClick={() => punch("clock_out")} disabled={busy}>
-              <LogOut className="mr-2 h-4 w-4" />Clock out
+          ) : isOnBreak ? (
+            <Button onClick={() => punch("break_end")} disabled={busy}>
+              <Coffee className="mr-2 h-4 w-4" />End break
             </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => punch("break_start")} disabled={busy}>
+                <Coffee className="mr-2 h-4 w-4" />Break
+              </Button>
+              <Button variant="outline" onClick={() => punch("clock_out")} disabled={busy}>
+                <LogOut className="mr-2 h-4 w-4" />Clock out
+              </Button>
+            </div>
           )
         )}
       </div>
 
-      {/* Children (app grid + links) — blurred + unclickable when clocked out */}
+      {/* Children (app grid + links) — blurred + unclickable when clocked out or on break */}
       <div
-        className={isClockedOut ? "pointer-events-none blur-md select-none" : ""}
-        aria-hidden={isClockedOut}
+        className={isLocked ? "pointer-events-none blur-md select-none" : ""}
+        aria-hidden={isLocked}
       >
         {children}
       </div>
 
-      {!loading && isClockedOut && (
+      {!loading && isLocked && (
         <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-32">
           <div className="pointer-events-auto rounded-xl border bg-card shadow-lg p-8 text-center max-w-md">
-            <Clock className="mx-auto h-10 w-10 text-primary" />
-            <h2 className="mt-3 text-xl font-bold">You&rsquo;re clocked out</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Clock in to unlock your applications.
-            </p>
-            <Button size="lg" className="mt-6 w-full" onClick={() => punch("clock_in")} disabled={busy}>
-              <LogIn className="mr-2 h-5 w-5" />Clock in
-            </Button>
+            {isOnBreak ? (
+              <>
+                <Coffee className="mx-auto h-10 w-10 text-primary" />
+                <h2 className="mt-3 text-xl font-bold">You&rsquo;re on break</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  End your break to unlock your applications.
+                </p>
+                <Button size="lg" className="mt-6 w-full" onClick={() => punch("break_end")} disabled={busy}>
+                  <Coffee className="mr-2 h-5 w-5" />End break
+                </Button>
+              </>
+            ) : (
+              <>
+                <Clock className="mx-auto h-10 w-10 text-primary" />
+                <h2 className="mt-3 text-xl font-bold">You&rsquo;re clocked out</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Clock in to unlock your applications.
+                </p>
+                <Button size="lg" className="mt-6 w-full" onClick={() => punch("clock_in")} disabled={busy}>
+                  <LogIn className="mr-2 h-5 w-5" />Clock in
+                </Button>
+              </>
+            )}
             <UpcomingTimeOff rows={upcomingTimeOff} />
           </div>
         </div>
