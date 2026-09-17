@@ -422,7 +422,7 @@ function EmployeeTimeStatsDialog({
               <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
                 Time off — YTD
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {TIME_OFF_TYPES_ORDERED.map((t) => (
                   <Stat
                     key={t}
