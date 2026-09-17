@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,9 +23,31 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TimeAnalytics } from "@/components/features/admin/time-analytics";
-import { TimeOffCalendar } from "@/components/features/timeoff/TimeOffCalendar";
-import { TimeOffSummary } from "@/components/features/timeoff/TimeOffSummary";
+
+// Lazy-load the three heavy tabs so the initial /admin/analytics bundle
+// doesn't ship the calendar grid, aggregation table, or dialog with the
+// first paint. Managers who land on the default Apps tab pay nothing for
+// tabs they never open.
+const TimeAnalytics = dynamic(
+  () => import("@/components/features/admin/time-analytics").then((m) => m.TimeAnalytics),
+  { ssr: false, loading: () => <TabLoading /> },
+);
+const TimeOffCalendar = dynamic(
+  () => import("@/components/features/timeoff/TimeOffCalendar").then((m) => m.TimeOffCalendar),
+  { ssr: false, loading: () => <TabLoading /> },
+);
+const TimeOffSummary = dynamic(
+  () => import("@/components/features/timeoff/TimeOffSummary").then((m) => m.TimeOffSummary),
+  { ssr: false, loading: () => <TabLoading /> },
+);
+
+function TabLoading() {
+  return (
+    <div className="rounded-md border bg-card p-8 text-center text-sm text-muted-foreground">
+      Loading…
+    </div>
+  );
+}
 
 type DestStat = {
   id: string;

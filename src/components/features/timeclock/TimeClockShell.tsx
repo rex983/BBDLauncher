@@ -17,10 +17,6 @@ import {
   type TimeOffType,
 } from "@/lib/timeoff/types";
 
-interface Props {
-  children: React.ReactNode;
-}
-
 interface ScheduleData {
   scheduled: boolean;
   end_of_day_iso: string | null;
@@ -37,6 +33,17 @@ interface MyTimeOffRow {
   full_day: boolean;
   hours: number | null;
   status: TimeOffStatus;
+}
+
+interface Props {
+  children: React.ReactNode;
+  // Server-fetched initial data so the shell renders immediately instead
+  // of flashing a blank while three /api/timeclock/* round-trips resolve.
+  // The client still refreshes on punches + focus so stale server data
+  // self-corrects quickly.
+  initialState?: LiveState | null;
+  initialSchedule?: ScheduleData | null;
+  initialUpcomingTimeOff?: MyTimeOffRow[];
 }
 
 function todayISO() {
@@ -67,15 +74,23 @@ function fmtTime(iso: string): string {
 //     working?". Yes → pick minutes → POST /api/timeclock/extend (which
 //     pushes back the effective end). No or ignore → the server's
 //     /api/cron/auto-clockout fires clock_out at the scheduled time.
-export function TimeClockShell({ children }: Props) {
-  const [state, setState] = useState<LiveState | null>(null);
-  const [schedule, setSchedule] = useState<ScheduleData | null>(null);
-  const [loading, setLoading] = useState(true);
+export function TimeClockShell({
+  children,
+  initialState = null,
+  initialSchedule = null,
+  initialUpcomingTimeOff = [],
+}: Props) {
+  const [state, setState] = useState<LiveState | null>(initialState);
+  const [schedule, setSchedule] = useState<ScheduleData | null>(initialSchedule);
+  // When we hydrate from server data we can skip the "…" loading placeholder
+  // entirely and paint the correct clock-in / clocked-out state on the
+  // first frame.
+  const [loading, setLoading] = useState(initialState === null && initialSchedule === null);
   const [busy, setBusy] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [phase, setPhase] = useState<"ask" | "pick" | "custom">("ask");
   const [customMinutes, setCustomMinutes] = useState<string>("");
-  const [upcomingTimeOff, setUpcomingTimeOff] = useState<MyTimeOffRow[]>([]);
+  const [upcomingTimeOff, setUpcomingTimeOff] = useState<MyTimeOffRow[]>(initialUpcomingTimeOff);
   const promptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadState = useCallback(async () => {
@@ -103,8 +118,12 @@ export function TimeClockShell({ children }: Props) {
   }, []);
 
   useEffect(() => {
+    // Skip the initial fetch when the server already hydrated us — the
+    // paint is instant and the client re-fetches only after user actions
+    // (punch, extend) or focus changes.
+    if (initialState !== null && initialSchedule !== null) return;
     loadState().finally(() => setLoading(false));
-  }, [loadState]);
+  }, [loadState, initialState, initialSchedule]);
 
   const punch = async (event_type: "clock_in" | "clock_out" | "break_start" | "break_end") => {
     if (busy) return;

@@ -7,12 +7,26 @@ import { ViewAsOffice } from "@/components/features/launcher/view-as-office";
 import { QuoteBanner } from "@/components/features/launcher/quote-banner";
 import { TimeClockShell } from "@/components/features/timeclock/TimeClockShell";
 import { canManageContent, isAdmin as isAdminRole } from "@/lib/auth/permissions";
+import { getMyStateToday, getMyScheduleToday } from "@/lib/timesheets/server";
+import { localDateInZone } from "@/lib/timesheets/tz";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { LauncherApp, LauncherSection } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
 import type { MotivationalQuote } from "@/types/quote";
 import type { Office } from "@/types/auth";
+import type { TimeOffStatus, TimeOffType } from "@/lib/timeoff/types";
+
+interface MyTimeOffRow {
+  id: string;
+  type: TimeOffType;
+  subcategory: string | null;
+  start_date: string;
+  end_date: string;
+  full_day: boolean;
+  hours: number | null;
+  status: TimeOffStatus;
+}
 
 const ALL_OFFICES: Office[] = ["Harbor", "Marion", "BST", "RnD"];
 
@@ -43,6 +57,29 @@ export default async function DashboardPage({
   let roles: { name: string; display_name: string }[] = [];
   let quote: MotivationalQuote | null = null;
   let effectiveRole = session.user.role;
+  // TimeClockShell needs an initial state, schedule, and upcoming
+  // time-off list so it doesn't flash a blank while three /api/timeclock/*
+  // fetches resolve on every dashboard load.
+  const profileId = session.user.profileId;
+  const [timeclockRes, scheduleRes, upcomingTimeOffRes] = await Promise.all([
+    getMyStateToday(profileId).catch(() => null),
+    getMyScheduleToday(profileId).catch(() => null),
+    (async () => {
+      const supabase = createAdminClient();
+      const today = localDateInZone(new Date());
+      const { data } = await supabase
+        .from("time_off_requests")
+        .select("id, type, subcategory, start_date, end_date, full_day, hours, status")
+        .eq("profile_id", profileId)
+        .gte("end_date", today)
+        .in("status", ["pending", "approved"])
+        .order("start_date", { ascending: true });
+      return (data || []) as MyTimeOffRow[];
+    })().catch(() => [] as MyTimeOffRow[]),
+  ]);
+  const initialState = timeclockRes?.state ?? null;
+  const initialSchedule = scheduleRes ?? null;
+  const initialUpcomingTimeOff = upcomingTimeOffRes ?? [];
   try {
     const supabase = createAdminClient();
 
@@ -151,7 +188,11 @@ export default async function DashboardPage({
       )}
       {/* Preview banner is rendered globally in (dashboard)/layout.tsx so
           it stays visible on every route while a preview is active. */}
-      <TimeClockShell>
+      <TimeClockShell
+        initialState={initialState}
+        initialSchedule={initialSchedule}
+        initialUpcomingTimeOff={initialUpcomingTimeOff}
+      >
         <SectionedAppGrid apps={apps} sections={sections} isAdmin={canEditDashboard} />
         {links.length > 0 && (
           <>

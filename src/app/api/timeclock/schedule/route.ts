@@ -1,19 +1,6 @@
 import { auth } from "@/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  DEFAULT_ZONE,
-  localDateInZone,
-  scheduledTimeInZone,
-  weekdayInZone,
-} from "@/lib/timesheets/tz";
+import { getMyScheduleToday } from "@/lib/timesheets/server";
 import { NextResponse } from "next/server";
-
-// Default shift: Mon-Fri, 10:00-18:00 America/New_York (ET). This is the
-// standard for BBD and is applied to any employee without a work_schedules
-// row for the current weekday.
-const DEFAULT_START = "10:00";
-const DEFAULT_END = "18:00";
-const DEFAULT_WORKDAYS = new Set([1, 2, 3, 4, 5]); // Mon-Fri in ET
 
 // Returns today's scheduled end time + any active extension. `effective_end`
 // is the point the auto-clockout cron will fire at, and the point the client
@@ -22,65 +9,6 @@ export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const supabase = createAdminClient();
-  const now = new Date();
-  const weekday = weekdayInZone(now);
-
-  const [overrideRes, anyOverrideRes, extensionRes] = await Promise.all([
-    supabase
-      .from("work_schedules")
-      .select("weekday, start_time, end_time, timezone")
-      .eq("profile_id", session.user.profileId)
-      .eq("weekday", weekday)
-      .maybeSingle(),
-    supabase
-      .from("work_schedules")
-      .select("weekday")
-      .eq("profile_id", session.user.profileId)
-      .limit(1),
-    supabase
-      .from("time_extensions")
-      .select("extension_until, requested_minutes")
-      .eq("profile_id", session.user.profileId)
-      .eq("local_date", localDateInZone(now))
-      .maybeSingle(),
-  ]);
-
-  const override = overrideRes.data;
-  const anyOverride = anyOverrideRes.data;
-  const extension = extensionRes.data;
-
-  // If there is ANY override row for this user, treat missing weekdays as
-  // "not scheduled" (their overrides are the source of truth). Otherwise
-  // fall back to the default Mon-Fri 10-6 ET shift.
-  let start = DEFAULT_START;
-  let end = DEFAULT_END;
-  let scheduled = DEFAULT_WORKDAYS.has(weekday);
-
-  if (override) {
-    start = override.start_time.slice(0, 5);
-    end = override.end_time.slice(0, 5);
-    scheduled = true;
-  } else if (anyOverride && anyOverride.length > 0) {
-    scheduled = false;
-  }
-
-  const scheduledEndIso = scheduled ? scheduledTimeInZone(now, end).toISOString() : null;
-  const extensionUntilIso = extension?.extension_until ?? null;
-  const effectiveEndIso =
-    extensionUntilIso && scheduledEndIso
-      ? new Date(extensionUntilIso) > new Date(scheduledEndIso)
-        ? extensionUntilIso
-        : scheduledEndIso
-      : extensionUntilIso ?? scheduledEndIso;
-
-  return NextResponse.json({
-    scheduled,
-    start_time: start,
-    end_time: end,
-    timezone: DEFAULT_ZONE,
-    end_of_day_iso: scheduledEndIso,
-    extension_until_iso: extensionUntilIso,
-    effective_end_iso: effectiveEndIso,
-  });
+  const data = await getMyScheduleToday(session.user.profileId);
+  return NextResponse.json(data);
 }
