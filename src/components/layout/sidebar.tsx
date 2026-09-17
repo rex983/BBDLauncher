@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { getBrowserClient } from "@/lib/supabase/browser";
 import {
   canAccessAdminPath,
   canAccessManagementPath,
@@ -54,11 +55,12 @@ const adminItems = [
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
 ];
 
-// Poll the pending-count endpoint whenever the route changes so approving
-// or denying a request in one screen updates the badge in the sidebar on
-// the next navigation. Also refreshes on a slow interval to catch new
-// submissions from other users.
-function usePendingTimeOffCount(enabled: boolean, pathname: string): number {
+// Keep the pending-count badge live via a Supabase realtime subscription
+// on `time_off_requests`. Any INSERT/UPDATE/DELETE triggers a re-fetch of
+// the count endpoint (which enforces scope + pending-only server-side, so
+// we can't replicate the filter in the channel itself). Beats the old
+// 60s poll on every open tab.
+function usePendingTimeOffCount(enabled: boolean): number {
   const [count, setCount] = useState(0);
   useEffect(() => {
     if (!enabled) { setCount(0); return; }
@@ -74,9 +76,22 @@ function usePendingTimeOffCount(enabled: boolean, pathname: string): number {
       }
     };
     fetchCount();
-    const t = setInterval(fetchCount, 60_000);
-    return () => { cancelled = true; clearInterval(t); };
-  }, [enabled, pathname]);
+
+    const supabase = getBrowserClient();
+    const channel = supabase
+      .channel("sidebar-pending-count")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "time_off_requests" },
+        () => { fetchCount(); },
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [enabled]);
   return count;
 }
 
@@ -99,7 +114,7 @@ export function Sidebar() {
     canAccessManagementPath(effectiveRole, item.href)
   );
   const preview = { viewAs, viewAsOffice };
-  const pendingCount = usePendingTimeOffCount(showManagementNav, pathname);
+  const pendingCount = usePendingTimeOffCount(showManagementNav);
 
   return (
     <aside className="w-64 border-r bg-background min-h-[calc(100vh-4rem)]">
