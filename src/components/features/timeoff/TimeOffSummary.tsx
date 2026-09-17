@@ -48,7 +48,10 @@ interface EmployeeRow {
   latestReasons: string[];
 }
 
-export function TimeOffSummary({ refreshKey = 0 }: { refreshKey?: number } = {}) {
+export function TimeOffSummary({
+  refreshKey = 0,
+  active = true,
+}: { refreshKey?: number; active?: boolean } = {}) {
   const { viewAsOffice } = useRolePreview();
 
   const currentYear = new Date().getFullYear();
@@ -62,6 +65,10 @@ export function TimeOffSummary({ refreshKey = 0 }: { refreshKey?: number } = {})
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Skip fetching when the containing tab isn't active — see TimeOffCalendar
+    // for the same guard. Both live inside multi-tab pages that mount all
+    // tab contents simultaneously.
+    if (!active) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -80,7 +87,7 @@ export function TimeOffSummary({ refreshKey = 0 }: { refreshKey?: number } = {})
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [from, to, viewAsOffice, refreshKey]);
+  }, [active, from, to, viewAsOffice, refreshKey]);
 
   const rows: EmployeeRow[] = useMemo(() => {
     const byId = new Map<string, EmployeeRow>();

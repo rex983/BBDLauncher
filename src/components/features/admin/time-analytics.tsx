@@ -70,7 +70,7 @@ function fmtWeekLabel(iso: string) {
 // Time-data analytics widget. Rendered inside /admin/analytics as its own
 // tab; sources data from /api/management/analytics/time. Scope is enforced
 // server-side (admin sees all, managers see their office ∩ department).
-export function TimeAnalytics() {
+export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "admin";
   const viewerOffice = session?.user?.office ?? null;
@@ -90,6 +90,11 @@ export function TimeAnalytics() {
   }, [isAdmin, viewAsOffice]);
 
   useEffect(() => {
+    // Wait until the tab is actually visible before hitting the API.
+    // /admin/analytics mounts every tab, and this one aggregates the last
+    // 4 weeks of time punches — not something to burn round-trips on
+    // when the user is browsing the Apps or Users tab.
+    if (!active) return;
     const params = new URLSearchParams({ weeks: String(weeks) });
     if (isAdmin && office !== ALL) params.set("office", office);
     if (isAdmin && department !== ALL) params.set("department", department);
@@ -99,7 +104,7 @@ export function TimeAnalytics() {
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => setData(json))
       .finally(() => setLoading(false));
-  }, [weeks, office, department, includeInactive, isAdmin]);
+  }, [active, weeks, office, department, includeInactive, isAdmin]);
 
   const rows = useMemo(() => {
     if (!data) return [];

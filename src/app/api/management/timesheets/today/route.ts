@@ -74,5 +74,12 @@ export async function GET(req: NextRequest) {
     return { profile, state, weekly };
   });
 
-  return NextResponse.json(rows);
+  // Short private cache so quick filter flips (office/department) reuse
+  // the response instead of hitting Supabase every time. The 30s tick in
+  // the client re-derives durations locally, so 15s of freshness is fine.
+  return NextResponse.json(rows, {
+    headers: {
+      "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
+    },
+  });
 }

@@ -82,6 +82,9 @@ export default function TimeOffManagementPage() {
   // mounted, so we need an explicit signal instead of relying on remount.
   const [refreshKey, setRefreshKey] = useState(0);
   const bump = useCallback(() => setRefreshKey((k) => k + 1), []);
+  // Controlled tab value so we can pass `active` down and skip fetches
+  // for the tab the user isn't looking at.
+  const [tab, setTab] = useState<"queue" | "calendar" | "summary">("queue");
 
   return (
     <div className="space-y-6">
@@ -102,7 +105,7 @@ export default function TimeOffManagementPage() {
         )}
       </div>
 
-      <Tabs defaultValue="queue">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList>
           <TabsTrigger value="queue">Requests</TabsTrigger>
           <TabsTrigger value="calendar">Calendar</TabsTrigger>
@@ -112,10 +115,10 @@ export default function TimeOffManagementPage() {
           <RequestsQueue onChanged={bump} />
         </TabsContent>
         <TabsContent value="calendar" className="mt-4">
-          <TimeOffCalendar refreshKey={refreshKey} />
+          <TimeOffCalendar refreshKey={refreshKey} active={tab === "calendar"} />
         </TabsContent>
         <TabsContent value="summary" className="mt-4">
-          <TimeOffSummary refreshKey={refreshKey} />
+          <TimeOffSummary refreshKey={refreshKey} active={tab === "summary"} />
         </TabsContent>
       </Tabs>
     </div>
@@ -142,19 +145,30 @@ function RequestsQueue({ onChanged }: { onChanged: () => void }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const buildUrl = (s: SectionKey) => {
-      const p = new URLSearchParams({ status: s });
-      if (viewAsOffice) p.set("office", viewAsOffice);
-      return `/api/management/timeoff?${p.toString()}`;
-    };
-    const [pRes, aRes, dRes] = await Promise.all([
-      fetch(buildUrl("pending")),
-      fetch(buildUrl("approved")),
-      fetch(buildUrl("denied")),
-    ]);
-    setPending(pRes.ok ? await pRes.json() : []);
-    setApproved(aRes.ok ? await aRes.json() : []);
-    setDenied(dRes.ok ? await dRes.json() : []);
+    const p = new URLSearchParams({ statuses: "pending,approved,denied" });
+    if (viewAsOffice) p.set("office", viewAsOffice);
+    const res = await fetch(`/api/management/timeoff?${p.toString()}`);
+    if (!res.ok) {
+      setPending([]);
+      setApproved([]);
+      setDenied([]);
+      setLoading(false);
+      return;
+    }
+    const rows: Row[] = await res.json();
+    // Split into buckets client-side. Server returns everything at once
+    // to avoid three parallel auth+scope round-trips.
+    const p2: Row[] = [];
+    const a: Row[] = [];
+    const d: Row[] = [];
+    for (const r of rows) {
+      if (r.status === "pending") p2.push(r);
+      else if (r.status === "approved") a.push(r);
+      else if (r.status === "denied") d.push(r);
+    }
+    setPending(p2);
+    setApproved(a);
+    setDenied(d);
     setLoading(false);
   }, [viewAsOffice]);
 

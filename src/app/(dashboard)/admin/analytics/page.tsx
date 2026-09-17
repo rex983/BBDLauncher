@@ -112,6 +112,11 @@ export default function AdminAnalyticsPage() {
   const [appQuery, setAppQuery] = useState("");
   const [linkQuery, setLinkQuery] = useState("");
   const [userQuery, setUserQuery] = useState("");
+  // Controlled tab value so heavy children (TimeAnalytics, TimeOffSummary,
+  // TimeOffCalendar) can skip their fetch effects until their tab is active.
+  const [tab, setTab] = useState<
+    "apps" | "links" | "users" | "recent" | "time" | "timeoff"
+  >("apps");
 
   useEffect(() => {
     let cancelled = false;
@@ -219,7 +224,7 @@ export default function AdminAnalyticsPage() {
         />
       </div>
 
-      <Tabs defaultValue="apps" className="space-y-4">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="space-y-4">
         <TabsList>
           <TabsTrigger value="apps">By App</TabsTrigger>
           <TabsTrigger value="links">By Link</TabsTrigger>
@@ -396,7 +401,7 @@ export default function AdminAnalyticsPage() {
         </TabsContent>
 
         <TabsContent value="time" className="space-y-3">
-          <TimeAnalytics />
+          <TimeAnalytics active={tab === "time"} />
         </TabsContent>
 
         <TabsContent value="timeoff" className="space-y-6">
@@ -405,14 +410,14 @@ export default function AdminAnalyticsPage() {
             <p className="text-sm text-muted-foreground mb-3">
               Per-employee approved days broken down by type, plus pending totals and recent notes.
             </p>
-            <TimeOffSummary />
+            <TimeOffSummary active={tab === "timeoff"} />
           </div>
           <div>
             <h2 className="text-lg font-semibold mb-1">Calendar</h2>
             <p className="text-sm text-muted-foreground mb-3">
               Who&rsquo;s off when — spot overlaps before approving new requests.
             </p>
-            <TimeOffCalendar />
+            <TimeOffCalendar active={tab === "timeoff"} />
           </div>
         </TabsContent>
       </Tabs>

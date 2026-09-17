@@ -29,9 +29,17 @@ export async function GET(req: NextRequest) {
   const { supabase, scope } = gate;
 
   const url = new URL(req.url);
-  const status = url.searchParams.get("status") || "pending";
-  if (!VALID_STATUSES.has(status)) {
-    return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+  // Accept a comma-separated `statuses` for callers that need multiple
+  // buckets in one round-trip (the queue page grabs pending+approved+denied
+  // together). Falls back to the legacy singular `status` param.
+  const statusesParam = url.searchParams.get("statuses");
+  const statuses = statusesParam
+    ? statusesParam.split(",").map((s) => s.trim()).filter(Boolean)
+    : [url.searchParams.get("status") || "pending"];
+  for (const s of statuses) {
+    if (!VALID_STATUSES.has(s)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
   }
   // Admin-only overlay filters (scope.office/department already dominate
   // for manager-tier viewers, so these only apply when scope is unbounded).
@@ -68,7 +76,7 @@ export async function GET(req: NextRequest) {
       "id, profile_id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_by, decided_at, created_at, attachments",
     )
     .in("profile_id", profileIds)
-    .eq("status", status)
+    .in("status", statuses)
     .order("start_date", { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

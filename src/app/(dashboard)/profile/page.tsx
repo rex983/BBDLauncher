@@ -109,7 +109,9 @@ export default async function ProfilePage() {
       .select("type, start_date, end_date, full_day, hours")
       .eq("profile_id", profileId)
       .eq("status", "approved")
-      .gte("start_date", yearStart),
+      .gte("start_date", yearStart)
+      .order("start_date", { ascending: false })
+      .limit(200),
   ]);
 
   const profile = profileRes.data;

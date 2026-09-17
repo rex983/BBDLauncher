@@ -129,7 +129,10 @@ function assignRows(events: Omit<WeekEvent, "row">[]): WeekEvent[] {
   return out;
 }
 
-export function TimeOffCalendar({ refreshKey = 0 }: { refreshKey?: number } = {}) {
+export function TimeOffCalendar({
+  refreshKey = 0,
+  active = true,
+}: { refreshKey?: number; active?: boolean } = {}) {
   const { viewAsOffice } = useRolePreview();
   const { data: session } = useSession();
   const canManage = canEditTimeData(session?.user?.role);
@@ -147,6 +150,10 @@ export function TimeOffCalendar({ refreshKey = 0 }: { refreshKey?: number } = {}
   const to = isoDate(gridEnd);
 
   useEffect(() => {
+    // Skip fetching entirely when the tab isn't active — the parent
+    // page mounts multiple tabs at once and we don't want to burn
+    // Supabase round-trips on views the user isn't looking at.
+    if (!active) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -166,7 +173,7 @@ export function TimeOffCalendar({ refreshKey = 0 }: { refreshKey?: number } = {}
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [from, to, showPending, viewAsOffice, refreshKey, localRefreshKey]);
+  }, [active, from, to, showPending, viewAsOffice, refreshKey, localRefreshKey]);
 
   const profileById = useMemo(() => {
     const m = new Map<string, Profile>();
