@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  TIME_OFF_MANAGER_REASONS,
   TIME_OFF_SUBCATEGORIES,
   TIME_OFF_TYPES,
   type TimeOffType,
@@ -59,7 +60,8 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
     end_date: today,
     full_day: true,
     hours: "",
-    reason: "",
+    reason_preset: "Sick day" as string,
+    reason_custom: "",
   });
 
   const resetForm = useCallback(() => {
@@ -72,7 +74,8 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
       end_date: t,
       full_day: true,
       hours: "",
-      reason: "",
+      reason_preset: "Sick day",
+      reason_custom: "",
     });
     setError(null);
   }, []);
@@ -124,6 +127,12 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
     }
     setSubmitting(true);
     setError(null);
+    // Resolve reason: preset unless "Other" is picked, in which case the
+    // free-text field wins. Empty preset means "unspecified" → send null.
+    const resolvedReason =
+      form.reason_preset === "Other"
+        ? form.reason_custom.trim()
+        : form.reason_preset;
     const res = await fetch("/api/management/timeoff", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -135,7 +144,7 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
         end_date: form.end_date,
         full_day: form.full_day,
         hours: form.full_day ? null : Number(form.hours),
-        reason: form.reason || undefined,
+        reason: resolvedReason || undefined,
       }),
     });
     setSubmitting(false);
@@ -280,14 +289,28 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="reason">Reason (optional)</Label>
-            <Textarea
-              id="reason"
-              rows={3}
-              value={form.reason}
-              onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
-              placeholder="e.g. called in sick"
-            />
+            <Label htmlFor="reason">Reason</Label>
+            <Select
+              value={form.reason_preset}
+              onValueChange={(v) => setForm((f) => ({ ...f, reason_preset: v }))}
+            >
+              <SelectTrigger id="reason">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIME_OFF_MANAGER_REASONS.map((r) => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {form.reason_preset === "Other" && (
+              <Textarea
+                rows={2}
+                value={form.reason_custom}
+                onChange={(e) => setForm((f) => ({ ...f, reason_custom: e.target.value }))}
+                placeholder="Describe the reason"
+              />
+            )}
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}

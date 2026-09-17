@@ -85,6 +85,25 @@ export const TIME_OFF_SUBCATEGORY_HINTS: Record<string, string> = {
   "Disability leave": "Taking time off for a long-term disability.",
 };
 
+// Standardized reason options for the manager "Mark day off" dialog.
+// Kept as a flat list — managers usually reach for the same handful of
+// phrases (called out sick, family emergency, no-show) and shouldn't
+// have to freehand-type them. "Other" flips the form to a text input.
+export const TIME_OFF_MANAGER_REASONS = [
+  "Sick day",
+  "Family emergency",
+  "Personal emergency",
+  "Medical appointment",
+  "Bereavement",
+  "Jury duty",
+  "Called out",
+  "No-show",
+  "Vacation",
+  "Other",
+] as const;
+
+export type TimeOffManagerReason = (typeof TIME_OFF_MANAGER_REASONS)[number];
+
 // Business-day counter used by the manager summary. Excludes Sat/Sun so a
 // Friday–Monday request counts as 2 days, not 4. For partial-day requests
 // we credit `hours / 8` days rounded to one decimal.
