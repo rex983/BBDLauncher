@@ -146,7 +146,7 @@ export default function SchedulesPage() {
                   <TableCell key={w} className="text-xs text-muted-foreground">
                     {s
                       ? <span className="text-foreground">{fmt(s.start_time)}–{fmt(s.end_time)}</span>
-                      : (w >= 1 && w <= 5 ? `${fmt(DEFAULT_START)}–${fmt(DEFAULT_END)}` : "—")}
+                      : "—"}
                   </TableCell>
                 );
               })}
