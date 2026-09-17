@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { isAdmin } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 // Mark an existing quote as the active one. Clears any other active row
@@ -50,5 +51,6 @@ export async function POST(
       { status: 500 }
     );
   }
+  bustLauncherCache("quotes");
   return NextResponse.json(data);
 }

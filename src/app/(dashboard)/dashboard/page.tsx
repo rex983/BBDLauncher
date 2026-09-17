@@ -9,6 +9,14 @@ import { TimeClockShell } from "@/components/features/timeclock/TimeClockShell";
 import { canManageContent, isAdmin as isAdminRole } from "@/lib/auth/permissions";
 import { getMyStateToday, getMyScheduleToday } from "@/lib/timesheets/server";
 import { localDateInZone } from "@/lib/timesheets/tz";
+import {
+  getCachedApps,
+  getCachedRoleAppAccess,
+  getCachedSections,
+  getCachedLinks,
+  getCachedRoles,
+  getCachedActiveQuote,
+} from "@/lib/launcher/cache";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { LauncherApp, LauncherSection } from "@/types/app";
@@ -81,57 +89,43 @@ export default async function DashboardPage({
   const initialSchedule = scheduleRes ?? null;
   const initialUpcomingTimeOff = upcomingTimeOffRes ?? [];
   try {
-    const supabase = createAdminClient();
+    // Everything below is cached (see src/lib/launcher/cache.ts). On a
+    // cache hit this whole block is zero Supabase round-trips.
+    const [allApps, accessRows, sectionsData, linksData, rolesData, quoteData] =
+      await Promise.all([
+        getCachedApps(),
+        getCachedRoleAppAccess(),
+        getCachedSections(),
+        getCachedLinks(),
+        isAdmin ? getCachedRoles() : Promise.resolve([] as { name: string; display_name: string }[]),
+        getCachedActiveQuote(),
+      ]);
 
-    // Resolve view-as role first so we can validate it against known roles
-    // before we trust it in downstream queries. An arbitrary URL string
-    // must not be able to flow into DB filters or (worse) UI hints.
+    // Resolve view-as role by consulting the cached roles list rather
+    // than a fresh query — an arbitrary URL string must not be able to
+    // flow into DB filters or (worse) UI hints, so we still validate.
     if (isAdmin && viewAs) {
-      const { data: validRole } = await supabase
-        .from("launcher_roles")
-        .select("name")
-        .eq("name", viewAs)
-        .maybeSingle();
-      if (validRole?.name) effectiveRole = validRole.name;
+      if (rolesData.some((r) => r.name === viewAs)) {
+        effectiveRole = viewAs;
+      } else {
+        // Non-admin roles list is empty (`getCachedRoles` only runs for
+        // admins here). Fall through to a direct check for that case —
+        // paranoia only; admins already have rolesData populated above.
+        const supabase = createAdminClient();
+        const { data: validRole } = await supabase
+          .from("launcher_roles")
+          .select("name")
+          .eq("name", viewAs)
+          .maybeSingle();
+        if (validRole?.name) effectiveRole = validRole.name;
+      }
     }
 
-    // One round-trip: fetch role-scoped apps via join, plus sections, links,
-    // active motivational quote, and (for admins) the role list — all in parallel.
-    const [accessRes, sectionsRes, linksRes, rolesRes, quoteRes] = await Promise.all([
-      supabase
-        .from("launcher_role_app_access")
-        .select("launcher_apps!inner(*)")
-        .eq("role_name", effectiveRole)
-        .eq("launcher_apps.status", "active"),
-      supabase
-        .from("launcher_sections")
-        .select("*")
-        .order("display_order", { ascending: true }),
-      supabase
-        .from("launcher_links")
-        .select("*")
-        .order("display_order", { ascending: true }),
-      isAdmin
-        ? supabase.from("launcher_roles").select("name, display_name").order("name")
-        : Promise.resolve({ data: [] as { name: string; display_name: string }[] }),
-      supabase
-        .from("launcher_motivational_quotes")
-        .select("*")
-        .eq("is_active", true)
-        .maybeSingle(),
-    ]);
-
-    const accessRows = (accessRes.data || []) as unknown as {
-      launcher_apps: LauncherApp | LauncherApp[] | null;
-    }[];
-    const allApps = accessRows
-      .flatMap((r) =>
-        Array.isArray(r.launcher_apps)
-          ? r.launcher_apps
-          : r.launcher_apps
-            ? [r.launcher_apps]
-            : []
-      )
+    const roleAppIds = new Set(
+      accessRows.filter((r) => r.role_name === effectiveRole).map((r) => r.app_id),
+    );
+    const roleFilteredApps = allApps
+      .filter((a) => roleAppIds.has(a.id))
       .sort((a, b) => a.display_order - b.display_order);
 
     // Office gate: NULL/empty = visible to all. Admins normally see everything,
@@ -144,13 +138,11 @@ export default async function DashboardPage({
       offices.length === 0 ||
       (effectiveOffice ? offices.includes(effectiveOffice) : false);
 
-    apps = allApps.filter((a) => appOfficesMatch(a.offices));
-    sections = (sectionsRes.data as LauncherSection[]) || [];
-    links = ((linksRes.data as ImportantLink[]) || []).filter((l) =>
-      linkOfficeMatches(l.office)
-    );
-    roles = (rolesRes.data as { name: string; display_name: string }[]) || [];
-    quote = (quoteRes.data as MotivationalQuote | null) ?? null;
+    apps = roleFilteredApps.filter((a) => appOfficesMatch(a.offices));
+    sections = sectionsData;
+    links = linksData.filter((l) => linkOfficeMatches(l.office));
+    roles = rolesData;
+    quote = quoteData;
   } catch (err) {
     console.error("Dashboard data fetch error:", err);
   }

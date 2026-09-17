@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageContent } from "@/lib/auth/permissions";
+import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -45,6 +46,7 @@ export async function PUT(
       );
     }
 
+    bustLauncherCache("links");
     return NextResponse.json(link);
   } catch (err) {
     console.error("PUT /api/links error:", err);
@@ -77,6 +79,7 @@ export async function DELETE(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    bustLauncherCache("links");
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("DELETE /api/links error:", err);

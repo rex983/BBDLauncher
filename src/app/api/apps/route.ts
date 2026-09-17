@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageContent, isAdmin } from "@/lib/auth/permissions";
+import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -154,6 +155,7 @@ export async function POST(req: NextRequest) {
       if (ssoError) console.error("SSO config insert error:", ssoError.message);
     }
 
+    bustLauncherCache("apps");
     return NextResponse.json(app, { status: 201 });
   } catch (err) {
     console.error("POST /api/apps error:", err);

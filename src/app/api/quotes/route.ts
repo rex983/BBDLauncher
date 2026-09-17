@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { isAdmin } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { bustLauncherCache } from "@/lib/launcher/cache";
 import { activateNewQuote } from "@/lib/quotes/refresh";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
         source: "manual",
         created_by: session.user.email ?? null,
       });
+      bustLauncherCache("quotes");
       return NextResponse.json(row, { status: 201 });
     } catch (err) {
       return NextResponse.json(
@@ -81,5 +83,6 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+  bustLauncherCache("quotes");
   return NextResponse.json(data, { status: 201 });
 }

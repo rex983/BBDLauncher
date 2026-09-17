@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageContent } from "@/lib/auth/permissions";
+import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -36,6 +37,7 @@ export async function PUT(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  bustLauncherCache("sections");
   return NextResponse.json(data);
 }
 
@@ -57,5 +59,6 @@ export async function DELETE(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  bustLauncherCache("sections");
   return NextResponse.json({ success: true });
 }

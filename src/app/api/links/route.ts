@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageContent } from "@/lib/auth/permissions";
+import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    bustLauncherCache("links");
     return NextResponse.json(link, { status: 201 });
   } catch (err) {
     console.error("POST /api/links error:", err);

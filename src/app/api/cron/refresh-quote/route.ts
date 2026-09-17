@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { bustLauncherCache } from "@/lib/launcher/cache";
 import { refreshQuoteFromAi } from "@/lib/quotes/refresh";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -57,6 +58,7 @@ async function handle(req: NextRequest) {
       source: "ai_cron",
       createdBy: "cron",
     });
+    bustLauncherCache("quotes");
     return NextResponse.json({ refreshed: true, quote });
   } catch (err) {
     return NextResponse.json(

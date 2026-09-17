@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { isAdmin } from "@/lib/auth/permissions";
+import { bustLauncherCache } from "@/lib/launcher/cache";
 import { refreshQuoteFromAi } from "@/lib/quotes/refresh";
 import { NextResponse } from "next/server";
 
@@ -18,6 +19,7 @@ export async function POST() {
       source: "ai_manual",
       createdBy: session.user.email ?? null,
     });
+    bustLauncherCache("quotes");
     return NextResponse.json(quote);
   } catch (err) {
     return NextResponse.json(
