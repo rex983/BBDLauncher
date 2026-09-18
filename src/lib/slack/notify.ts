@@ -5,6 +5,8 @@
 
 import type { TimeOffType } from "@/lib/timeoff/types";
 import { TIME_OFF_TYPE_LABEL } from "@/lib/timeoff/types";
+import type { IncidentSeverity, IncidentCategory } from "@/lib/incidents/types";
+import { INCIDENT_CATEGORY_LABEL, INCIDENT_SEVERITY_LABEL } from "@/lib/incidents/types";
 
 const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
 
@@ -120,5 +122,143 @@ export async function notifyTimeOffSubmitted(p: TimeOffSubmittedPayload): Promis
     }
   } catch (err) {
     console.error("[slack] time-off webhook error:", err);
+  }
+}
+
+// =====================================================================
+// Incident reports — separate webhook (SLACK_INCIDENT_WEBHOOK_URL) so HR can
+// route them to a private channel instead of the general time-off channel.
+// Severity drives the side-bar color so a critical report stands out from
+// a low-severity coaching note at a glance.
+// =====================================================================
+
+const INCIDENT_SEVERITY_COLOR: Record<IncidentSeverity, string> = {
+  low: "#22c55e",
+  medium: "#eab308",
+  high: "#ea580c",
+  critical: "#dc2626",
+};
+
+export interface IncidentSubmittedPayload {
+  incidentId: string;
+  employeeName: string;
+  employeeEmail: string;
+  reporterName: string;
+  title: string;
+  severity: IncidentSeverity;
+  category: IncidentCategory;
+  attachmentCount: number;
+}
+
+export async function notifyIncidentSubmitted(p: IncidentSubmittedPayload): Promise<void> {
+  const url = process.env.SLACK_INCIDENT_WEBHOOK_URL;
+  if (!url) return;
+
+  const body = {
+    text: `New incident report filed for ${p.employeeName}`,
+    attachments: [
+      {
+        color: INCIDENT_SEVERITY_COLOR[p.severity],
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: [
+                `*New incident report*`,
+                `*${p.title}*`,
+                `Filed by ${p.reporterName}`,
+              ].join("\n"),
+            },
+          },
+          {
+            type: "section",
+            fields: [
+              { type: "mrkdwn", text: `*Employee*\n${p.employeeName}\n\`${p.employeeEmail}\`` },
+              { type: "mrkdwn", text: `*Severity*\n${INCIDENT_SEVERITY_LABEL[p.severity]}` },
+              { type: "mrkdwn", text: `*Category*\n${INCIDENT_CATEGORY_LABEL[p.category]}` },
+              ...(p.attachmentCount > 0
+                ? [{ type: "mrkdwn", text: `*Attachments*\n${p.attachmentCount} file${p.attachmentCount === 1 ? "" : "s"}` }]
+                : []),
+            ],
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: "Open in launcher" },
+                url: `${LAUNCHER_URL}/management/incidents/${p.incidentId}`,
+                style: "primary",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  await postSlack(url, body, "incident-submitted");
+}
+
+export interface IncidentCompletedPayload {
+  incidentId: string;
+  employeeName: string;
+  title: string;
+  severity: IncidentSeverity;
+}
+
+export async function notifyIncidentCompleted(p: IncidentCompletedPayload): Promise<void> {
+  const url = process.env.SLACK_INCIDENT_WEBHOOK_URL;
+  if (!url) return;
+
+  const body = {
+    text: `Incident report signed by ${p.employeeName}`,
+    attachments: [
+      {
+        color: INCIDENT_SEVERITY_COLOR[p.severity],
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: [
+                `*Incident report signed*`,
+                `*${p.title}*`,
+                `${p.employeeName} has acknowledged this report.`,
+              ].join("\n"),
+            },
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: "View signed report" },
+                url: `${LAUNCHER_URL}/management/incidents/${p.incidentId}`,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  await postSlack(url, body, "incident-completed");
+}
+
+async function postSlack(url: string, body: unknown, label: string): Promise<void> {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(`[slack] ${label} webhook failed:`, res.status, text);
+    }
+  } catch (err) {
+    console.error(`[slack] ${label} webhook error:`, err);
   }
 }

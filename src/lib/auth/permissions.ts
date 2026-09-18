@@ -16,6 +16,7 @@ export const MANAGER_ADMIN_PATHS = [
 export const MANAGER_MANAGEMENT_PATHS = [
   "/management/timesheets",
   "/management/timeoff",
+  "/management/incidents",
 ];
 
 export function isAdmin(role: UserRole | undefined | null): boolean {

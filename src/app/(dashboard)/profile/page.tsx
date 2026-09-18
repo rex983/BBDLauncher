@@ -11,6 +11,10 @@ import { computeDayWorkedMs } from "@/lib/timesheets/weekly";
 import { startOfDayInZone, localDateInZone } from "@/lib/timesheets/tz";
 import { TimeOffPanel, type TimeOffRequest } from "@/components/features/timeoff/TimeOffPanel";
 import {
+  IncidentPanel,
+  type IncidentSummary,
+} from "@/components/features/incidents/IncidentPanel";
+import {
   requestDays,
   TIME_OFF_TYPES,
   TIME_OFF_TYPE_LABEL,
@@ -66,7 +70,7 @@ export default async function ProfilePage() {
   const currentYear = now.getFullYear();
   const yearStart = `${currentYear}-01-01`;
 
-  const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes] = await Promise.all([
+  const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes, incidentsRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, email, name:full_name, role, office, department, is_it, created_at")
@@ -112,6 +116,18 @@ export default async function ProfilePage() {
       .gte("start_date", yearStart)
       .order("start_date", { ascending: false })
       .limit(200),
+    // Employee's own incident reports — only awaiting-sig or completed
+    // (drafts + awaiting-manager-sig are still manager-internal). Matches
+    // the visibility rule the /api/incidents endpoint enforces.
+    supabase
+      .from("incident_reports")
+      .select(
+        "id, title, severity, category, status, occurred_at, manager_signed_at, employee_signed_at, attachments, created_at",
+      )
+      .eq("employee_profile_id", profileId)
+      .in("status", ["awaiting_employee_sig", "completed"])
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
 
   const profile = profileRes.data;
@@ -126,6 +142,7 @@ export default async function ProfilePage() {
     full_day: boolean;
     hours: number | null;
   }[];
+  const incidents = (incidentsRes.data || []) as IncidentSummary[];
 
   // Fold approved rows into days-per-type. `requestDays` handles
   // full-day (business-day count) vs partial-day (hours/8) semantics.
@@ -284,6 +301,15 @@ export default async function ProfilePage() {
         title="My upcoming time off"
         description="Submit new requests and see the status of ones that haven't happened yet."
       />
+
+      {incidents.length > 0 && (
+        <IncidentPanel
+          initialRows={incidents}
+          employeeFullName={profile?.name || null}
+          title="Incident reports"
+          description="Reports issued to you. Sign any awaiting your signature; archived reports remain viewable here."
+        />
+      )}
 
       <Card>
         <CardHeader>

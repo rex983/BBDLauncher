@@ -35,6 +35,7 @@ import type {
 } from "@/lib/timesheets/detail";
 import { ExportMenu } from "@/components/ui/export-menu";
 import type { ExportColumn } from "@/lib/export/csv";
+import { FileIncidentDialog } from "@/components/features/incidents/FileIncidentDialog";
 
 const EVENT_TYPES: { value: PunchEventType; label: string }[] = [
   { value: "clock_in",    label: "Clock in" },
@@ -309,6 +310,12 @@ export default function EmployeeDetailShell({
           />
           {canEdit && (
             <Button onClick={openAdd} className="print:hidden"><Plus className="mr-2 h-4 w-4" />Add punch</Button>
+          )}
+          {canEdit && profile && (
+            <FileIncidentDialog
+              employeeProfileId={profileId}
+              employeeName={profile.name || profile.email || "employee"}
+            />
           )}
         </div>
       </div>
