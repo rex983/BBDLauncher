@@ -360,56 +360,63 @@ export function RequestDetailDialog({ row, onClose, canDecide, canEdit, onChange
           </div>
         )}
 
-        <DialogFooter className="flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
-          <div className="flex gap-2">
-            {canEdit && mode === "view" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setMode("edit")}
-                disabled={busy}
-              >
-                <Pencil className="h-4 w-4 mr-1" />
-                Edit
-              </Button>
-            )}
-            {canEdit && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={del}
-                disabled={busy}
-                className="text-destructive hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Delete
-              </Button>
-            )}
-          </div>
+        {/* Footer stacks: the denial reason input takes its own full-width
+             row (so it doesn't fight the buttons for horizontal space), and
+             the action bar below puts destructive/edit actions on the left
+             opposite the primary decision buttons on the right. */}
+        <DialogFooter className="flex-col gap-3 sm:items-stretch">
+          {mode === "view" && row.status === "pending" && canDecide && (
+            <Input
+              type="text"
+              placeholder="Reason for denial (optional — used if you click Deny)"
+              value={denyNote}
+              onChange={(e) => setDenyNote(e.target.value)}
+              className="w-full"
+            />
+          )}
 
-          {mode === "edit" ? (
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setMode("view")}
-                disabled={busy}
-              >
-                Cancel
-              </Button>
-              <Button size="sm" onClick={save} disabled={busy}>
-                Save
-              </Button>
+              {canEdit && mode === "view" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setMode("edit")}
+                  disabled={busy}
+                >
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Edit
+                </Button>
+              )}
+              {canEdit && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={del}
+                  disabled={busy}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </Button>
+              )}
             </div>
-          ) : row.status === "pending" && canDecide ? (
-            <div className="flex-col sm:flex-row flex gap-2 sm:items-center">
-              <input
-                type="text"
-                placeholder="Reason for denial (optional)"
-                value={denyNote}
-                onChange={(e) => setDenyNote(e.target.value)}
-                className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm w-full sm:w-64"
-              />
+
+            {mode === "edit" ? (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMode("view")}
+                  disabled={busy}
+                >
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={save} disabled={busy}>
+                  Save
+                </Button>
+              </div>
+            ) : row.status === "pending" && canDecide ? (
               <div className="flex gap-2">
                 <Button
                   variant="outline"
@@ -425,8 +432,8 @@ export function RequestDetailDialog({ row, onClose, canDecide, canEdit, onChange
                   Approve
                 </Button>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
