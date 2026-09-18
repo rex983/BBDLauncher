@@ -122,8 +122,17 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof AIProviderError) {
+      // 503 / 429 mean the model is temporarily overloaded — surface a
+      // friendlier message than "Gemini API error (503): {...}". The Gemini
+      // provider already retried with backoff before throwing, so at this
+      // point the demand spike is still ongoing and the manager should try
+      // again in a moment.
+      const isOverloaded = err.status === 503 || err.status === 429;
+      const message = isOverloaded
+        ? `The AI provider is temporarily overloaded (${err.status}). Please try again in a minute.`
+        : err.message;
       return NextResponse.json(
-        { error: err.message, provider: err.provider },
+        { error: message, provider: err.provider, retryable: isOverloaded },
         { status: err.status && err.status >= 400 && err.status < 500 ? 502 : 500 },
       );
     }

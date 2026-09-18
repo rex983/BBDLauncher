@@ -25,6 +25,14 @@ interface GeminiResponse {
   error?: { message?: string; status?: string };
 }
 
+// Statuses Gemini returns during capacity spikes or brief rate-limit
+// windows. 503 UNAVAILABLE is the common free-tier "high demand" message;
+// 429 is quota / rate limit; 500 is a transient upstream error. All three
+// are retryable with backoff. Anything else (4xx auth/bad-request) fails
+// fast — no point retrying a malformed prompt.
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 3;
+
 export async function generateWithGemini(opts: GenerateOptions): Promise<GenerateResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -53,35 +61,54 @@ export async function generateWithGemini(opts: GenerateOptions): Promise<Generat
     },
   };
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let lastError: AIProviderError | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new AIProviderError(
-      "gemini",
-      `Gemini API error (${res.status}): ${errText.slice(0, 500)}`,
-      res.status,
-    );
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      const err = new AIProviderError(
+        "gemini",
+        `Gemini API error (${res.status}): ${errText.slice(0, 500)}`,
+        res.status,
+      );
+      // Non-retryable statuses fail immediately; retryable ones back off
+      // and try again. Exponential-ish: 0.75s, 1.5s.
+      if (!RETRYABLE_STATUSES.has(res.status) || attempt === MAX_ATTEMPTS) {
+        throw err;
+      }
+      lastError = err;
+      await sleep(750 * attempt);
+      continue;
+    }
+
+    const data = (await res.json()) as GeminiResponse;
+    if (data.error) {
+      throw new AIProviderError("gemini", data.error.message || "Gemini returned an error");
+    }
+    if (data.promptFeedback?.blockReason) {
+      throw new AIProviderError(
+        "gemini",
+        `Prompt blocked by safety filters: ${data.promptFeedback.blockReason}`,
+      );
+    }
+    const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim();
+    if (!text) {
+      throw new AIProviderError("gemini", "Empty response from Gemini");
+    }
+
+    return { text, provider: "gemini", model };
   }
 
-  const data = (await res.json()) as GeminiResponse;
-  if (data.error) {
-    throw new AIProviderError("gemini", data.error.message || "Gemini returned an error");
-  }
-  if (data.promptFeedback?.blockReason) {
-    throw new AIProviderError(
-      "gemini",
-      `Prompt blocked by safety filters: ${data.promptFeedback.blockReason}`,
-    );
-  }
-  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim();
-  if (!text) {
-    throw new AIProviderError("gemini", "Empty response from Gemini");
-  }
+  // Fell through the loop without returning — should only happen if the
+  // last attempt was retryable and we ran out of tries.
+  throw lastError ?? new AIProviderError("gemini", "Gemini call failed after retries");
+}
 
-  return { text, provider: "gemini", model };
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
