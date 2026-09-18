@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ManagerIncidentDialog, type ManagerIncidentSummary } from "@/components/features/incidents/ManagerIncidentDialog";
+import { FileIncidentDialog } from "@/components/features/incidents/FileIncidentDialog";
 import {
   INCIDENT_CATEGORIES,
   INCIDENT_CATEGORY_LABEL,
@@ -116,17 +117,20 @@ export default function IncidentsManagementPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="text-sm text-muted-foreground">
-          <Link href="/management/timesheets" className="hover:underline">
-            ← Timesheets
-          </Link>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-sm text-muted-foreground">
+            <Link href="/management/timesheets" className="hover:underline">
+              ← Timesheets
+            </Link>
+          </div>
+          <h1 className="text-2xl font-bold">Incident Reports</h1>
+          <p className="text-muted-foreground">
+            File and manage HR incident reports with AI-assisted drafting and
+            internal e-signature.
+          </p>
         </div>
-        <h1 className="text-2xl font-bold">Incident Reports</h1>
-        <p className="text-muted-foreground">
-          File and manage HR incident reports with AI-assisted drafting and
-          internal e-signature.
-        </p>
+        <FileIncidentDialog onFiled={load} />
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>

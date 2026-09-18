@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,9 +36,24 @@ function formatBytes(n: number) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+interface EmployeeOption {
+  id: string;
+  name: string | null;
+  email: string;
+  office: string | null;
+  department: string | null;
+}
+
+interface TodayRow {
+  profile: EmployeeOption;
+}
+
 export interface FileIncidentDialogProps {
-  employeeProfileId: string;
-  employeeName: string;
+  // Preselected employee when opened from that employee's timesheet page.
+  // When omitted, the dialog shows an employee-picker as the first field
+  // (used from /management/incidents where no employee context exists).
+  employeeProfileId?: string;
+  employeeName?: string;
   trigger?: React.ReactNode;
   onFiled?: () => void;
 }
@@ -49,12 +64,16 @@ export interface FileIncidentDialogProps {
 // from the detail dialog. Two-step because generation shouldn't persist a
 // half-baked draft; regeneration is free.
 export function FileIncidentDialog({
-  employeeProfileId,
-  employeeName,
+  employeeProfileId: preselectedId,
+  employeeName: preselectedName,
   trigger,
   onFiled,
 }: FileIncidentDialogProps) {
+  const needsPicker = !preselectedId;
   const [open, setOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string>(preselectedId ?? "");
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState<IncidentSeverity>("medium");
   const [category, setCategory] = useState<IncidentCategory>("performance");
@@ -73,7 +92,39 @@ export function FileIncidentDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Load the scoped employee list only when the dialog opens AND we need
+  // a picker. Same endpoint MarkDayOffDialog uses so the scope rules match.
+  useEffect(() => {
+    if (!open || !needsPicker) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingEmployees(true);
+      const res = await fetch("/api/management/timesheets/today");
+      if (cancelled) return;
+      if (res.ok) {
+        const rows: TodayRow[] = await res.json();
+        setEmployees(
+          rows
+            .map((r) => r.profile)
+            .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email)),
+        );
+      }
+      setLoadingEmployees(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, needsPicker]);
+
+  const employeeProfileId = needsPicker ? selectedId : (preselectedId as string);
+  const employeeName = needsPicker
+    ? employees.find((e) => e.id === selectedId)?.name ||
+      employees.find((e) => e.id === selectedId)?.email ||
+      "employee"
+    : (preselectedName as string);
+
   const reset = () => {
+    setSelectedId(preselectedId ?? "");
     setTitle("");
     setSeverity("medium");
     setCategory("performance");
@@ -86,6 +137,10 @@ export function FileIncidentDialog({
   };
 
   const uploadFile = async (file: File) => {
+    if (!employeeProfileId) {
+      setError("Select an employee before uploading attachments.");
+      return;
+    }
     setUploading(true);
     setError(null);
     const body = new FormData();
@@ -108,6 +163,10 @@ export function FileIncidentDialog({
 
   const generate = async () => {
     setError(null);
+    if (!employeeProfileId) {
+      setError("Please pick an employee first.");
+      return;
+    }
     if (!title.trim() || description.trim().length < 10) {
       setError("Please fill in a title and a description (10+ characters).");
       return;
@@ -148,6 +207,10 @@ export function FileIncidentDialog({
 
   const submit = async () => {
     setError(null);
+    if (!employeeProfileId) {
+      setError("Please pick an employee first.");
+      return;
+    }
     if (!document.trim() || document.trim().length < 10) {
       setError("The report body is empty — generate or paste one first.");
       return;
@@ -201,13 +264,46 @@ export function FileIncidentDialog({
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>File incident report — {employeeName}</DialogTitle>
+          <DialogTitle>
+            {needsPicker
+              ? "File incident report"
+              : `File incident report — ${employeeName}`}
+          </DialogTitle>
           <DialogDescription>
             Describe what happened, let the AI draft a formal write-up, review and edit it, then send for signatures.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          {needsPicker && (
+            <div className="space-y-2">
+              <Label htmlFor="i-employee">Employee</Label>
+              <Select
+                value={selectedId}
+                onValueChange={setSelectedId}
+                disabled={loadingEmployees}
+              >
+                <SelectTrigger id="i-employee">
+                  <SelectValue
+                    placeholder={
+                      loadingEmployees ? "Loading employees…" : "Select an employee"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {employees.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.name || e.email}
+                      {e.office && (
+                        <span className="text-muted-foreground"> · {e.office}</span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="i-title">Report title</Label>
             <Input
