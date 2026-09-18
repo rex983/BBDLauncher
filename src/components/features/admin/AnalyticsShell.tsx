@@ -23,6 +23,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ExportMenu } from "@/components/ui/export-menu";
+import { SortHeader } from "@/components/ui/sort-header";
+import { useSortableRows } from "@/lib/hooks/use-sortable-rows";
+import type { ExportColumn } from "@/lib/export/csv";
 import type { AnalyticsData, AnalyticsRange } from "@/lib/analytics/server";
 
 // Lazy-load the three heavy tabs so the initial /admin/analytics bundle
@@ -52,6 +56,7 @@ function TabLoading() {
 
 type DestStat = AnalyticsData["apps"][number];
 type UserStat = AnalyticsData["users"][number];
+type RecentEvent = AnalyticsData["recent"][number];
 type AnalyticsResponse = AnalyticsData;
 
 const RANGES: { value: AnalyticsRange; label: string }[] = [
@@ -83,6 +88,49 @@ function formatRelative(iso: string) {
   if (d < 30) return `${d}d ago`;
   return formatDateTime(iso);
 }
+
+// Export column sets — kept next to the shell so the labels here match
+// what the user sees in the on-screen table (any relabel touches both).
+const DEST_COLUMNS = (
+  countLabel: string,
+): ExportColumn<DestStat>[] => [
+  { key: "name", label: "Name", get: (r) => r.name },
+  { key: "count", label: countLabel, get: (r) => r.launches },
+  { key: "unique_users", label: "Unique users", get: (r) => r.unique_users },
+  { key: "last_used", label: "Last used", get: (r) => new Date(r.last_launch) },
+];
+
+const USER_COLUMNS: ExportColumn<UserStat>[] = [
+  { key: "name", label: "Name", get: (u) => u.name ?? "" },
+  { key: "email", label: "Email", get: (u) => u.email },
+  { key: "role", label: "Role", get: (u) => u.role },
+  { key: "office", label: "Office", get: (u) => u.office ?? "" },
+  { key: "clicks", label: "Clicks", get: (u) => u.launches },
+  { key: "top_destination", label: "Top destination", get: (u) => u.top_destination ?? "" },
+  {
+    key: "top_destination_kind",
+    label: "Top type",
+    get: (u) => u.top_destination_kind ?? "",
+  },
+  {
+    key: "top_destination_launches",
+    label: "Top clicks",
+    get: (u) => u.top_destination_launches ?? 0,
+  },
+  { key: "last_active", label: "Last active", get: (u) => new Date(u.last_launch) },
+];
+
+const RECENT_COLUMNS: ExportColumn<RecentEvent>[] = [
+  { key: "when", label: "When", get: (e) => new Date(e.created_at) },
+  { key: "name", label: "Name", get: (e) => e.name ?? "" },
+  { key: "email", label: "Email", get: (e) => e.email },
+  { key: "destination", label: "Destination", get: (e) => e.destination },
+  { key: "type", label: "Type", get: (e) => e.kind },
+];
+
+type DestSortKey = "name" | "count" | "unique_users" | "last_used";
+type UserSortKey = "name" | "role" | "office" | "clicks" | "top" | "last_active";
+type RecentSortKey = "when" | "name" | "destination" | "type";
 
 export default function AnalyticsShell({
   initialData,
@@ -160,6 +208,53 @@ export default function AnalyticsShell({
     );
   }, [data, userQuery]);
 
+  const appSort = useSortableRows<DestStat, DestSortKey>(
+    filteredApps,
+    {
+      name: (r) => r.name.toLowerCase(),
+      count: (r) => r.launches,
+      unique_users: (r) => r.unique_users,
+      last_used: (r) => new Date(r.last_launch),
+    },
+    { key: "count", direction: "desc" },
+  );
+
+  const linkSort = useSortableRows<DestStat, DestSortKey>(
+    filteredLinks,
+    {
+      name: (r) => r.name.toLowerCase(),
+      count: (r) => r.launches,
+      unique_users: (r) => r.unique_users,
+      last_used: (r) => new Date(r.last_launch),
+    },
+    { key: "count", direction: "desc" },
+  );
+
+  const userSort = useSortableRows<UserStat, UserSortKey>(
+    filteredUsers,
+    {
+      name: (u) => (u.name || u.email).toLowerCase(),
+      role: (u) => u.role,
+      office: (u) => u.office ?? "",
+      clicks: (u) => u.launches,
+      top: (u) => u.top_destination_launches ?? 0,
+      last_active: (u) => new Date(u.last_launch),
+    },
+    { key: "clicks", direction: "desc" },
+  );
+
+  const recentRows = data?.recent ?? [];
+  const recentSort = useSortableRows<RecentEvent, RecentSortKey>(
+    recentRows,
+    {
+      when: (e) => new Date(e.created_at),
+      name: (e) => (e.name || e.email).toLowerCase(),
+      destination: (e) => e.destination.toLowerCase(),
+      type: (e) => e.kind,
+    },
+    { key: "when", direction: "desc" },
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -170,7 +265,7 @@ export default function AnalyticsShell({
           </p>
         </div>
         <Select value={range} onValueChange={(v) => setRange(v as AnalyticsRange)}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[180px] print:hidden">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -221,7 +316,7 @@ export default function AnalyticsShell({
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="space-y-4">
-        <TabsList>
+        <TabsList className="print:hidden">
           <TabsTrigger value="apps">By App</TabsTrigger>
           <TabsTrigger value="links">By Link</TabsTrigger>
           <TabsTrigger value="users">By User</TabsTrigger>
@@ -231,59 +326,115 @@ export default function AnalyticsShell({
         </TabsList>
 
         <TabsContent value="apps" className="space-y-3">
-          <Input
-            placeholder="Filter apps by name…"
-            value={appQuery}
-            onChange={(e) => setAppQuery(e.target.value)}
-            className="max-w-sm"
-          />
+          <div className="flex items-center justify-between gap-3">
+            <Input
+              placeholder="Filter apps by name…"
+              value={appQuery}
+              onChange={(e) => setAppQuery(e.target.value)}
+              className="max-w-sm print:hidden"
+            />
+            <ExportMenu
+              filename={`analytics-apps-${range}`}
+              rows={appSort.sorted}
+              columns={DEST_COLUMNS("Launches")}
+            />
+          </div>
           <DestinationTable
-            rows={filteredApps}
+            rows={appSort.sorted}
             loading={loading}
             emptyMessage="No app launches in this range."
             countHeader="Launches"
             hrefKind="apps"
             range={range}
+            sort={appSort.sort}
+            onToggle={appSort.toggle}
           />
         </TabsContent>
 
         <TabsContent value="links" className="space-y-3">
-          <Input
-            placeholder="Filter links by name…"
-            value={linkQuery}
-            onChange={(e) => setLinkQuery(e.target.value)}
-            className="max-w-sm"
-          />
+          <div className="flex items-center justify-between gap-3">
+            <Input
+              placeholder="Filter links by name…"
+              value={linkQuery}
+              onChange={(e) => setLinkQuery(e.target.value)}
+              className="max-w-sm print:hidden"
+            />
+            <ExportMenu
+              filename={`analytics-links-${range}`}
+              rows={linkSort.sorted}
+              columns={DEST_COLUMNS("Clicks")}
+            />
+          </div>
           <DestinationTable
-            rows={filteredLinks}
+            rows={linkSort.sorted}
             loading={loading}
             emptyMessage="No link clicks in this range."
             countHeader="Clicks"
             hrefKind="links"
             range={range}
+            sort={linkSort.sort}
+            onToggle={linkSort.toggle}
           />
         </TabsContent>
 
         <TabsContent value="users" className="space-y-3">
-          <Input
-            placeholder="Filter users by name or email…"
-            value={userQuery}
-            onChange={(e) => setUserQuery(e.target.value)}
-            className="max-w-sm"
-          />
+          <div className="flex items-center justify-between gap-3">
+            <Input
+              placeholder="Filter users by name or email…"
+              value={userQuery}
+              onChange={(e) => setUserQuery(e.target.value)}
+              className="max-w-sm print:hidden"
+            />
+            <ExportMenu
+              filename={`analytics-users-${range}`}
+              rows={userSort.sorted}
+              columns={USER_COLUMNS}
+            />
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Office</TableHead>
-                <TableHead className="text-right">Clicks</TableHead>
-                <TableHead>Top destination</TableHead>
-                <TableHead>Last active</TableHead>
+                <SortHeader
+                  columnKey="name"
+                  label="User"
+                  sort={userSort.sort}
+                  onToggle={userSort.toggle}
+                />
+                <SortHeader
+                  columnKey="role"
+                  label="Role"
+                  sort={userSort.sort}
+                  onToggle={userSort.toggle}
+                />
+                <SortHeader
+                  columnKey="office"
+                  label="Office"
+                  sort={userSort.sort}
+                  onToggle={userSort.toggle}
+                />
+                <SortHeader
+                  columnKey="clicks"
+                  label="Clicks"
+                  sort={userSort.sort}
+                  onToggle={userSort.toggle}
+                  align="right"
+                />
+                <SortHeader
+                  columnKey="top"
+                  label="Top destination"
+                  sort={userSort.sort}
+                  onToggle={userSort.toggle}
+                />
+                <SortHeader
+                  columnKey="last_active"
+                  label="Last active"
+                  sort={userSort.sort}
+                  onToggle={userSort.toggle}
+                />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredUsers.map((u) => {
+              {userSort.sorted.map((u) => {
                 const href = `/admin/analytics/users/${u.user_id}?range=${range}`;
                 return (
                 <TableRow
@@ -343,7 +494,7 @@ export default function AnalyticsShell({
                 </TableRow>
                 );
               })}
-              {!loading && filteredUsers.length === 0 && (
+              {!loading && userSort.sorted.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                     No active users in this range.
@@ -355,17 +506,44 @@ export default function AnalyticsShell({
         </TabsContent>
 
         <TabsContent value="recent" className="space-y-3">
+          <div className="flex items-center justify-end">
+            <ExportMenu
+              filename={`analytics-recent-${range}`}
+              rows={recentSort.sorted}
+              columns={RECENT_COLUMNS}
+            />
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Destination</TableHead>
-                <TableHead>Type</TableHead>
+                <SortHeader
+                  columnKey="when"
+                  label="When"
+                  sort={recentSort.sort}
+                  onToggle={recentSort.toggle}
+                />
+                <SortHeader
+                  columnKey="name"
+                  label="User"
+                  sort={recentSort.sort}
+                  onToggle={recentSort.toggle}
+                />
+                <SortHeader
+                  columnKey="destination"
+                  label="Destination"
+                  sort={recentSort.sort}
+                  onToggle={recentSort.toggle}
+                />
+                <SortHeader
+                  columnKey="type"
+                  label="Type"
+                  sort={recentSort.sort}
+                  onToggle={recentSort.toggle}
+                />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(data?.recent ?? []).map((e, i) => (
+              {recentSort.sorted.map((e, i) => (
                 <TableRow key={`${e.created_at}-${i}`}>
                   <TableCell
                     className="text-muted-foreground"
@@ -385,7 +563,7 @@ export default function AnalyticsShell({
                   </TableCell>
                 </TableRow>
               ))}
-              {!loading && (data?.recent.length ?? 0) === 0 && (
+              {!loading && recentSort.sorted.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
                     No activity yet.
@@ -428,6 +606,8 @@ function DestinationTable({
   countHeader,
   hrefKind,
   range,
+  sort,
+  onToggle,
 }: {
   rows: DestStat[];
   loading: boolean;
@@ -435,15 +615,39 @@ function DestinationTable({
   countHeader: string;
   hrefKind: "apps" | "links";
   range: string;
+  sort: import("@/lib/hooks/use-sortable-rows").SortState<DestSortKey>;
+  onToggle: (key: DestSortKey) => void;
 }) {
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead className="text-right">{countHeader}</TableHead>
-          <TableHead className="text-right">Unique users</TableHead>
-          <TableHead>Last used</TableHead>
+          <SortHeader
+            columnKey="name"
+            label="Name"
+            sort={sort}
+            onToggle={onToggle}
+          />
+          <SortHeader
+            columnKey="count"
+            label={countHeader}
+            sort={sort}
+            onToggle={onToggle}
+            align="right"
+          />
+          <SortHeader
+            columnKey="unique_users"
+            label="Unique users"
+            sort={sort}
+            onToggle={onToggle}
+            align="right"
+          />
+          <SortHeader
+            columnKey="last_used"
+            label="Last used"
+            sort={sort}
+            onToggle={onToggle}
+          />
           <TableHead className="w-8" />
         </TableRow>
       </TableHeader>

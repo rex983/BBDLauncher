@@ -117,7 +117,7 @@ export function Sidebar() {
   const pendingCount = usePendingTimeOffCount(showManagementNav);
 
   return (
-    <aside className="w-64 border-r bg-background min-h-[calc(100vh-4rem)]">
+    <aside className="w-64 border-r bg-background min-h-[calc(100vh-4rem)] print:hidden">
       <nav className="flex flex-col gap-1 p-4">
         {navItems.map((item) => (
           <Link

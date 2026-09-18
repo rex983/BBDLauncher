@@ -14,6 +14,10 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { ExportMenu } from "@/components/ui/export-menu";
+import { SortHeader } from "@/components/ui/sort-header";
+import { useSortableRows } from "@/lib/hooks/use-sortable-rows";
+import type { ExportColumn } from "@/lib/export/csv";
 import { formatDuration } from "@/lib/timesheets/state";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { TIME_OFF_TYPE_LABEL, type TimeOffType } from "@/lib/timeoff/types";
@@ -76,6 +80,12 @@ function fmtDays(d: number): string {
   return (Math.round(d * 10) / 10).toString();
 }
 
+// ms → hours as a plain number (2 decimals) — friendlier for spreadsheets
+// than "5h 42m" strings when the user wants to sum or chart the column.
+function msToHours(ms: number): number {
+  return Math.round((ms / 3_600_000) * 100) / 100;
+}
+
 const ALL = "__all__";
 const RANGE_OPTIONS: { value: number; label: string }[] = [
   { value: 1, label: "This week" },
@@ -86,7 +96,7 @@ const RANGE_OPTIONS: { value: number; label: string }[] = [
 const OFFICES: Office[] = ["Harbor", "Marion", "BST", "RnD"];
 const DEPARTMENTS: Department[] = ["SALES TEAM", "BST", "RnD"];
 
-type SortKey = "total" | "overtime" | "name";
+type SortKey = "name" | "office" | "department" | "total" | "overtime" | "lunch" | "break" | "time_off";
 
 function fmtWeekLabel(iso: string) {
   return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
@@ -106,7 +116,6 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
   const [office, setOffice] = useState<string>(ALL);
   const [department, setDepartment] = useState<string>(ALL);
   const [includeInactive, setIncludeInactive] = useState(false);
-  const [sort, setSort] = useState<SortKey>("total");
   const [data, setData] = useState<Response | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Row | null>(null);
@@ -132,68 +141,118 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
       .finally(() => setLoading(false));
   }, [active, weeks, office, department, includeInactive, isAdmin]);
 
-  const rows = useMemo(() => {
-    if (!data) return [];
-    const sorted = [...data.rows];
-    if (sort === "total") sorted.sort((a, b) => b.total_ms - a.total_ms);
-    else if (sort === "overtime") sorted.sort((a, b) => b.overtime_ms - a.overtime_ms);
-    else if (sort === "name")
-      sorted.sort((a, b) =>
-        (a.profile.name || a.profile.email).localeCompare(b.profile.name || b.profile.email),
-      );
-    return sorted;
-  }, [data, sort]);
+  const rowSort = useSortableRows<Row, SortKey>(
+    data?.rows ?? [],
+    {
+      name: (r) => (r.profile.name || r.profile.email).toLowerCase(),
+      office: (r) => r.profile.office ?? "",
+      department: (r) => r.profile.department ?? "",
+      total: (r) => r.total_ms,
+      overtime: (r) => r.overtime_ms,
+      lunch: (r) => r.lunch_ms,
+      break: (r) => r.break_ms,
+      time_off: (r) => r.time_off.total,
+    },
+    { key: "total", direction: "desc" },
+  );
+
+  // Filename baked from current filter selection so the download reflects
+  // exactly what the manager is looking at.
+  const filenameBase = useMemo(() => {
+    const parts = ["time-analytics"];
+    parts.push(office === ALL ? "all-offices" : office.toLowerCase());
+    if (department !== ALL) parts.push(department.toLowerCase().replace(/\s+/g, "-"));
+    parts.push(`${weeks}w`);
+    return parts.join("-");
+  }, [office, department, weeks]);
+
+  const rowColumns = useMemo<ExportColumn<Row>[]>(() => {
+    const base: ExportColumn<Row>[] = [
+      { key: "name", label: "Name", get: (r) => r.profile.name ?? "" },
+      { key: "email", label: "Email", get: (r) => r.profile.email },
+      { key: "office", label: "Office", get: (r) => r.profile.office ?? "" },
+      { key: "department", label: "Department", get: (r) => r.profile.department ?? "" },
+      { key: "total_hours", label: "Total hours", get: (r) => msToHours(r.total_ms) },
+      { key: "overtime_hours", label: "Overtime hours", get: (r) => msToHours(r.overtime_ms) },
+      { key: "lunch_hours", label: "Lunch hours", get: (r) => msToHours(r.lunch_ms) },
+      { key: "break_hours", label: "Break hours", get: (r) => msToHours(r.break_ms) },
+      { key: "sick_days_ytd", label: "Sick days (YTD)", get: (r) => r.time_off.sick },
+      { key: "vacation_days_ytd", label: "Vacation days (YTD)", get: (r) => r.time_off.vacation },
+      { key: "personal_days_ytd", label: "Personal days (YTD)", get: (r) => r.time_off.personal },
+      { key: "parental_days_ytd", label: "Parental days (YTD)", get: (r) => r.time_off.parental },
+      { key: "other_days_ytd", label: "Other days (YTD)", get: (r) => r.time_off.other },
+      { key: "time_off_total_ytd", label: "Time off (YTD, days)", get: (r) => r.time_off.total },
+    ];
+    for (const ws of data?.week_starts ?? []) {
+      base.push({
+        key: `wk_${ws}_hours`,
+        label: `Wk ${fmtWeekLabel(ws)} hours`,
+        get: (r) => msToHours(r.weeks.find((w) => w.week_start === ws)?.worked_ms ?? 0),
+      });
+    }
+    return base;
+  }, [data?.week_starts]);
+
+  const rows = rowSort.sorted;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={String(weeks)} onValueChange={(v) => setWeeks(Number(v))}>
-          <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {RANGE_OPTIONS.map((r) => (
-              <SelectItem key={r.value} value={String(r.value)}>{r.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Office</span>
-          {isAdmin ? (
-            <Select value={office} onValueChange={setOffice}>
-              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All</SelectItem>
-                {OFFICES.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Badge variant="outline">{viewerOffice ?? "—"}</Badge>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3 print:hidden">
+          <Select value={String(weeks)} onValueChange={(v) => setWeeks(Number(v))}>
+            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {RANGE_OPTIONS.map((r) => (
+                <SelectItem key={r.value} value={String(r.value)}>{r.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Office</span>
+            {isAdmin ? (
+              <Select value={office} onValueChange={setOffice}>
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All</SelectItem>
+                  {OFFICES.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Badge variant="outline">{viewerOffice ?? "—"}</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Department</span>
+            {isAdmin ? (
+              <Select value={department} onValueChange={setDepartment}>
+                <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All</SelectItem>
+                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Badge variant="outline">{viewerDepartment ?? "—"}</Badge>
+            )}
+          </div>
+          {isAdmin && (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input"
+                checked={includeInactive}
+                onChange={(e) => setIncludeInactive(e.target.checked)}
+              />
+              Include inactive
+            </label>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Department</span>
-          {isAdmin ? (
-            <Select value={department} onValueChange={setDepartment}>
-              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All</SelectItem>
-                {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Badge variant="outline">{viewerDepartment ?? "—"}</Badge>
-          )}
-        </div>
-        {isAdmin && (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-input"
-              checked={includeInactive}
-              onChange={(e) => setIncludeInactive(e.target.checked)}
-            />
-            Include inactive
-          </label>
-        )}
+        <ExportMenu
+          filename={filenameBase}
+          rows={rows}
+          columns={rowColumns}
+          disabled={loading || rows.length === 0}
+        />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -259,19 +318,8 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
       )}
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle>Per-employee hours</CardTitle>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Sort</span>
-            <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-              <SelectTrigger className="w-[140px] h-8"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="total">Total hours</SelectItem>
-                <SelectItem value="overtime">Overtime</SelectItem>
-                <SelectItem value="name">Name</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -282,11 +330,11 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Office</TableHead>
-                  <TableHead>Dept</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Overtime</TableHead>
+                  <SortHeader columnKey="name" label="Employee" sort={rowSort.sort} onToggle={rowSort.toggle} />
+                  <SortHeader columnKey="office" label="Office" sort={rowSort.sort} onToggle={rowSort.toggle} />
+                  <SortHeader columnKey="department" label="Dept" sort={rowSort.sort} onToggle={rowSort.toggle} />
+                  <SortHeader columnKey="total" label="Total" sort={rowSort.sort} onToggle={rowSort.toggle} />
+                  <SortHeader columnKey="overtime" label="Overtime" sort={rowSort.sort} onToggle={rowSort.toggle} />
                   {weeks > 1 &&
                     data?.week_starts.map((iso) => (
                       <TableHead key={iso}>Wk {fmtWeekLabel(iso)}</TableHead>
@@ -380,24 +428,72 @@ function EmployeeTimeStatsDialog({
   onClose: () => void;
 }) {
   const open = row !== null;
+
+  // Build a single-row summary export for the dialog (same shape a manager
+  // would want on-screen). Weekly breakdown gets its own export below.
+  const summaryColumns = useMemo<ExportColumn<Row>[]>(
+    () => [
+      { key: "name", label: "Name", get: (r) => r.profile.name ?? "" },
+      { key: "email", label: "Email", get: (r) => r.profile.email },
+      { key: "office", label: "Office", get: (r) => r.profile.office ?? "" },
+      { key: "department", label: "Department", get: (r) => r.profile.department ?? "" },
+      { key: "total_hours", label: "Total hours", get: (r) => msToHours(r.total_ms) },
+      { key: "overtime_hours", label: "Overtime hours", get: (r) => msToHours(r.overtime_ms) },
+      { key: "lunch_hours", label: "Lunch hours", get: (r) => msToHours(r.lunch_ms) },
+      { key: "break_hours", label: "Break hours", get: (r) => msToHours(r.break_ms) },
+      { key: "sick_days_ytd", label: "Sick days (YTD)", get: (r) => r.time_off.sick },
+      { key: "vacation_days_ytd", label: "Vacation days (YTD)", get: (r) => r.time_off.vacation },
+      { key: "personal_days_ytd", label: "Personal days (YTD)", get: (r) => r.time_off.personal },
+      { key: "parental_days_ytd", label: "Parental days (YTD)", get: (r) => r.time_off.parental },
+      { key: "other_days_ytd", label: "Other days (YTD)", get: (r) => r.time_off.other },
+      { key: "time_off_total_ytd", label: "Time off (YTD, days)", get: (r) => r.time_off.total },
+    ],
+    [],
+  );
+
+  type WeekExportRow = { week_start: string; worked_ms: number; overtime_ms: number };
+  const weekColumns = useMemo<ExportColumn<WeekExportRow>[]>(
+    () => [
+      { key: "week_start", label: "Week starting", get: (w) => w.week_start },
+      { key: "worked_hours", label: "Worked hours", get: (w) => msToHours(w.worked_ms) },
+      { key: "overtime_hours", label: "Overtime hours", get: (w) => msToHours(w.overtime_ms) },
+    ],
+    [],
+  );
+
+  const employeeSlug = row
+    ? (row.profile.name || row.profile.email).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    : "";
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>
-            {row?.profile.name || row?.profile.email || "Employee stats"}
-          </DialogTitle>
-          {row && (
-            <div className="text-sm text-muted-foreground flex flex-wrap gap-2 mt-1">
-              <span>{row.profile.email}</span>
-              {row.profile.office && (
-                <><span>·</span><Badge variant="outline">{row.profile.office}</Badge></>
-              )}
-              {row.profile.department && (
-                <><span>·</span><Badge variant="outline">{row.profile.department}</Badge></>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <DialogTitle>
+                {row?.profile.name || row?.profile.email || "Employee stats"}
+              </DialogTitle>
+              {row && (
+                <div className="text-sm text-muted-foreground flex flex-wrap gap-2 mt-1">
+                  <span>{row.profile.email}</span>
+                  {row.profile.office && (
+                    <><span>·</span><Badge variant="outline">{row.profile.office}</Badge></>
+                  )}
+                  {row.profile.department && (
+                    <><span>·</span><Badge variant="outline">{row.profile.department}</Badge></>
+                  )}
+                </div>
               )}
             </div>
-          )}
+            {row && (
+              <ExportMenu
+                filename={`time-stats-${employeeSlug}-${weeks}w`}
+                rows={[row]}
+                columns={summaryColumns}
+              />
+            )}
+          </div>
         </DialogHeader>
 
         {row && (
@@ -436,8 +532,20 @@ function EmployeeTimeStatsDialog({
 
             {weeks > 1 && row.weeks.length > 0 && (
               <div>
-                <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
-                  Weekly breakdown
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Weekly breakdown
+                  </div>
+                  <ExportMenu
+                    filename={`time-stats-${employeeSlug}-weekly`}
+                    rows={row.weeks.map((w, i) => ({
+                      week_start: weekStarts[i] ?? w.week_start,
+                      worked_ms: w.worked_ms,
+                      overtime_ms: w.overtime_ms,
+                    }))}
+                    columns={weekColumns}
+                    size="sm"
+                  />
                 </div>
                 <Table>
                   <TableHeader>

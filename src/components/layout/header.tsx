@@ -38,7 +38,7 @@ export function Header() {
     : "?";
 
   return (
-    <header className="border-b bg-background">
+    <header className="border-b bg-background print:hidden">
       <div className="flex h-16 items-center px-6">
         <Link href={dashboardHref} className="flex items-center gap-2">
           <Image src="/logo-icon.png" alt="BBD" width={32} height={32} className="rounded" />

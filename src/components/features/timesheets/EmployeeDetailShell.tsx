@@ -33,6 +33,8 @@ import type {
   WindowTimeOffRow,
   YtdBreakdown,
 } from "@/lib/timesheets/detail";
+import { ExportMenu } from "@/components/ui/export-menu";
+import type { ExportColumn } from "@/lib/export/csv";
 
 const EVENT_TYPES: { value: PunchEventType; label: string }[] = [
   { value: "clock_in",    label: "Clock in" },
@@ -78,6 +80,48 @@ function isoToLocalInput(iso: string): string {
 function localInputToISO(local: string): string {
   return new Date(local).toISOString();
 }
+
+// Punches export column set — dates are ET-local (matches how the UI
+// buckets days) and times are user-local so a manager reading the CSV on
+// a laptop in ET sees the same wall-clock strings they see on-screen.
+const PUNCH_COLUMNS: ExportColumn<TimePunch>[] = [
+  {
+    key: "date",
+    label: "Date (ET)",
+    get: (p) => localDateInZone(new Date(p.occurred_at)),
+  },
+  {
+    key: "time",
+    label: "Time",
+    get: (p) =>
+      new Date(p.occurred_at).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }),
+  },
+  {
+    key: "occurred_at",
+    label: "Occurred at (ISO)",
+    get: (p) => new Date(p.occurred_at),
+  },
+  { key: "event_type", label: "Event", get: (p) => p.event_type },
+  { key: "source", label: "Source", get: (p) => p.source },
+  { key: "note", label: "Note", get: (p) => p.note ?? "" },
+  { key: "id", label: "Punch ID", get: (p) => p.id },
+];
+
+const TIME_OFF_WINDOW_COLUMNS: ExportColumn<WindowTimeOffRow>[] = [
+  { key: "start_date", label: "Start date", get: (r) => r.start_date },
+  { key: "end_date", label: "End date", get: (r) => r.end_date },
+  { key: "type", label: "Type", get: (r) => TIME_OFF_TYPE_LABEL[r.type] },
+  { key: "subcategory", label: "Subcategory", get: (r) => r.subcategory ?? "" },
+  { key: "full_day", label: "Full day", get: (r) => r.full_day },
+  { key: "hours", label: "Hours", get: (r) => r.hours ?? "" },
+  { key: "days", label: "Days", get: (r) => requestDays(r) },
+  { key: "status", label: "Status", get: (r) => r.status },
+  { key: "reason", label: "Reason", get: (r) => r.reason ?? "" },
+];
 
 export default function EmployeeDetailShell({
   profileId,
@@ -249,7 +293,7 @@ export default function EmployeeDetailShell({
         </div>
         <div className="flex items-center gap-3">
           <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[140px] print:hidden"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="1">Last 1 day</SelectItem>
               <SelectItem value="7">Last 7 days</SelectItem>
@@ -257,8 +301,14 @@ export default function EmployeeDetailShell({
               <SelectItem value="30">Last 30 days</SelectItem>
             </SelectContent>
           </Select>
+          <ExportMenu
+            filename={`timesheet-${(profile?.name || profile?.email || profileId).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${days}d`}
+            rows={punches}
+            columns={PUNCH_COLUMNS}
+            disabled={loading || punches.length === 0}
+          />
           {canEdit && (
-            <Button onClick={openAdd}><Plus className="mr-2 h-4 w-4" />Add punch</Button>
+            <Button onClick={openAdd} className="print:hidden"><Plus className="mr-2 h-4 w-4" />Add punch</Button>
           )}
         </div>
       </div>
@@ -316,8 +366,16 @@ export default function EmployeeDetailShell({
             <div className="text-sm font-semibold">
               Time off in this window
             </div>
-            <div className="text-xs text-muted-foreground">
-              {timeOffWindow.length} {timeOffWindow.length === 1 ? "entry" : "entries"}
+            <div className="flex items-center gap-3">
+              <div className="text-xs text-muted-foreground">
+                {timeOffWindow.length} {timeOffWindow.length === 1 ? "entry" : "entries"}
+              </div>
+              <ExportMenu
+                filename={`timeoff-${(profile?.name || profile?.email || profileId).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${days}d`}
+                rows={timeOffWindow}
+                columns={TIME_OFF_WINDOW_COLUMNS}
+                size="sm"
+              />
             </div>
           </CardHeader>
           <CardContent className="px-4 py-0">
