@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
   ].join("\n");
 
   try {
-    const provider = getActiveProvider();
+    const provider = await getActiveProvider();
     const result = await generateText({
       system: INCIDENT_DRAFT_SYSTEM_PROMPT,
       prompt: userPrompt,
