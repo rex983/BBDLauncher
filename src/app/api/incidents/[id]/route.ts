@@ -20,7 +20,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("incident_reports")
     .select(
-      "id, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, document, acknowledgement_text, attachments, manager_signed_at, manager_signature_text, employee_signed_at, employee_signature_text, created_at",
+      "id, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, document, acknowledgement_text, attachments, manager_signed_at, manager_signature_text, employee_signed_at, employee_signature_text, document_hash, manager_signature_hash, employee_signature_hash, created_at",
     )
     .eq("id", id)
     .eq("employee_profile_id", session.user.profileId)

@@ -52,6 +52,9 @@ interface FullReport extends ManagerIncidentSummary {
   acknowledgement_text: string;
   manager_signature_text: string | null;
   employee_signature_text: string | null;
+  document_hash: string | null;
+  manager_signature_hash: string | null;
+  employee_signature_hash: string | null;
   cancelled_reason: string | null;
   reporter?: { name?: string | null } | null;
 }
@@ -268,6 +271,14 @@ export function ManagerIncidentDialog({
                     <p className="text-xs text-muted-foreground">
                       {fmtDate(report.manager_signed_at)}
                     </p>
+                    {report.manager_signature_hash && (
+                      <p
+                        className="mt-1 break-all font-mono text-[10px] text-muted-foreground"
+                        title={report.manager_signature_hash}
+                      >
+                        SHA-256: {report.manager_signature_hash}
+                      </p>
+                    )}
                   </>
                 ) : (
                   <p className="text-muted-foreground italic">Not yet signed</p>
@@ -281,12 +292,38 @@ export function ManagerIncidentDialog({
                     <p className="text-xs text-muted-foreground">
                       {fmtDate(report.employee_signed_at)}
                     </p>
+                    {report.employee_signature_hash && (
+                      <p
+                        className="mt-1 break-all font-mono text-[10px] text-muted-foreground"
+                        title={report.employee_signature_hash}
+                      >
+                        SHA-256: {report.employee_signature_hash}
+                      </p>
+                    )}
                   </>
                 ) : (
                   <p className="text-muted-foreground italic">Not yet signed</p>
                 )}
               </div>
             </div>
+
+            {report.document_hash && (
+              <div className="rounded-md border bg-muted/30 p-3">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Document integrity
+                </p>
+                <p
+                  className="mt-1 break-all font-mono text-[10px] text-muted-foreground"
+                  title={report.document_hash}
+                >
+                  SHA-256: {report.document_hash}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Hash of the report body captured at manager-sign time. Any
+                  edit after signing would break the chain.
+                </p>
+              </div>
+            )}
 
             {report.status === "cancelled" && (
               <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
@@ -335,7 +372,7 @@ export function ManagerIncidentDialog({
               {report.status === "awaiting_manager_sig" && (
                 <Button size="sm" onClick={sign} disabled={signing}>
                   <ShieldCheck className="mr-2 h-4 w-4" />
-                  {signing ? "Signing…" : "Sign & send to employee"}
+                  {signing ? "Processing…" : "Process & send to employee"}
                 </Button>
               )}
             </div>

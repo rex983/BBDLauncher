@@ -4,6 +4,7 @@ import {
   type IncidentSubmittedPayload,
 } from "@/lib/slack/notify";
 import type { IncidentSeverity, IncidentCategory } from "@/lib/incidents/types";
+import { hashDocument, hashManagerSignature } from "@/lib/incidents/hashing";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -33,10 +34,20 @@ export async function POST(
   const { data: row } = await supabase
     .from("incident_reports")
     .select(
-      "id, employee_profile_id, reporter_profile_id, title, severity, category, status, attachments",
+      "id, employee_profile_id, reporter_profile_id, title, severity, category, status, document, attachments",
     )
     .eq("id", id)
-    .single();
+    .single<{
+      id: string;
+      employee_profile_id: string;
+      reporter_profile_id: string | null;
+      title: string;
+      severity: string;
+      category: string;
+      status: string;
+      document: string;
+      attachments: unknown;
+    }>();
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   if (row.status !== "awaiting_manager_sig") {
@@ -95,15 +106,30 @@ export async function POST(
   const now = new Date().toISOString();
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
   const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
+  const signatureText = parsed.data.signature_text.trim();
+
+  // Freeze the document at manager-sign time by hashing it. The employee
+  // sign endpoint recomputes this same hash from the row's document to
+  // verify no one edited the body between signatures.
+  const documentHash = hashDocument(row.document);
+  const managerSignatureHash = hashManagerSignature({
+    documentHash,
+    signatureText,
+    signedAt: now,
+    ip,
+    ua,
+  });
 
   const { data: updated, error } = await supabase
     .from("incident_reports")
     .update({
       status: "awaiting_employee_sig",
       manager_signed_at: now,
-      manager_signature_text: parsed.data.signature_text.trim(),
+      manager_signature_text: signatureText,
       manager_signature_ip: ip,
       manager_signature_ua: ua,
+      document_hash: documentHash,
+      manager_signature_hash: managerSignatureHash,
     })
     .eq("id", id)
     .eq("status", "awaiting_manager_sig") // guard race

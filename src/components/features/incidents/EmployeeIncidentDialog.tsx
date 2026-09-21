@@ -37,6 +37,9 @@ interface EmployeeReport {
   manager_signature_text: string | null;
   employee_signed_at: string | null;
   employee_signature_text: string | null;
+  document_hash: string | null;
+  manager_signature_hash: string | null;
+  employee_signature_hash: string | null;
   created_at: string;
   reporter_name: string | null;
 }
@@ -229,6 +232,14 @@ export function EmployeeIncidentDialog({
                     <p className="text-xs text-muted-foreground">
                       {fmtDate(report.manager_signed_at)}
                     </p>
+                    {report.manager_signature_hash && (
+                      <p
+                        className="mt-1 break-all font-mono text-[10px] text-muted-foreground"
+                        title={report.manager_signature_hash}
+                      >
+                        SHA-256: {report.manager_signature_hash}
+                      </p>
+                    )}
                   </>
                 ) : (
                   <p className="text-muted-foreground italic">Not yet signed</p>
@@ -242,6 +253,14 @@ export function EmployeeIncidentDialog({
                     <p className="text-xs text-muted-foreground">
                       {fmtDate(report.employee_signed_at)}
                     </p>
+                    {report.employee_signature_hash && (
+                      <p
+                        className="mt-1 break-all font-mono text-[10px] text-muted-foreground"
+                        title={report.employee_signature_hash}
+                      >
+                        SHA-256: {report.employee_signature_hash}
+                      </p>
+                    )}
                   </>
                 ) : (
                   <p className="text-muted-foreground italic">
@@ -250,6 +269,25 @@ export function EmployeeIncidentDialog({
                 )}
               </div>
             </div>
+
+            {report.document_hash && (
+              <div className="rounded-md border bg-muted/30 p-3">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Document integrity
+                </p>
+                <p
+                  className="mt-1 break-all font-mono text-[10px] text-muted-foreground"
+                  title={report.document_hash}
+                >
+                  SHA-256: {report.document_hash}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  This hash proves the report body hasn&apos;t changed since
+                  the manager signed. If the body were edited, this hash
+                  would no longer match.
+                </p>
+              </div>
+            )}
 
             {report.status === "awaiting_employee_sig" && (
               <div className="space-y-2 border-t pt-3">
