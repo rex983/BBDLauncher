@@ -6,6 +6,7 @@ import {
 import type { IncidentSeverity, IncidentCategory } from "@/lib/incidents/types";
 import { hashDocument, hashManagerSignature } from "@/lib/incidents/hashing";
 import { formatIncidentNumber } from "@/lib/incidents/types";
+import { logIncidentEvent } from "@/lib/incidents/audit";
 import { createNotification } from "@/lib/notifications/service";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -164,6 +165,19 @@ export async function POST(
     attachmentCount: attachments.length,
   };
   notifyIncidentSubmitted(payload).catch(() => undefined);
+
+  logIncidentEvent({
+    incidentReportId: row.id,
+    eventType: "manager_signed",
+    actorProfileId: session.user.profileId,
+    actorIp: ip,
+    actorUa: ua,
+    details: {
+      signature_text: signatureText,
+      document_hash: documentHash,
+      manager_signature_hash: managerSignatureHash,
+    },
+  }).catch(() => undefined);
 
   // In-app bell: the employee sees this the moment we return — the
   // notifications realtime subscription on their session pushes the row

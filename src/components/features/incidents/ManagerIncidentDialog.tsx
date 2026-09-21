@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,16 +14,36 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
   formatIncidentNumber,
+  INCIDENT_CATEGORIES,
   INCIDENT_CATEGORY_LABEL,
+  INCIDENT_SEVERITIES,
   INCIDENT_SEVERITY_LABEL,
   INCIDENT_STATUS_LABEL,
   type IncidentAttachment,
   type IncidentCategory,
-  type IncidentStatus,
   type IncidentSeverity,
+  type IncidentStatus,
 } from "@/lib/incidents/types";
-import { Paperclip, Printer, ShieldCheck, Trash2 } from "lucide-react";
+import { isAdmin as isAdminRole } from "@/lib/auth/permissions";
+import {
+  AlertTriangle,
+  Paperclip,
+  Pencil,
+  Printer,
+  Save,
+  ShieldCheck,
+  Trash2,
+  X,
+} from "lucide-react";
 
 export interface ManagerIncidentSummary {
   id: string;
@@ -48,6 +69,18 @@ export interface ManagerIncidentSummary {
   } | null;
 }
 
+interface IncidentEvent {
+  id: string;
+  event_type: string;
+  event_label: string;
+  actor_profile_id: string | null;
+  actor_ip: string | null;
+  actor_ua: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+  actor: { name?: string | null; email?: string } | null;
+}
+
 interface FullReport extends ManagerIncidentSummary {
   description: string;
   document: string;
@@ -59,6 +92,7 @@ interface FullReport extends ManagerIncidentSummary {
   employee_signature_hash: string | null;
   cancelled_reason: string | null;
   reporter?: { name?: string | null } | null;
+  events?: IncidentEvent[];
 }
 
 const SEVERITY_VARIANT: Record<
@@ -79,10 +113,18 @@ function fmtDate(iso: string | null | undefined) {
   });
 }
 
-// Manager-facing detail dialog. Shows the whole report + attachments +
-// signature blocks, and offers the "Sign" action when the report is
-// awaiting_manager_sig. Kept as one dialog rather than a nested modal so
-// the manager doesn't lose their place.
+function fmtRelative(iso: string) {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return fmtDate(iso);
+}
+
 export function ManagerIncidentDialog({
   incidentId,
   open,
@@ -94,10 +136,11 @@ export function ManagerIncidentDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChanged: () => void;
-  // The current viewer's own full_name — used to validate the typed signature
-  // client-side before hitting the server (matches the server rule).
   reporterFullName: string | null;
 }) {
+  const { data: session } = useSession();
+  const viewerIsAdmin = isAdminRole(session?.user?.role);
+
   const [report, setReport] = useState<FullReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,32 +148,56 @@ export function ManagerIncidentDialog({
   const [signatureText, setSignatureText] = useState("");
   const [cancelling, setCancelling] = useState(false);
 
-  useEffect(() => {
-    if (!open || !incidentId) return;
-    let cancelled = false;
+  // Edit mode
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: "",
+    severity: "medium" as IncidentSeverity,
+    category: "performance" as IncidentCategory,
+    document: "",
+  });
+
+  const load = async (id: string) => {
     setLoading(true);
     setError(null);
     setReport(null);
-    fetch(`/api/management/incidents/${incidentId}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error((await res.json()).error || "Failed to load");
-        return res.json();
-      })
-      .then((data: FullReport) => {
-        if (cancelled) return;
-        setReport(data);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setError(e.message || "Failed to load");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+    try {
+      const res = await fetch(`/api/management/incidents/${id}`);
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to load");
+      const data: FullReport = await res.json();
+      setReport(data);
+      setEditForm({
+        title: data.title,
+        severity: data.severity,
+        category: data.category,
+        document: data.document,
       });
+    } catch (e) {
+      setError((e as Error).message || "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open || !incidentId) return;
+    let cancelled = false;
+    load(incidentId).then(() => {
+      if (cancelled) return;
+    });
     return () => {
       cancelled = true;
     };
   }, [incidentId, open]);
+
+  useEffect(() => {
+    if (!open) {
+      setEditing(false);
+      setError(null);
+      setSignatureText("");
+    }
+  }, [open]);
 
   const sign = async () => {
     if (!report) return;
@@ -167,7 +234,7 @@ export function ManagerIncidentDialog({
       "Optional reason for cancelling (audit only, employee won't see this):",
       "",
     );
-    if (reason === null) return; // user hit Cancel on the prompt
+    if (reason === null) return;
     if (!confirm("Cancel this incident report? The row is preserved for audit.")) return;
     setCancelling(true);
     const url = new URL(`/api/management/incidents/${report.id}`, window.location.origin);
@@ -182,6 +249,55 @@ export function ManagerIncidentDialog({
     onChanged();
     onOpenChange(false);
   };
+
+  const save = async () => {
+    if (!report) return;
+    setError(null);
+    if (!editForm.title.trim()) {
+      setError("Title is required.");
+      return;
+    }
+    if (editForm.document.trim().length < 10) {
+      setError("Report body must be at least 10 characters.");
+      return;
+    }
+    setSaving(true);
+    const res = await fetch(`/api/management/incidents/${report.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: editForm.title !== report.title ? editForm.title : undefined,
+        severity: editForm.severity !== report.severity ? editForm.severity : undefined,
+        category: editForm.category !== report.category ? editForm.category : undefined,
+        document: editForm.document !== report.document ? editForm.document : undefined,
+      }),
+    });
+    setSaving(false);
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      setError(typeof b.error === "string" ? b.error : "Save failed");
+      return;
+    }
+    setEditing(false);
+    // Reload to pick up any admin-override reset (signatures, status).
+    await load(report.id);
+    onChanged();
+  };
+
+  const hasSignatures =
+    report && (report.manager_signed_at !== null || report.employee_signed_at !== null);
+  const isSignedOrCompleted =
+    report &&
+    (report.status === "awaiting_employee_sig" || report.status === "completed");
+  const canEdit =
+    report &&
+    report.status !== "cancelled" &&
+    (viewerIsAdmin ||
+      report.status === "draft" ||
+      report.status === "awaiting_manager_sig");
+  const canDelete =
+    report && report.status !== "cancelled" && (viewerIsAdmin || report.status !== "completed");
+  const isAdminEditingSigned = editing && isSignedOrCompleted;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -215,6 +331,23 @@ export function ManagerIncidentDialog({
 
         {report && (
           <div className="space-y-4 text-sm">
+            {isAdminEditingSigned && (
+              <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Admin override — signed document</p>
+                    <p className="text-xs text-muted-foreground">
+                      Editing a signed report invalidates every existing
+                      signature. Saving will reset the report to
+                      &quot;awaiting manager signature&quot; and require both
+                      parties to sign again. This action is logged.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="text-xs text-muted-foreground">Employee</p>
@@ -234,12 +367,102 @@ export function ManagerIncidentDialog({
               </div>
             </div>
 
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Report body</p>
-              <div className="rounded-md border bg-background p-4 whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                {report.document}
+            {editing ? (
+              <div className="space-y-3 rounded-md border p-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-title">Title</Label>
+                  <Input
+                    id="edit-title"
+                    value={editForm.title}
+                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-severity">Severity</Label>
+                    <Select
+                      value={editForm.severity}
+                      onValueChange={(v) =>
+                        setEditForm({ ...editForm, severity: v as IncidentSeverity })
+                      }
+                    >
+                      <SelectTrigger id="edit-severity">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {INCIDENT_SEVERITIES.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-category">Category</Label>
+                    <Select
+                      value={editForm.category}
+                      onValueChange={(v) =>
+                        setEditForm({ ...editForm, category: v as IncidentCategory })
+                      }
+                    >
+                      <SelectTrigger id="edit-category">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {INCIDENT_CATEGORIES.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-doc">Report body</Label>
+                  <Textarea
+                    id="edit-doc"
+                    value={editForm.document}
+                    onChange={(e) => setEditForm({ ...editForm, document: e.target.value })}
+                    rows={14}
+                    className="font-mono text-sm"
+                  />
+                </div>
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditing(false);
+                      setError(null);
+                      setEditForm({
+                        title: report.title,
+                        severity: report.severity,
+                        category: report.category,
+                        document: report.document,
+                      });
+                    }}
+                    disabled={saving}
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    Cancel edit
+                  </Button>
+                  <Button size="sm" onClick={save} disabled={saving}>
+                    <Save className="mr-2 h-4 w-4" />
+                    {saving ? "Saving…" : "Save"}
+                  </Button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Report body</p>
+                <div className="rounded-md border bg-background p-4 whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                  {report.document}
+                </div>
+              </div>
+            )}
 
             <div>
               <p className="text-xs text-muted-foreground mb-1">Acknowledgement</p>
@@ -341,7 +564,7 @@ export function ManagerIncidentDialog({
               </div>
             )}
 
-            {report.status === "awaiting_manager_sig" && (
+            {report.status === "awaiting_manager_sig" && !editing && (
               <div className="space-y-2 border-t pt-3">
                 <Label htmlFor="mgr-sig">Type your full name to sign</Label>
                 <Input
@@ -358,14 +581,85 @@ export function ManagerIncidentDialog({
               </div>
             )}
 
+            <div className="border-t pt-3">
+              <p className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
+                Activity
+              </p>
+              {!report.events || report.events.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">No activity recorded.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {report.events.map((ev) => {
+                    const isOverride =
+                      ev.event_type === "admin_override_edit" ||
+                      ev.event_type === "admin_override_delete";
+                    return (
+                      <li key={ev.id} className="flex items-start gap-2 text-xs">
+                        <span
+                          className={`mt-0.5 h-2 w-2 flex-shrink-0 rounded-full ${
+                            isOverride ? "bg-amber-500" : "bg-muted-foreground/50"
+                          }`}
+                          aria-hidden
+                        />
+                        <div className="flex-1">
+                          <p
+                            className={`font-medium ${
+                              isOverride ? "text-amber-700 dark:text-amber-400" : ""
+                            }`}
+                          >
+                            {ev.event_label}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {ev.actor?.name || ev.actor?.email || "System"} ·{" "}
+                            <span title={fmtDate(ev.created_at)}>
+                              {fmtRelative(ev.created_at)}
+                            </span>
+                            {ev.actor_ip && (
+                              <>
+                                {" · "}
+                                <span className="font-mono text-[10px]">{ev.actor_ip}</span>
+                              </>
+                            )}
+                          </p>
+                          {ev.details && ev.event_type === "edited" && (
+                            <EditDetails details={ev.details} />
+                          )}
+                          {ev.details && ev.event_type === "admin_override_edit" && (
+                            <EditDetails details={ev.details} />
+                          )}
+                          {ev.details && (ev.event_type === "cancelled" || ev.event_type === "admin_override_delete") && (
+                            <CancelDetails details={ev.details} />
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
             <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
               <Button variant="ghost" size="sm" onClick={() => window.print()}>
                 <Printer className="mr-2 h-4 w-4" />
                 Print
               </Button>
-              {(report.status === "awaiting_manager_sig" ||
-                report.status === "awaiting_employee_sig" ||
-                report.status === "draft") && (
+              {canEdit && !editing && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setError(null);
+                    setEditing(true);
+                  }}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                  {hasSignatures && viewerIsAdmin && (
+                    <span className="ml-1 text-xs text-amber-600">(override)</span>
+                  )}
+                </Button>
+              )}
+              {canDelete && !editing && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -376,7 +670,7 @@ export function ManagerIncidentDialog({
                   {cancelling ? "Cancelling…" : "Cancel report"}
                 </Button>
               )}
-              {report.status === "awaiting_manager_sig" && (
+              {report.status === "awaiting_manager_sig" && !editing && (
                 <Button size="sm" onClick={sign} disabled={signing}>
                   <ShieldCheck className="mr-2 h-4 w-4" />
                   {signing ? "Processing…" : "Process & send to employee"}
@@ -387,5 +681,32 @@ export function ManagerIncidentDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function EditDetails({ details }: { details: Record<string, unknown> }) {
+  const changes = details.changes as
+    | { field: string; from: unknown; to: unknown }[]
+    | undefined;
+  if (!changes || changes.length === 0) return null;
+  return (
+    <ul className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+      {changes.map((c) => (
+        <li key={c.field}>
+          <span className="font-medium">{c.field}</span>{" "}
+          changed
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CancelDetails({ details }: { details: Record<string, unknown> }) {
+  const reason = typeof details.reason === "string" ? details.reason : null;
+  if (!reason) return null;
+  return (
+    <p className="mt-1 text-[11px] italic text-muted-foreground">
+      &ldquo;{reason}&rdquo;
+    </p>
   );
 }

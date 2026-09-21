@@ -2,6 +2,7 @@ import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import {
   EMPLOYEE_ACKNOWLEDGEMENT_TEMPLATE,
 } from "@/lib/incidents/types";
+import { extractActorHeaders, logIncidentEvent } from "@/lib/incidents/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -151,5 +152,21 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const { ip, ua } = extractActorHeaders(req);
+  logIncidentEvent({
+    incidentReportId: data.id,
+    eventType: "filed",
+    actorProfileId: session.user.profileId,
+    actorIp: ip,
+    actorUa: ua,
+    details: {
+      title: data.title,
+      severity: data.severity,
+      category: data.category,
+      attachment_count: parsed.data.attachments.length,
+    },
+  }).catch(() => undefined);
+
   return NextResponse.json(data, { status: 201 });
 }

@@ -1,10 +1,16 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
+import {
+  EVENT_LABEL,
+  extractActorHeaders,
+  logIncidentEvent,
+  type FieldChange,
+} from "@/lib/incidents/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-// GET one report with full body + signatures. Scope-gated on the subject
-// employee — same access rules as list, plus the incident row must belong
-// to someone the viewer can see.
+// GET one report with full body + signatures + activity timeline. Scope-
+// gated on the subject employee — same access rules as list, plus the
+// incident row must belong to someone the viewer can see.
 export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
@@ -43,14 +49,23 @@ export async function GET(
     }
   }
 
-  // Fetch profile blurbs for the reporter + employee in one hit.
-  const ids = [row.employee_profile_id, row.reporter_profile_id].filter(
-    (v): v is string => !!v,
-  );
+  // Profile blurbs for reporter + employee + all event actors in one round trip.
+  const { data: events } = await supabase
+    .from("incident_report_events")
+    .select("id, event_type, actor_profile_id, actor_ip, actor_ua, details, created_at")
+    .eq("incident_report_id", row.id)
+    .order("created_at", { ascending: true });
+
+  const actorIds = new Set<string>();
+  if (row.reporter_profile_id) actorIds.add(row.reporter_profile_id);
+  actorIds.add(row.employee_profile_id);
+  for (const e of events || []) {
+    if (e.actor_profile_id) actorIds.add(e.actor_profile_id as string);
+  }
   const { data: profiles } = await supabase
     .from("profiles")
     .select("id, email, name:full_name, office, department")
-    .in("id", ids);
+    .in("id", Array.from(actorIds));
   const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
 
   return NextResponse.json({
@@ -59,6 +74,11 @@ export async function GET(
     reporter: row.reporter_profile_id
       ? profileMap.get(row.reporter_profile_id) || null
       : null,
+    events: (events || []).map((e) => ({
+      ...e,
+      event_label: EVENT_LABEL[e.event_type as keyof typeof EVENT_LABEL] ?? e.event_type,
+      actor: e.actor_profile_id ? profileMap.get(e.actor_profile_id as string) || null : null,
+    })),
   });
 }
 
@@ -72,8 +92,17 @@ const editSchema = z.object({
   acknowledgement_text: z.string().max(5_000).optional(),
 });
 
-// PATCH — edit an unsigned draft. Once the manager signs, the doc is locked
-// (any material edit would invalidate the signatures) so we hard-reject.
+// PATCH — edit an incident report.
+//
+//   * Managers can edit only while status is draft OR awaiting_manager_sig.
+//   * Admins can also edit once the report is signed. When an admin edits
+//     a signed row (awaiting_employee_sig / completed), we invalidate every
+//     signature + hash on the row and roll the status back to
+//     awaiting_manager_sig — substantive edits require re-signing. The
+//     event is written to the audit log with type "admin_override_edit"
+//     so HR can see later who touched what and when.
+//   * Cancelled rows can't be edited (uncancel first via a separate flow —
+//     not implemented; this is on purpose to keep terminal states terminal).
 export async function PATCH(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
@@ -86,13 +115,26 @@ export async function PATCH(
 
   const gate = await requireTimeDataAccess(null, "edit");
   if (!gate.ok) return gate.response;
-  const { supabase, scope, viewerIsAdmin } = gate;
+  const { session, supabase, scope, viewerIsAdmin } = gate;
 
   const { data: existing } = await supabase
     .from("incident_reports")
-    .select("id, employee_profile_id, status")
+    .select(
+      "id, employee_profile_id, status, title, severity, category, document, acknowledgement_text, manager_signed_at, employee_signed_at",
+    )
     .eq("id", id)
-    .single();
+    .single<{
+      id: string;
+      employee_profile_id: string;
+      status: string;
+      title: string;
+      severity: string;
+      category: string;
+      document: string;
+      acknowledgement_text: string;
+      manager_signed_at: string | null;
+      employee_signed_at: string | null;
+    }>();
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   if (!viewerIsAdmin) {
@@ -111,28 +153,63 @@ export async function PATCH(
     }
   }
 
-  // A signed document is legally frozen — edits would invalidate the
-  // signatures. Cancel + refile is the correct remedy.
-  if (
-    existing.status !== "draft" &&
-    existing.status !== "awaiting_manager_sig"
-  ) {
+  if (existing.status === "cancelled") {
+    return NextResponse.json(
+      { error: "Cannot edit a cancelled report" },
+      { status: 409 },
+    );
+  }
+
+  const preSigning =
+    existing.status === "draft" || existing.status === "awaiting_manager_sig";
+  const isAdminOverride = !preSigning;
+  if (isAdminOverride && !viewerIsAdmin) {
     return NextResponse.json(
       { error: "Cannot edit a report after signing has begun" },
       { status: 409 },
     );
   }
 
+  // Diff the incoming values against the current row so the audit log shows
+  // exactly what changed. Fields absent from the request stay untouched.
+  const changes: FieldChange[] = [];
   const update: Record<string, unknown> = {};
-  if (parsed.data.title !== undefined) update.title = parsed.data.title;
-  if (parsed.data.severity !== undefined) update.severity = parsed.data.severity;
-  if (parsed.data.category !== undefined) update.category = parsed.data.category;
-  if (parsed.data.document !== undefined) update.document = parsed.data.document;
-  if (parsed.data.acknowledgement_text !== undefined) {
-    update.acknowledgement_text = parsed.data.acknowledgement_text;
+  const fields = [
+    ["title", parsed.data.title],
+    ["severity", parsed.data.severity],
+    ["category", parsed.data.category],
+    ["document", parsed.data.document],
+    ["acknowledgement_text", parsed.data.acknowledgement_text],
+  ] as const;
+  for (const [field, incoming] of fields) {
+    if (incoming === undefined) continue;
+    const current = existing[field as keyof typeof existing] as string;
+    if (incoming === current) continue;
+    update[field] = incoming;
+    changes.push({ field, from: current, to: incoming });
   }
-  if (Object.keys(update).length === 0) {
+  if (changes.length === 0) {
     return NextResponse.json({ error: "No changes" }, { status: 400 });
+  }
+
+  // Admin override on a signed report — nuke both signature blocks + hashes
+  // and roll the status back to awaiting_manager_sig. The manager now needs
+  // to re-sign; if it was already awaiting_employee_sig, the pending
+  // notification stays in place (the employee will get a fresh one after
+  // re-signing).
+  if (isAdminOverride) {
+    update.status = "awaiting_manager_sig";
+    update.document_hash = null;
+    update.manager_signed_at = null;
+    update.manager_signature_text = null;
+    update.manager_signature_ip = null;
+    update.manager_signature_ua = null;
+    update.manager_signature_hash = null;
+    update.employee_signed_at = null;
+    update.employee_signature_text = null;
+    update.employee_signature_ip = null;
+    update.employee_signature_ua = null;
+    update.employee_signature_hash = null;
   }
 
   const { data, error } = await supabase
@@ -142,12 +219,28 @@ export async function PATCH(
     .select()
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const { ip, ua } = extractActorHeaders(req);
+  logIncidentEvent({
+    incidentReportId: id,
+    eventType: isAdminOverride ? "admin_override_edit" : "edited",
+    actorProfileId: session.user.profileId,
+    actorIp: ip,
+    actorUa: ua,
+    details: {
+      previous_status: existing.status,
+      changes,
+      signatures_reset: isAdminOverride,
+    },
+  }).catch(() => undefined);
+
   return NextResponse.json(data);
 }
 
 // DELETE — soft-cancel. The row stays for audit history; status flips to
-// 'cancelled' with a timestamp + who did it. Only pre-completion reports
-// can be cancelled; a fully signed record is permanent.
+// 'cancelled' with a timestamp + who did it. Admins can cancel completed
+// reports as an override (logged separately). Managers can only cancel
+// while the report is still in flight.
 export async function DELETE(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
@@ -182,15 +275,17 @@ export async function DELETE(
     }
   }
 
-  if (existing.status === "completed") {
+  if (existing.status === "completed" && !viewerIsAdmin) {
     return NextResponse.json(
-      { error: "Cannot cancel a completed incident report" },
+      { error: "Only admins can cancel a completed incident report" },
       { status: 409 },
     );
   }
   if (existing.status === "cancelled") {
     return NextResponse.json({ ok: true, alreadyCancelled: true });
   }
+
+  const isAdminOverride = existing.status === "completed";
 
   const { error } = await supabase
     .from("incident_reports")
@@ -203,5 +298,19 @@ export async function DELETE(
     .eq("id", id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const { ip, ua } = extractActorHeaders(req);
+  logIncidentEvent({
+    incidentReportId: id,
+    eventType: isAdminOverride ? "admin_override_delete" : "cancelled",
+    actorProfileId: session.user.profileId,
+    actorIp: ip,
+    actorUa: ua,
+    details: {
+      previous_status: existing.status,
+      reason: reason ?? undefined,
+    },
+  }).catch(() => undefined);
+
   return NextResponse.json({ ok: true });
 }

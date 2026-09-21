@@ -6,6 +6,7 @@ import {
 } from "@/lib/slack/notify";
 import type { IncidentSeverity } from "@/lib/incidents/types";
 import { hashDocument, hashEmployeeSignature } from "@/lib/incidents/hashing";
+import { logIncidentEvent } from "@/lib/incidents/audit";
 import { dismissNotificationsByReference } from "@/lib/notifications/service";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -150,6 +151,18 @@ export async function POST(
   dismissNotificationsByReference("incident_report", row.id).catch(
     () => undefined,
   );
+
+  logIncidentEvent({
+    incidentReportId: row.id,
+    eventType: "employee_signed",
+    actorProfileId: session.user.profileId,
+    actorIp: ip,
+    actorUa: ua,
+    details: {
+      signature_text: signatureText,
+      employee_signature_hash: employeeSignatureHash,
+    },
+  }).catch(() => undefined);
 
   return NextResponse.json(updated);
 }
