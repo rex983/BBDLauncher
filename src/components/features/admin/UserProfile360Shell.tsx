@@ -40,6 +40,7 @@ import {
   type TimeOffType,
 } from "@/lib/timeoff/types";
 import {
+  formatIncidentNumber,
   INCIDENT_CATEGORY_LABEL,
   INCIDENT_SEVERITY_LABEL,
   INCIDENT_STATUS_LABEL,
@@ -882,6 +883,7 @@ function IncidentsTab({ incidents }: { incidents: IncidentSummary[] }) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>ID</TableHead>
               <TableHead>Filed</TableHead>
               <TableHead>Title</TableHead>
               <TableHead>Category</TableHead>
@@ -893,6 +895,9 @@ function IncidentsTab({ incidents }: { incidents: IncidentSummary[] }) {
           <TableBody>
             {incidents.map((r) => (
               <TableRow key={r.id}>
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  {formatIncidentNumber(r.number)}
+                </TableCell>
                 <TableCell className="text-sm">{fmtDate(r.created_at)}</TableCell>
                 <TableCell>
                   <Link

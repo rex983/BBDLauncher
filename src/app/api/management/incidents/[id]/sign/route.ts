@@ -5,6 +5,7 @@ import {
 } from "@/lib/slack/notify";
 import type { IncidentSeverity, IncidentCategory } from "@/lib/incidents/types";
 import { hashDocument, hashManagerSignature } from "@/lib/incidents/hashing";
+import { formatIncidentNumber } from "@/lib/incidents/types";
 import { createNotification } from "@/lib/notifications/service";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -35,11 +36,12 @@ export async function POST(
   const { data: row } = await supabase
     .from("incident_reports")
     .select(
-      "id, employee_profile_id, reporter_profile_id, title, severity, category, status, document, attachments",
+      "id, number, employee_profile_id, reporter_profile_id, title, severity, category, status, document, attachments",
     )
     .eq("id", id)
     .single<{
       id: string;
+      number: number | null;
       employee_profile_id: string;
       reporter_profile_id: string | null;
       title: string;
@@ -163,16 +165,18 @@ export async function POST(
   };
   notifyIncidentSubmitted(payload).catch(() => undefined);
 
-  // In-app bell: the employee sees "New incident report awaiting your
-  // signature" the moment we return here — the notifications realtime
-  // subscription on their session pushes it into the header immediately.
-  // Href points at their profile page's incidents section (see /profile).
+  // In-app bell: the employee sees this the moment we return — the
+  // notifications realtime subscription on their session pushes the row
+  // into the header immediately. Href deep-links to the specific report
+  // (`openIncident` param), and IncidentPanel auto-opens the sign dialog
+  // on mount when it matches a row it holds.
+  const numberLabel = formatIncidentNumber(row.number);
   createNotification({
     userId: row.employee_profile_id,
     type: "incident_report_awaiting",
-    title: "New incident report awaiting your signature",
-    body: row.title,
-    href: `/profile#incidents`,
+    title: "BBD management has sent you an incident report.",
+    body: numberLabel ? `${numberLabel} · ${row.title}` : row.title,
+    href: `/profile?openIncident=${row.id}#incidents`,
     referenceType: "incident_report",
     referenceId: row.id,
   }).catch(() => undefined);

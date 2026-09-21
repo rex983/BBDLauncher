@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  formatIncidentNumber,
   INCIDENT_CATEGORY_LABEL,
   INCIDENT_SEVERITY_LABEL,
   INCIDENT_STATUS_LABEL,
@@ -21,10 +22,12 @@ import {
   type IncidentSeverity,
   type IncidentStatus,
 } from "@/lib/incidents/types";
+import { useSearchParams } from "next/navigation";
 import { EmployeeIncidentDialog } from "./EmployeeIncidentDialog";
 
 export interface IncidentSummary {
   id: string;
+  number: number | null;
   title: string;
   severity: IncidentSeverity;
   category: IncidentCategory;
@@ -70,6 +73,9 @@ export function IncidentPanel({
   title?: string;
   description?: string;
 }) {
+  const searchParams = useSearchParams();
+  const openIncidentId = searchParams.get("openIncident");
+
   const [rows, setRows] = useState<IncidentSummary[]>(initialRows || []);
   const [loading, setLoading] = useState(initialRows === undefined);
   const [selected, setSelected] = useState<string | null>(null);
@@ -86,6 +92,17 @@ export function IncidentPanel({
   useEffect(() => {
     if (initialRows === undefined) load();
   }, [initialRows, load]);
+
+  // Deep-link support — the bell notification routes to
+  // /profile?openIncident=<id>#incidents. If that id lands in our list,
+  // pop the sign dialog for it automatically so the user doesn't have to
+  // find and click the row.
+  useEffect(() => {
+    if (!openIncidentId) return;
+    if (!rows.some((r) => r.id === openIncidentId)) return;
+    setSelected(openIncidentId);
+    setOpen(true);
+  }, [openIncidentId, rows]);
 
   const openRow = (id: string) => {
     setSelected(id);
@@ -119,6 +136,7 @@ export function IncidentPanel({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Filed</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead>Category</TableHead>
@@ -130,6 +148,9 @@ export function IncidentPanel({
               <TableBody>
                 {rows.map((r) => (
                   <TableRow key={r.id}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {formatIncidentNumber(r.number)}
+                    </TableCell>
                     <TableCell className="text-sm">{fmtDate(r.created_at)}</TableCell>
                     <TableCell className="font-medium">{r.title}</TableCell>
                     <TableCell>

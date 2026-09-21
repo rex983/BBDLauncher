@@ -82,3 +82,11 @@ export const EMPLOYEE_ACKNOWLEDGEMENT_TEMPLATE = [
   "I understand that repeated or continued conduct of this nature may result in",
   "further corrective action, up to and including termination of employment.",
 ].join("\n");
+
+// Display helper for the sequential ID column (`number` on incident_reports).
+// Zero-padded to 4 digits with a leading `#` — the standard issue-tracker
+// look, easy to reference in Slack and print.
+export function formatIncidentNumber(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "";
+  return `#${String(n).padStart(4, "0")}`;
+}

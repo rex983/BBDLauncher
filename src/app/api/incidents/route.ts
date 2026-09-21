@@ -15,7 +15,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("incident_reports")
     .select(
-      "id, title, severity, category, status, occurred_at, manager_signed_at, employee_signed_at, attachments, created_at, updated_at",
+      "id, number, title, severity, category, status, occurred_at, manager_signed_at, employee_signed_at, attachments, created_at, updated_at",
     )
     .eq("employee_profile_id", session.user.profileId)
     .in("status", ["awaiting_employee_sig", "completed"])

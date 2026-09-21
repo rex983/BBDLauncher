@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ManagerIncidentDialog, type ManagerIncidentSummary } from "@/components/features/incidents/ManagerIncidentDialog";
 import { FileIncidentDialog } from "@/components/features/incidents/FileIncidentDialog";
 import {
+  formatIncidentNumber,
   INCIDENT_CATEGORIES,
   INCIDENT_CATEGORY_LABEL,
   INCIDENT_SEVERITIES,
@@ -126,8 +127,8 @@ export default function IncidentsManagementPage() {
           </div>
           <h1 className="text-2xl font-bold">Incident Reports</h1>
           <p className="text-muted-foreground">
-            File and manage HR incident reports with AI-assisted drafting and
-            internal e-signature.
+            File HR incident reports, process them for signature, and archive
+            once both parties have signed.
           </p>
         </div>
         <FileIncidentDialog onFiled={load} />
@@ -234,6 +235,7 @@ function IncidentRowTable({
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead>ID</TableHead>
           <TableHead>Filed</TableHead>
           <TableHead>Employee</TableHead>
           <TableHead>Title</TableHead>
@@ -245,14 +247,14 @@ function IncidentRowTable({
       <TableBody>
         {loading && (
           <TableRow>
-            <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
               Loading…
             </TableCell>
           </TableRow>
         )}
         {!loading && rows.length === 0 && (
           <TableRow>
-            <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
               {emptyLabel}
             </TableCell>
           </TableRow>
@@ -263,6 +265,9 @@ function IncidentRowTable({
             className="cursor-pointer hover:bg-muted/40"
             onClick={() => onRowClick(r.id)}
           >
+            <TableCell className="font-mono text-xs text-muted-foreground">
+              {formatIncidentNumber(r.number)}
+            </TableCell>
             <TableCell className="text-sm">{fmtDate(r.created_at)}</TableCell>
             <TableCell>
               <div className="font-medium">{r.employee?.name || r.employee?.email || "—"}</div>

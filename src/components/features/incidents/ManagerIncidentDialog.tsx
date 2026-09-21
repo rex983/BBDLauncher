@@ -13,18 +13,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  formatIncidentNumber,
   INCIDENT_CATEGORY_LABEL,
   INCIDENT_SEVERITY_LABEL,
   INCIDENT_STATUS_LABEL,
   type IncidentAttachment,
   type IncidentCategory,
-  type IncidentSeverity,
   type IncidentStatus,
+  type IncidentSeverity,
 } from "@/lib/incidents/types";
 import { Paperclip, Printer, ShieldCheck, Trash2 } from "lucide-react";
 
 export interface ManagerIncidentSummary {
   id: string;
+  number: number | null;
   employee_profile_id: string;
   reporter_profile_id: string | null;
   title: string;
@@ -185,8 +187,13 @@ export function ManagerIncidentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
-            {report?.title || (loading ? "Loading…" : "Incident report")}
+          <DialogTitle className="flex items-baseline gap-2">
+            {report?.number != null && (
+              <span className="font-mono text-sm text-muted-foreground">
+                {formatIncidentNumber(report.number)}
+              </span>
+            )}
+            <span>{report?.title || (loading ? "Loading…" : "Incident report")}</span>
           </DialogTitle>
           {report && (
             <DialogDescription className="flex flex-wrap items-center gap-2 pt-1">

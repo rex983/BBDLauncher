@@ -81,7 +81,7 @@ export default async function UserProfile360Page({
       ? supabase
           .from("incident_reports")
           .select(
-            "id, title, severity, category, status, occurred_at, manager_signed_at, employee_signed_at, attachments, created_at",
+            "id, number, title, severity, category, status, occurred_at, manager_signed_at, employee_signed_at, attachments, created_at",
           )
           .eq("employee_profile_id", id)
           .order("created_at", { ascending: false })

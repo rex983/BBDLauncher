@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
   const { data: reports, error } = await supabase
     .from("incident_reports")
     .select(
-      "id, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, attachments, manager_signed_at, employee_signed_at, cancelled_at, created_at, updated_at",
+      "id, number, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, attachments, manager_signed_at, employee_signed_at, cancelled_at, created_at, updated_at",
     )
     .in("employee_profile_id", profileIds)
     .in("status", statuses)
