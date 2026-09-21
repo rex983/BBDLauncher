@@ -5,6 +5,7 @@ import {
 } from "@/lib/slack/notify";
 import type { IncidentSeverity, IncidentCategory } from "@/lib/incidents/types";
 import { hashDocument, hashManagerSignature } from "@/lib/incidents/hashing";
+import { createNotification } from "@/lib/notifications/service";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -161,6 +162,20 @@ export async function POST(
     attachmentCount: attachments.length,
   };
   notifyIncidentSubmitted(payload).catch(() => undefined);
+
+  // In-app bell: the employee sees "New incident report awaiting your
+  // signature" the moment we return here — the notifications realtime
+  // subscription on their session pushes it into the header immediately.
+  // Href points at their profile page's incidents section (see /profile).
+  createNotification({
+    userId: row.employee_profile_id,
+    type: "incident_report_awaiting",
+    title: "New incident report awaiting your signature",
+    body: row.title,
+    href: `/profile#incidents`,
+    referenceType: "incident_report",
+    referenceId: row.id,
+  }).catch(() => undefined);
 
   return NextResponse.json(updated);
 }

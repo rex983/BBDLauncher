@@ -6,6 +6,7 @@ import {
 } from "@/lib/slack/notify";
 import type { IncidentSeverity } from "@/lib/incidents/types";
 import { hashDocument, hashEmployeeSignature } from "@/lib/incidents/hashing";
+import { dismissNotificationsByReference } from "@/lib/notifications/service";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -143,6 +144,12 @@ export async function POST(
     severity: row.severity as IncidentSeverity,
   };
   notifyIncidentCompleted(payload).catch(() => undefined);
+
+  // Auto-dismiss the "awaiting your signature" bell — the workflow is
+  // closed so hanging on to the ping just clutters the dropdown.
+  dismissNotificationsByReference("incident_report", row.id).catch(
+    () => undefined,
+  );
 
   return NextResponse.json(updated);
 }

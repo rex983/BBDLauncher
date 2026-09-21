@@ -302,14 +302,17 @@ export default async function ProfilePage() {
         description="Submit new requests and see the status of ones that haven't happened yet."
       />
 
-      {incidents.length > 0 && (
+      {/* Always render — the bell links to #incidents when a manager files
+          one, and an empty panel with a "nothing here" message is a fine
+          landing spot instead of a 404-in-page. */}
+      <div id="incidents" className="scroll-mt-20">
         <IncidentPanel
           initialRows={incidents}
           employeeFullName={profile?.name || null}
           title="Incident reports"
           description="Reports issued to you. Sign any awaiting your signature; archived reports remain viewable here."
         />
-      )}
+      </div>
 
       <Card>
         <CardHeader>
