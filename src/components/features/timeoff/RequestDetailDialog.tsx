@@ -54,8 +54,11 @@ interface Props {
 }
 
 function fmtDate(d: string) {
+  // Include weekday so managers can eyeball "does this span a weekend / hit
+  // a Monday" without pulling out a calendar. Short form keeps the row from
+  // wrapping on narrower dialogs.
   return new Date(d + "T00:00:00").toLocaleDateString([], {
-    month: "short", day: "numeric", year: "numeric",
+    weekday: "short", month: "short", day: "numeric", year: "numeric",
   });
 }
 function fmtDateTime(iso: string) {
