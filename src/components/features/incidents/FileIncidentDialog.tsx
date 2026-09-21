@@ -342,7 +342,7 @@ export function FileIncidentDialog({
             <Input
               id="i-attach"
               type="file"
-              accept=".pdf,.png,.jpg,.jpeg,.heic,.webp,.doc,.docx,.txt"
+              accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.spreadsheet,application/vnd.oasis.opendocument.presentation,application/rtf,application/zip,application/x-zip-compressed,application/x-7z-compressed,application/vnd.rar,message/rfc822,application/vnd.ms-outlook,text/*,.md,.log,.csv,.eml,.msg,.heic,.heif"
               disabled={uploading || attachments.length >= 10}
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -375,7 +375,7 @@ export function FileIncidentDialog({
               </ul>
             )}
             <p className="text-xs text-muted-foreground">
-              PDF, images, or Word docs. 10 MB per file, up to 10 files.
+              Images, video, audio, PDF, Office &amp; OpenDoc formats, plain text, archives — pretty much anything except executables. 10 MB per file, up to 10 files.
             </p>
           </div>
 

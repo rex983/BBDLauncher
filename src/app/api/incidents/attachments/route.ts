@@ -10,15 +10,24 @@ import { randomUUID } from "crypto";
 
 const BUCKET = "incident-attachments";
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB per file
-const ALLOWED_MIME = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/heic",
-  "image/webp",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "text/plain",
+
+// Blocklist rather than allowlist — the ask was "wide and expansive"
+// (images, video, office docs, archives, whatever a manager needs to
+// attach as evidence). We only reject types that are dangerous to serve
+// back to a browser as an executable payload. Everything else — including
+// unusual office/media formats — goes through.
+const BLOCKED_MIME = new Set([
+  "application/x-msdownload", // .exe, .dll
+  "application/x-msdos-program",
+  "application/x-msi",
+  "application/x-sh",
+  "application/x-bat",
+  "application/x-executable",
+  "application/x-mach-binary",
+]);
+const BLOCKED_EXT = new Set([
+  "exe", "dll", "msi", "bat", "cmd", "sh", "ps1", "vbs", "scr", "jar",
+  "com", "cpl", "app", "deb", "rpm",
 ]);
 
 // Upload a single supporting document for an incident report. Only managers
@@ -60,8 +69,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "File exceeds 10 MB limit" }, { status: 413 });
   }
   const mime = file.type || "application/octet-stream";
-  if (!ALLOWED_MIME.has(mime)) {
-    return NextResponse.json({ error: `File type ${mime} not allowed` }, { status: 415 });
+  const ext = (file.name.match(/\.([A-Za-z0-9]+)$/)?.[1] || "").toLowerCase();
+  if (BLOCKED_MIME.has(mime) || BLOCKED_EXT.has(ext)) {
+    return NextResponse.json(
+      { error: `File type ${mime || ext} isn't allowed for security reasons` },
+      { status: 415 },
+    );
   }
 
   const supabase = createAdminClient();
