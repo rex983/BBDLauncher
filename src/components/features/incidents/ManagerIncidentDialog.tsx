@@ -50,8 +50,6 @@ interface FullReport extends ManagerIncidentSummary {
   description: string;
   document: string;
   acknowledgement_text: string;
-  ai_provider: string | null;
-  ai_model: string | null;
   manager_signature_text: string | null;
   employee_signature_text: string | null;
   cancelled_reason: string | null;
@@ -223,23 +221,6 @@ export function ManagerIncidentDialog({
               <div>
                 <p className="text-xs text-muted-foreground">Occurred</p>
                 <p>{fmtDate(report.occurred_at)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">AI provider</p>
-                <p>
-                  {report.ai_provider
-                    ? `${report.ai_provider} · ${report.ai_model || ""}`
-                    : "—"}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">
-                Original description (audit)
-              </p>
-              <div className="rounded-md border bg-muted/30 p-3 whitespace-pre-wrap text-xs">
-                {report.description}
               </div>
             </div>
 

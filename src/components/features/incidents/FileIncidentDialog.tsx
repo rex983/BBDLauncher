@@ -28,7 +28,7 @@ import {
   type IncidentCategory,
   type IncidentSeverity,
 } from "@/lib/incidents/types";
-import { AlertTriangle, Paperclip, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Paperclip, X } from "lucide-react";
 
 function formatBytes(n: number) {
   if (n < 1024) return `${n} B`;
@@ -58,11 +58,10 @@ export interface FileIncidentDialogProps {
   onFiled?: () => void;
 }
 
-// AI-assisted incident report creation. Manager describes what happened, the
-// LLM drafts the formal write-up, manager edits if needed, submits — which
-// creates the row already flagged awaiting_manager_sig. Manager then signs
-// from the detail dialog. Two-step because generation shouldn't persist a
-// half-baked draft; regeneration is free.
+// Manager files a formal incident report. There's no AI drafting step —
+// managers write the report body themselves (or paste it from wherever they
+// composed it), attach supporting files, and submit. The row lands as
+// awaiting_manager_sig; signing happens from the detail dialog.
 export function FileIncidentDialog({
   employeeProfileId: preselectedId,
   employeeName: preselectedName,
@@ -78,17 +77,9 @@ export function FileIncidentDialog({
   const [severity, setSeverity] = useState<IncidentSeverity>("medium");
   const [category, setCategory] = useState<IncidentCategory>("performance");
   const [occurredAt, setOccurredAt] = useState<string>("");
-  const [description, setDescription] = useState("");
   const [document, setDocument] = useState("");
-  const [aiMeta, setAiMeta] = useState<{
-    provider: string;
-    model: string;
-    prompt: string;
-    original: string;
-  } | null>(null);
   const [attachments, setAttachments] = useState<IncidentAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -129,9 +120,7 @@ export function FileIncidentDialog({
     setSeverity("medium");
     setCategory("performance");
     setOccurredAt("");
-    setDescription("");
     setDocument("");
-    setAiMeta(null);
     setAttachments([]);
     setError(null);
   };
@@ -161,61 +150,25 @@ export function FileIncidentDialog({
     setAttachments((prev) => prev.filter((a) => a.path !== path));
   };
 
-  const generate = async () => {
-    setError(null);
-    if (!employeeProfileId) {
-      setError("Please pick an employee first.");
-      return;
-    }
-    if (!title.trim() || description.trim().length < 10) {
-      setError("Please fill in a title and a description (10+ characters).");
-      return;
-    }
-    setGenerating(true);
-    const res = await fetch("/api/management/incidents/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        employee_profile_id: employeeProfileId,
-        title,
-        severity,
-        category,
-        occurred_at: occurredAt ? new Date(occurredAt).toISOString() : null,
-        description,
-      }),
-    });
-    setGenerating(false);
-    if (!res.ok) {
-      const b = await res.json().catch(() => ({}));
-      setError(typeof b.error === "string" ? b.error : "Generation failed");
-      return;
-    }
-    const body = (await res.json()) as {
-      document: string;
-      provider: string;
-      model: string;
-      prompt: string;
-    };
-    setDocument(body.document);
-    setAiMeta({
-      provider: body.provider,
-      model: body.model,
-      prompt: body.prompt,
-      original: body.document,
-    });
-  };
-
   const submit = async () => {
     setError(null);
     if (!employeeProfileId) {
       setError("Please pick an employee first.");
       return;
     }
-    if (!document.trim() || document.trim().length < 10) {
-      setError("The report body is empty — generate or paste one first.");
+    if (!title.trim()) {
+      setError("Please enter a report title.");
+      return;
+    }
+    if (document.trim().length < 10) {
+      setError("Report body is too short (min 10 characters).");
       return;
     }
     setSubmitting(true);
+    // The DB has description NOT NULL — with the AI step gone there's no
+    // longer a separate "raw description" vs "formal document", so we send
+    // the same body for both. Column can be repurposed later if we ever
+    // want to split them again.
     const res = await fetch("/api/management/incidents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -225,13 +178,9 @@ export function FileIncidentDialog({
         severity,
         category,
         occurred_at: occurredAt ? new Date(occurredAt).toISOString() : null,
-        description,
+        description: document,
         document,
         acknowledgement_text: EMPLOYEE_ACKNOWLEDGEMENT_TEMPLATE,
-        ai_provider: aiMeta?.provider ?? null,
-        ai_model: aiMeta?.model ?? null,
-        ai_prompt: aiMeta?.prompt ?? null,
-        ai_generated_document: aiMeta?.original ?? null,
         attachments,
       }),
     });
@@ -270,7 +219,8 @@ export function FileIncidentDialog({
               : `File incident report — ${employeeName}`}
           </DialogTitle>
           <DialogDescription>
-            Describe what happened, let the AI draft a formal write-up, review and edit it, then send for signatures.
+            Write or paste the report body, attach any supporting documents,
+            then send for signatures.
           </DialogDescription>
         </DialogHeader>
 
@@ -364,18 +314,15 @@ export function FileIncidentDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="i-desc">Describe what happened</Label>
+            <Label htmlFor="i-doc">Report body</Label>
             <Textarea
-              id="i-desc"
-              value={description}
-              rows={5}
-              placeholder="Plain language is fine — mention who, what, when, where, and any policy/expectation involved. The AI turns this into a formal write-up."
-              onChange={(e) => setDescription(e.target.value)}
+              id="i-doc"
+              value={document}
+              onChange={(e) => setDocument(e.target.value)}
+              rows={14}
+              placeholder="Write the report here, or paste it from your preferred editor. Once signed the body is locked."
+              className="font-mono text-sm"
             />
-            <p className="text-xs text-muted-foreground">
-              Only facts you provide are included. The AI won&apos;t invent
-              details.
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -415,43 +362,8 @@ export function FileIncidentDialog({
                 ))}
               </ul>
             )}
-          </div>
-
-          <div className="rounded-md border p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">AI-drafted report</p>
-                {aiMeta && (
-                  <p className="text-xs text-muted-foreground">
-                    {aiMeta.provider} · {aiMeta.model}
-                  </p>
-                )}
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant={document ? "outline" : "default"}
-                onClick={generate}
-                disabled={generating}
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                {generating
-                  ? "Drafting…"
-                  : document
-                    ? "Regenerate"
-                    : "Draft with AI"}
-              </Button>
-            </div>
-            <Textarea
-              value={document}
-              onChange={(e) => setDocument(e.target.value)}
-              rows={14}
-              placeholder="The AI-generated report will appear here. You can edit it before sending."
-              className="font-mono text-sm"
-            />
             <p className="text-xs text-muted-foreground">
-              Edits are always allowed before the report is signed. Once you
-              sign, the document is locked.
+              PDF, images, or Word docs. 10 MB per file, up to 10 files.
             </p>
           </div>
 

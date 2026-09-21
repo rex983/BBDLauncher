@@ -35,10 +35,6 @@ const createSchema = z.object({
   description: z.string().min(10).max(10_000),
   document: z.string().min(10).max(30_000),
   acknowledgement_text: z.string().max(5_000).optional(),
-  ai_provider: z.string().max(32).nullable().optional(),
-  ai_model: z.string().max(64).nullable().optional(),
-  ai_prompt: z.string().max(20_000).nullable().optional(),
-  ai_generated_document: z.string().max(30_000).nullable().optional(),
   attachments: z.array(attachmentSchema).max(10).default([]),
 });
 
@@ -83,7 +79,7 @@ export async function GET(req: NextRequest) {
   const { data: reports, error } = await supabase
     .from("incident_reports")
     .select(
-      "id, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, ai_provider, ai_model, attachments, manager_signed_at, employee_signed_at, cancelled_at, created_at, updated_at",
+      "id, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, attachments, manager_signed_at, employee_signed_at, cancelled_at, created_at, updated_at",
     )
     .in("employee_profile_id", profileIds)
     .in("status", statuses)
@@ -144,10 +140,6 @@ export async function POST(req: NextRequest) {
       description: parsed.data.description,
       document: parsed.data.document,
       acknowledgement_text: acknowledgement,
-      ai_provider: parsed.data.ai_provider ?? null,
-      ai_model: parsed.data.ai_model ?? null,
-      ai_prompt: parsed.data.ai_prompt ?? null,
-      ai_generated_document: parsed.data.ai_generated_document ?? null,
       attachments: parsed.data.attachments,
       // Newly created reports go straight to "awaiting manager signature" —
       // there's no separate draft-save UX yet; the manager reviews on the

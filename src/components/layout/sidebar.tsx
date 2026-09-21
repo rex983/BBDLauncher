@@ -33,7 +33,6 @@ import {
   Clock,
   CalendarCheck,
   AlertTriangle,
-  Sparkles,
 } from "lucide-react";
 
 const navItems = [
@@ -56,7 +55,6 @@ const adminItems = [
   { href: "/admin/quotes", label: "Quotes", icon: Quote },
   { href: "/admin/roles", label: "Roles", icon: ShieldCheck },
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
-  { href: "/admin/ai", label: "AI Settings", icon: Sparkles },
 ];
 
 // Keep the pending-count badge live via a Supabase realtime subscription
