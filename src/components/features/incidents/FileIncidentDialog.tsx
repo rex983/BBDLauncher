@@ -36,6 +36,15 @@ function formatBytes(n: number) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Value shape a <input type="datetime-local"> expects: local wall-clock
+// time as YYYY-MM-DDTHH:MM (no timezone suffix). Used to prefill the field
+// with "right now" every time the dialog opens.
+function nowLocal(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 interface EmployeeOption {
   id: string;
   name: string | null;
@@ -76,7 +85,10 @@ export function FileIncidentDialog({
   const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState<IncidentSeverity>("medium");
   const [category, setCategory] = useState<IncidentCategory>("performance");
-  const [occurredAt, setOccurredAt] = useState<string>("");
+  // Prefill with "now" so the manager doesn't have to type a timestamp for
+  // an incident they're filing about something that just happened. They can
+  // still adjust or clear the field for historical incidents.
+  const [occurredAt, setOccurredAt] = useState<string>(() => nowLocal());
   const [document, setDocument] = useState("");
   const [attachments, setAttachments] = useState<IncidentAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -119,7 +131,7 @@ export function FileIncidentDialog({
     setTitle("");
     setSeverity("medium");
     setCategory("performance");
-    setOccurredAt("");
+    setOccurredAt(nowLocal());
     setDocument("");
     setAttachments([]);
     setError(null);
@@ -304,7 +316,7 @@ export function FileIncidentDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="i-occurred">Date &amp; time of incident (optional)</Label>
+            <Label htmlFor="i-occurred">Date &amp; time of incident</Label>
             <Input
               id="i-occurred"
               type="datetime-local"
