@@ -84,6 +84,9 @@ interface IncidentEvent {
 interface FullReport extends ManagerIncidentSummary {
   description: string;
   document: string;
+  problem: string | null;
+  proposed_solution: string | null;
+  manager_notes: string | null;
   acknowledgement_text: string;
   manager_signature_text: string | null;
   employee_signature_text: string | null;
@@ -155,6 +158,10 @@ export function ManagerIncidentDialog({
     title: "",
     severity: "medium" as IncidentSeverity,
     category: "performance" as IncidentCategory,
+    // Split-section fields when present, falls back to document for legacy rows.
+    problem: "",
+    proposed_solution: "",
+    manager_notes: "",
     document: "",
   });
 
@@ -171,6 +178,12 @@ export function ManagerIncidentDialog({
         title: data.title,
         severity: data.severity,
         category: data.category,
+        problem: data.problem ?? "",
+        proposed_solution: data.proposed_solution ?? "",
+        manager_notes: data.manager_notes ?? "",
+        // Legacy rows have no problem/proposed_solution — the edit form
+        // will hide those two fields in that case (see below) and this
+        // preserves the raw document body for editing directly.
         document: data.document,
       });
     } catch (e) {
@@ -257,20 +270,46 @@ export function ManagerIncidentDialog({
       setError("Title is required.");
       return;
     }
-    if (editForm.document.trim().length < 10) {
+    const hasSections = report.problem !== null || report.proposed_solution !== null;
+    if (hasSections) {
+      if (editForm.problem.trim().length < 3) {
+        setError("Problem must be at least 3 characters.");
+        return;
+      }
+      if (editForm.proposed_solution.trim().length < 3) {
+        setError("Proposed solution must be at least 3 characters.");
+        return;
+      }
+    } else if (editForm.document.trim().length < 10) {
       setError("Report body must be at least 10 characters.");
       return;
     }
     setSaving(true);
+
+    // Only send fields that actually changed. For split-section rows, send
+    // problem/proposed_solution/manager_notes and let the server recompose
+    // document. For legacy rows, send document verbatim.
+    const patchBody: Record<string, unknown> = {};
+    if (editForm.title !== report.title) patchBody.title = editForm.title;
+    if (editForm.severity !== report.severity) patchBody.severity = editForm.severity;
+    if (editForm.category !== report.category) patchBody.category = editForm.category;
+    if (hasSections) {
+      if (editForm.problem !== (report.problem ?? "")) patchBody.problem = editForm.problem;
+      if (editForm.proposed_solution !== (report.proposed_solution ?? "")) {
+        patchBody.proposed_solution = editForm.proposed_solution;
+      }
+      const trimmedNotes = editForm.manager_notes.trim();
+      if (trimmedNotes !== (report.manager_notes ?? "")) {
+        patchBody.manager_notes = trimmedNotes || null;
+      }
+    } else if (editForm.document !== report.document) {
+      patchBody.document = editForm.document;
+    }
+
     const res = await fetch(`/api/management/incidents/${report.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: editForm.title !== report.title ? editForm.title : undefined,
-        severity: editForm.severity !== report.severity ? editForm.severity : undefined,
-        category: editForm.category !== report.category ? editForm.category : undefined,
-        document: editForm.document !== report.document ? editForm.document : undefined,
-      }),
+      body: JSON.stringify(patchBody),
     });
     setSaving(false);
     if (!res.ok) {
@@ -419,16 +458,63 @@ export function ManagerIncidentDialog({
                     </Select>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-doc">Report body</Label>
-                  <Textarea
-                    id="edit-doc"
-                    value={editForm.document}
-                    onChange={(e) => setEditForm({ ...editForm, document: e.target.value })}
-                    rows={14}
-                    className="font-mono text-sm"
-                  />
-                </div>
+                {report.problem !== null || report.proposed_solution !== null ? (
+                  <>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="edit-problem">Problem</Label>
+                        <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                          Employee sees this
+                        </span>
+                      </div>
+                      <Textarea
+                        id="edit-problem"
+                        value={editForm.problem}
+                        onChange={(e) => setEditForm({ ...editForm, problem: e.target.value })}
+                        rows={5}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="edit-solution">Proposed solution &amp; deadline</Label>
+                        <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                          Employee sees this
+                        </span>
+                      </div>
+                      <Textarea
+                        id="edit-solution"
+                        value={editForm.proposed_solution}
+                        onChange={(e) => setEditForm({ ...editForm, proposed_solution: e.target.value })}
+                        rows={5}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="edit-notes">Manager&rsquo;s notes</Label>
+                        <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                          Private — employee does NOT see this
+                        </span>
+                      </div>
+                      <Textarea
+                        id="edit-notes"
+                        value={editForm.manager_notes}
+                        onChange={(e) => setEditForm({ ...editForm, manager_notes: e.target.value })}
+                        rows={4}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-doc">Report body</Label>
+                    <Textarea
+                      id="edit-doc"
+                      value={editForm.document}
+                      onChange={(e) => setEditForm({ ...editForm, document: e.target.value })}
+                      rows={14}
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                )}
                 {error && <p className="text-sm text-destructive">{error}</p>}
                 <div className="flex justify-end gap-2">
                   <Button
@@ -441,6 +527,9 @@ export function ManagerIncidentDialog({
                         title: report.title,
                         severity: report.severity,
                         category: report.category,
+                        problem: report.problem ?? "",
+                        proposed_solution: report.proposed_solution ?? "",
+                        manager_notes: report.manager_notes ?? "",
                         document: report.document,
                       });
                     }}
@@ -455,6 +544,54 @@ export function ManagerIncidentDialog({
                   </Button>
                 </div>
               </div>
+            ) : report.problem !== null || report.proposed_solution !== null ? (
+              <>
+                {report.problem && (
+                  <div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Problem
+                      </p>
+                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                        Employee sees this
+                      </span>
+                    </div>
+                    <div className="rounded-md border bg-background p-4 whitespace-pre-wrap text-sm leading-relaxed">
+                      {report.problem}
+                    </div>
+                  </div>
+                )}
+                {report.proposed_solution && (
+                  <div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Proposed solution &amp; deadline
+                      </p>
+                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                        Employee sees this
+                      </span>
+                    </div>
+                    <div className="rounded-md border bg-background p-4 whitespace-pre-wrap text-sm leading-relaxed">
+                      {report.proposed_solution}
+                    </div>
+                  </div>
+                )}
+                {report.manager_notes && (
+                  <div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Manager&rsquo;s notes
+                      </p>
+                      <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                        Private — employee does NOT see this
+                      </span>
+                    </div>
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-4 whitespace-pre-wrap text-sm leading-relaxed">
+                      {report.manager_notes}
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Report body</p>

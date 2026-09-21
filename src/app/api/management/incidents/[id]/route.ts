@@ -5,6 +5,7 @@ import {
   logIncidentEvent,
   type FieldChange,
 } from "@/lib/incidents/audit";
+import { composeIncidentDocument } from "@/lib/incidents/types";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -25,7 +26,7 @@ export async function GET(
   const { data: row, error } = await supabase
     .from("incident_reports")
     .select(
-      "id, number, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, description, document, acknowledgement_text, attachments, manager_signed_at, manager_signature_text, employee_signed_at, employee_signature_text, document_hash, manager_signature_hash, employee_signature_hash, cancelled_at, cancelled_reason, created_at, updated_at",
+      "id, number, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, description, document, problem, proposed_solution, manager_notes, acknowledgement_text, attachments, manager_signed_at, manager_signature_text, employee_signed_at, employee_signature_text, document_hash, manager_signature_hash, employee_signature_hash, cancelled_at, cancelled_reason, created_at, updated_at",
     )
     .eq("id", id)
     .single();
@@ -88,6 +89,12 @@ const editSchema = z.object({
   category: z
     .enum(["attendance", "performance", "conduct", "safety", "policy", "other"])
     .optional(),
+  // New callers send the three sections; the endpoint recomposes `document`
+  // from problem + proposed_solution whenever either changes. Legacy
+  // callers can still send `document` directly.
+  problem: z.string().min(3).max(15_000).optional(),
+  proposed_solution: z.string().min(3).max(15_000).optional(),
+  manager_notes: z.string().max(15_000).nullable().optional(),
   document: z.string().min(10).max(30_000).optional(),
   acknowledgement_text: z.string().max(5_000).optional(),
 });
@@ -120,7 +127,7 @@ export async function PATCH(
   const { data: existing } = await supabase
     .from("incident_reports")
     .select(
-      "id, employee_profile_id, status, title, severity, category, document, acknowledgement_text, manager_signed_at, employee_signed_at",
+      "id, employee_profile_id, status, title, severity, category, document, problem, proposed_solution, manager_notes, acknowledgement_text, manager_signed_at, employee_signed_at",
     )
     .eq("id", id)
     .single<{
@@ -131,6 +138,9 @@ export async function PATCH(
       severity: string;
       category: string;
       document: string;
+      problem: string | null;
+      proposed_solution: string | null;
+      manager_notes: string | null;
       acknowledgement_text: string;
       manager_signed_at: string | null;
       employee_signed_at: string | null;
@@ -174,30 +184,75 @@ export async function PATCH(
   // exactly what changed. Fields absent from the request stay untouched.
   const changes: FieldChange[] = [];
   const update: Record<string, unknown> = {};
-  const fields = [
+  const fields: [string, string | null | undefined][] = [
     ["title", parsed.data.title],
     ["severity", parsed.data.severity],
     ["category", parsed.data.category],
-    ["document", parsed.data.document],
+    ["problem", parsed.data.problem],
+    ["proposed_solution", parsed.data.proposed_solution],
+    ["manager_notes", parsed.data.manager_notes],
     ["acknowledgement_text", parsed.data.acknowledgement_text],
-  ] as const;
+  ];
   for (const [field, incoming] of fields) {
     if (incoming === undefined) continue;
-    const current = existing[field as keyof typeof existing] as string;
-    if (incoming === current) continue;
-    update[field] = incoming;
-    changes.push({ field, from: current, to: incoming });
+    const current = (existing[field as keyof typeof existing] ?? null) as
+      | string
+      | null;
+    const incomingValue = incoming === null ? null : incoming;
+    if (incomingValue === current) continue;
+    update[field] = incomingValue;
+    changes.push({ field, from: current, to: incomingValue });
   }
+
+  // If problem or proposed_solution changed (or the client sent an explicit
+  // `document`), recompose the signed body. Legacy `document` wins if
+  // present — that's how a caller can still edit the raw body.
+  const nextProblem =
+    (update.problem as string | undefined) ?? existing.problem;
+  const nextSolution =
+    (update.proposed_solution as string | undefined) ??
+    existing.proposed_solution;
+  if (parsed.data.document !== undefined) {
+    if (parsed.data.document !== existing.document) {
+      update.document = parsed.data.document;
+      changes.push({
+        field: "document",
+        from: existing.document,
+        to: parsed.data.document,
+      });
+    }
+  } else if (
+    (update.problem !== undefined || update.proposed_solution !== undefined) &&
+    nextProblem &&
+    nextSolution
+  ) {
+    const nextDoc = composeIncidentDocument({
+      problem: nextProblem,
+      proposedSolution: nextSolution,
+    });
+    if (nextDoc !== existing.document) {
+      update.document = nextDoc;
+      changes.push({
+        field: "document",
+        from: existing.document,
+        to: nextDoc,
+      });
+    }
+  }
+
   if (changes.length === 0) {
     return NextResponse.json({ error: "No changes" }, { status: 400 });
   }
 
-  // Admin override on a signed report — nuke both signature blocks + hashes
-  // and roll the status back to awaiting_manager_sig. The manager now needs
-  // to re-sign; if it was already awaiting_employee_sig, the pending
-  // notification stays in place (the employee will get a fresh one after
-  // re-signing).
-  if (isAdminOverride) {
+  // Admin override on a signed report ONLY resets signatures when the
+  // signed document body actually changed. Metadata edits (title, severity,
+  // category, private manager_notes) leave the signature chain intact —
+  // signatures only cover the document body itself, and manager_notes is
+  // never visible to the employee so amending it can't affect their
+  // acknowledgement.
+  const documentChanged = "document" in update;
+  const resetSignatures = isAdminOverride && documentChanged;
+  if (resetSignatures) {
     update.status = "awaiting_manager_sig";
     update.document_hash = null;
     update.manager_signed_at = null;
@@ -230,7 +285,7 @@ export async function PATCH(
     details: {
       previous_status: existing.status,
       changes,
-      signatures_reset: isAdminOverride,
+      signatures_reset: resetSignatures,
     },
   }).catch(() => undefined);
 

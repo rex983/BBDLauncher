@@ -90,3 +90,19 @@ export function formatIncidentNumber(n: number | null | undefined): string {
   if (n === null || n === undefined) return "";
   return `#${String(n).padStart(4, "0")}`;
 }
+
+// Compose the signed document body from the two employee-visible sections
+// (problem + proposed solution). Manager notes stay out — they never enter
+// the document that gets hashed or shown to the employee.
+export function composeIncidentDocument(params: {
+  problem: string;
+  proposedSolution: string;
+}): string {
+  return [
+    "PROBLEM",
+    params.problem.trim(),
+    "",
+    "PROPOSED SOLUTION & DEADLINE",
+    params.proposedSolution.trim(),
+  ].join("\n\n");
+}

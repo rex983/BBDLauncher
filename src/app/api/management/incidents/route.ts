@@ -1,5 +1,6 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import {
+  composeIncidentDocument,
   EMPLOYEE_ACKNOWLEDGEMENT_TEMPLATE,
   formatIncidentNumber,
 } from "@/lib/incidents/types";
@@ -31,6 +32,9 @@ const attachmentSchema = z.object({
 // document text (or the manager's edited version) — the /generate endpoint
 // produces it separately so drafts can be regenerated without persisting a
 // row every time.
+// The client sends the three-section shape (problem / proposed_solution /
+// manager_notes). Legacy callers can still pass `document` directly —
+// server composes if it's absent.
 const createSchema = z.object({
   employee_profile_id: z.string().uuid(),
   title: z.string().min(3).max(200),
@@ -44,8 +48,11 @@ const createSchema = z.object({
     "other",
   ]),
   occurred_at: z.string().datetime().nullable().optional(),
-  description: z.string().min(10).max(10_000),
-  document: z.string().min(10).max(30_000),
+  problem: z.string().min(3).max(15_000).optional(),
+  proposed_solution: z.string().min(3).max(15_000).optional(),
+  manager_notes: z.string().max(15_000).nullable().optional(),
+  description: z.string().min(10).max(10_000).optional(),
+  document: z.string().min(10).max(30_000).optional(),
   acknowledgement_text: z.string().max(5_000).optional(),
   attachments: z.array(attachmentSchema).max(10).default([]),
 });
@@ -140,6 +147,34 @@ export async function POST(req: NextRequest) {
   const acknowledgement =
     parsed.data.acknowledgement_text?.trim() || EMPLOYEE_ACKNOWLEDGEMENT_TEMPLATE;
 
+  // Compose the signed document body. If the client sent problem +
+  // proposed_solution we build the doc from those; if it sent a raw
+  // `document` (legacy path or client that hasn't been updated yet), we
+  // take that verbatim. At least one of the two must be present.
+  let document: string;
+  if (parsed.data.problem && parsed.data.proposed_solution) {
+    document = composeIncidentDocument({
+      problem: parsed.data.problem,
+      proposedSolution: parsed.data.proposed_solution,
+    });
+  } else if (parsed.data.document) {
+    document = parsed.data.document;
+  } else {
+    return NextResponse.json(
+      {
+        error:
+          "Provide either problem + proposed_solution or a document body.",
+      },
+      { status: 400 },
+    );
+  }
+
+  // description column is NOT NULL — mirror the document body into it so
+  // legacy readers keep working. Manager notes never leave this row for
+  // the employee (see /api/incidents/[id] select list).
+  const description = parsed.data.description?.trim() || document;
+  const managerNotes = parsed.data.manager_notes?.trim() || null;
+
   // The file action IS the manager's signature — clicking "File & send for
   // signature" while authenticated as the reporter constitutes the manager's
   // intent to sign, identical in evidentiary weight to a click-to-sign
@@ -161,7 +196,7 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString();
   const { ip, ua } = extractActorHeaders(req);
-  const documentHash = hashDocument(parsed.data.document);
+  const documentHash = hashDocument(document);
   const managerSignatureHash = hashManagerSignature({
     documentHash,
     signatureText,
@@ -179,8 +214,11 @@ export async function POST(req: NextRequest) {
       severity: parsed.data.severity,
       category: parsed.data.category,
       occurred_at: parsed.data.occurred_at ?? null,
-      description: parsed.data.description,
-      document: parsed.data.document,
+      description,
+      document,
+      problem: parsed.data.problem ?? null,
+      proposed_solution: parsed.data.proposed_solution ?? null,
+      manager_notes: managerNotes,
       acknowledgement_text: acknowledgement,
       attachments: parsed.data.attachments,
       // Filing == manager signing. Land directly at awaiting_employee_sig

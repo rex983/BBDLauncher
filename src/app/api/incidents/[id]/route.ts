@@ -20,7 +20,10 @@ export async function GET(
   const { data, error } = await supabase
     .from("incident_reports")
     .select(
-      "id, number, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, document, acknowledgement_text, attachments, manager_signed_at, manager_signature_text, employee_signed_at, employee_signature_text, document_hash, manager_signature_hash, employee_signature_hash, created_at",
+      // NOTE: manager_notes is intentionally omitted — it's the private
+      // section employees must never see. Adding it here would leak
+      // through the /api/incidents/[id] response.
+      "id, number, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, document, problem, proposed_solution, acknowledgement_text, attachments, manager_signed_at, manager_signature_text, employee_signed_at, employee_signature_text, document_hash, manager_signature_hash, employee_signature_hash, created_at",
     )
     .eq("id", id)
     .eq("employee_profile_id", session.user.profileId)

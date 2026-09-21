@@ -89,7 +89,12 @@ export function FileIncidentDialog({
   // an incident they're filing about something that just happened. They can
   // still adjust or clear the field for historical incidents.
   const [occurredAt, setOccurredAt] = useState<string>(() => nowLocal());
-  const [document, setDocument] = useState("");
+  // Report body is split into three sections. First two are visible to the
+  // employee at signing time; the third is management-only and never
+  // reaches the /api/incidents endpoint that employees hit.
+  const [problem, setProblem] = useState("");
+  const [proposedSolution, setProposedSolution] = useState("");
+  const [managerNotes, setManagerNotes] = useState("");
   const [attachments, setAttachments] = useState<IncidentAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -132,7 +137,9 @@ export function FileIncidentDialog({
     setSeverity("medium");
     setCategory("performance");
     setOccurredAt(nowLocal());
-    setDocument("");
+    setProblem("");
+    setProposedSolution("");
+    setManagerNotes("");
     setAttachments([]);
     setError(null);
   };
@@ -172,15 +179,18 @@ export function FileIncidentDialog({
       setError("Please enter a report title.");
       return;
     }
-    if (document.trim().length < 10) {
-      setError("Report body is too short (min 10 characters).");
+    if (problem.trim().length < 3) {
+      setError("Please describe the problem (min 3 characters).");
+      return;
+    }
+    if (proposedSolution.trim().length < 3) {
+      setError("Please describe the proposed solution (min 3 characters).");
       return;
     }
     setSubmitting(true);
-    // The DB has description NOT NULL — with the AI step gone there's no
-    // longer a separate "raw description" vs "formal document", so we send
-    // the same body for both. Column can be repurposed later if we ever
-    // want to split them again.
+    // Server composes the signed document body from problem +
+    // proposed_solution; manager_notes stays on the row but never enters
+    // the document that gets hashed or shown to the employee.
     const res = await fetch("/api/management/incidents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -190,8 +200,9 @@ export function FileIncidentDialog({
         severity,
         category,
         occurred_at: occurredAt ? new Date(occurredAt).toISOString() : null,
-        description: document,
-        document,
+        problem,
+        proposed_solution: proposedSolution,
+        manager_notes: managerNotes.trim() || null,
         acknowledgement_text: EMPLOYEE_ACKNOWLEDGEMENT_TEMPLATE,
         attachments,
       }),
@@ -325,15 +336,60 @@ export function FileIncidentDialog({
             />
           </div>
 
+          <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">Report sections</p>
+            <p className="mt-1">
+              Split into three parts. The first two are shared with the
+              employee at signing time; the third stays private to
+              management.
+            </p>
+          </div>
+
           <div className="space-y-2">
-            <Label htmlFor="i-doc">Report body</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="i-problem">Problem</Label>
+              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                Employee sees this
+              </span>
+            </div>
             <Textarea
-              id="i-doc"
-              value={document}
-              onChange={(e) => setDocument(e.target.value)}
-              rows={14}
-              placeholder="Write the report here, or paste it from your preferred editor. Once signed the body is locked."
-              className="font-mono text-sm"
+              id="i-problem"
+              value={problem}
+              onChange={(e) => setProblem(e.target.value)}
+              rows={5}
+              placeholder="Describe the problem the employee is being written up for. Stick to observable facts — dates, actions, policies referenced."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="i-solution">Proposed solution &amp; deadline</Label>
+              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                Employee sees this
+              </span>
+            </div>
+            <Textarea
+              id="i-solution"
+              value={proposedSolution}
+              onChange={(e) => setProposedSolution(e.target.value)}
+              rows={5}
+              placeholder="What the employee is expected to do, and by when. Include a specific deadline if there is one."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="i-notes">Manager&rsquo;s notes</Label>
+              <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                Private — employee does NOT see this
+              </span>
+            </div>
+            <Textarea
+              id="i-notes"
+              value={managerNotes}
+              onChange={(e) => setManagerNotes(e.target.value)}
+              rows={4}
+              placeholder="Internal context, prior conversations, escalation thoughts. Stays with the record for HR / other managers only."
             />
           </div>
 
@@ -393,7 +449,7 @@ export function FileIncidentDialog({
             <Button
               type="button"
               onClick={submit}
-              disabled={submitting || !document.trim()}
+              disabled={submitting || !problem.trim() || !proposedSolution.trim()}
             >
               {submitting ? "Filing…" : "File & send for signature"}
             </Button>

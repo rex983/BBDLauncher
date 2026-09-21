@@ -33,6 +33,8 @@ interface EmployeeReport {
   status: IncidentStatus;
   occurred_at: string | null;
   document: string;
+  problem: string | null;
+  proposed_solution: string | null;
   acknowledgement_text: string;
   attachments: IncidentAttachment[] | null;
   manager_signed_at: string | null;
@@ -195,12 +197,37 @@ export function EmployeeIncidentDialog({
               </div>
             </div>
 
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Report</p>
-              <div className="rounded-md border bg-background p-4 whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                {report.document}
+            {report.problem || report.proposed_solution ? (
+              <>
+                {report.problem && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
+                      Problem
+                    </p>
+                    <div className="rounded-md border bg-background p-4 whitespace-pre-wrap text-sm leading-relaxed">
+                      {report.problem}
+                    </div>
+                  </div>
+                )}
+                {report.proposed_solution && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
+                      Proposed solution &amp; deadline
+                    </p>
+                    <div className="rounded-md border bg-background p-4 whitespace-pre-wrap text-sm leading-relaxed">
+                      {report.proposed_solution}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Report</p>
+                <div className="rounded-md border bg-background p-4 whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                  {report.document}
+                </div>
               </div>
-            </div>
+            )}
 
             <div>
               <p className="text-xs text-muted-foreground mb-1">Acknowledgement</p>
