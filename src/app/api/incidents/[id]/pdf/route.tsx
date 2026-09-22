@@ -14,6 +14,9 @@ import { formatIncidentNumber } from "@/lib/incidents/types";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+// PDF generation can take a few seconds — bump above the default so
+// bigger reports don't time out on Vercel.
+export const maxDuration = 30;
 
 // GET /api/incidents/[id]/pdf — returns a legal-format PDF of the
 // incident report. Access rules:
@@ -138,9 +141,28 @@ export async function GET(
     employee_email: employee?.email || null,
   };
 
-  const buffer = await renderToBuffer(
-    <IncidentReportPdfDoc data={data} includeManagerNotes={includeManagerNotes} />,
-  );
+  let buffer: Buffer;
+  try {
+    buffer = await renderToBuffer(
+      <IncidentReportPdfDoc data={data} includeManagerNotes={includeManagerNotes} />,
+    );
+  } catch (e) {
+    // Surface the underlying render error so 500s are diagnosable in
+    // Vercel logs rather than being swallowed by Next's generic
+    // error page.
+    console.error(
+      "[incident-pdf] render failed:",
+      id,
+      e instanceof Error ? e.stack || e.message : e,
+    );
+    return NextResponse.json(
+      {
+        error:
+          e instanceof Error ? e.message : "PDF rendering failed",
+      },
+      { status: 500 },
+    );
+  }
 
   const filename = `Incident-${formatIncidentNumber(report.number).replace("#", "")}.pdf`;
   return new NextResponse(new Uint8Array(buffer), {

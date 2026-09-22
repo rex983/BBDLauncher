@@ -20,6 +20,11 @@ const csp = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // @react-pdf/renderer ships PDFKit's .afm font files that need to be
+  // resolvable at runtime. Bundling breaks them on Vercel — mark as
+  // external so the serverless function loads them from node_modules.
+  serverExternalPackages: ["@react-pdf/renderer"],
+
   async headers() {
     return [
       {
