@@ -137,6 +137,30 @@ export async function publishMemo(params: {
     ),
   );
 
+  // Confirmation ping for the author so they see the publish landed
+  // even when they're not in the recipient list (e.g., publishing to
+  // a department they're not in). Routes back to the manager detail
+  // page. Skipped when the author is also a recipient AND is the
+  // publish actor — the recipient notification already covers them
+  // and a second bell for the same event is noise.
+  const authorId = memo.author_profile_id;
+  if (authorId) {
+    const authorIsAlreadyRecipient = profileIds.includes(authorId);
+    if (!authorIsAlreadyRecipient) {
+      createNotification({
+        userId: authorId,
+        type: "office_memo_published",
+        title: "Your memo was published.",
+        body: `${bodyLine} · sent to ${profileIds.length} recipient${
+          profileIds.length === 1 ? "" : "s"
+        }`,
+        href: `/management/memos/${memoId}`,
+        referenceType: "office_memo",
+        referenceId: memoId,
+      }).catch(() => undefined);
+    }
+  }
+
   // Slack: fire-and-forget notification with author + audience summary.
   let authorName: string | null = null;
   if (memo.author_profile_id) {
