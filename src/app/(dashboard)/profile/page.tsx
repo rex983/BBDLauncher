@@ -15,6 +15,7 @@ import {
   type IncidentSummary,
 } from "@/components/features/incidents/IncidentPanel";
 import { MemoPanel } from "@/components/features/memos/MemoPanel";
+import { listMemosForEmployee } from "@/lib/memos/queries";
 import {
   requestDays,
   TIME_OFF_TYPES,
@@ -71,7 +72,7 @@ export default async function ProfilePage() {
   const currentYear = now.getFullYear();
   const yearStart = `${currentYear}-01-01`;
 
-  const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes, incidentsRes] = await Promise.all([
+  const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes, incidentsRes, memoRows] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, email, name:full_name, role, office, department, is_it, created_at")
@@ -129,6 +130,7 @@ export default async function ProfilePage() {
       .in("status", ["awaiting_employee_sig", "completed"])
       .order("created_at", { ascending: false })
       .limit(50),
+    listMemosForEmployee({ supabase, profileId }),
   ]);
 
   const profile = profileRes.data;
@@ -317,6 +319,7 @@ export default async function ProfilePage() {
 
       <div id="memos" className="scroll-mt-20">
         <MemoPanel
+          initialRows={memoRows}
           title="Office memos"
           description="Memos delivered to you. Acknowledge any that require it; the rest are here for reference."
         />

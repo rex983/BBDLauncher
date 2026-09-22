@@ -38,6 +38,7 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Applications", icon: LayoutGrid },
+  { href: "/memos", label: "My Memos", icon: Megaphone },
 ];
 
 const managementItems = [

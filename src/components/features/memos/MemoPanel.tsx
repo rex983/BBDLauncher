@@ -60,15 +60,21 @@ function fmtDate(iso: string | null) {
 // Employee-facing memo list. Rows navigate to /memos/[id] — the memo
 // detail is a full page, not a dialog, since memos can be long-form.
 // Bell notifications from publishMemo point directly at that page too.
+//
+// When a parent server component supplies `initialRows`, the client
+// fetch is skipped and first paint has data. Otherwise the panel
+// self-loads from /api/memos on mount.
 export function MemoPanel({
+  initialRows,
   title = "Memos",
   description,
 }: {
+  initialRows?: EmployeeMemoRow[];
   title?: string;
   description?: string;
 }) {
-  const [rows, setRows] = useState<EmployeeMemoRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<EmployeeMemoRow[]>(initialRows ?? []);
+  const [loading, setLoading] = useState(initialRows === undefined);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,8 +85,8 @@ export function MemoPanel({
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (initialRows === undefined) load();
+  }, [initialRows, load]);
 
   const pending = rows.filter(
     (r) => r.acknowledgement_mode !== "informational" && !r.acknowledged_at,

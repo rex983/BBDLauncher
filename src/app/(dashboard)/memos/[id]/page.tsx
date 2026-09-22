@@ -110,7 +110,7 @@ export default async function EmployeeMemoPage({
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="text-sm text-muted-foreground print:hidden">
-        <Link href="/profile#memos" className="hover:underline">
+        <Link href="/memos" className="hover:underline">
           ← Back to my memos
         </Link>
       </div>
