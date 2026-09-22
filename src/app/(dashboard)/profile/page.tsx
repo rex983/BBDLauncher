@@ -317,7 +317,6 @@ export default async function ProfilePage() {
 
       <div id="memos" className="scroll-mt-20">
         <MemoPanel
-          employeeFullName={profile?.name || null}
           title="Office memos"
           description="Memos delivered to you. Acknowledge any that require it; the rest are here for reference."
         />

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,8 +22,6 @@ import {
   type MemoCategory,
   type MemoPriority,
 } from "@/lib/memos/types";
-import { useSearchParams } from "next/navigation";
-import { EmployeeMemoDialog } from "./EmployeeMemoDialog";
 
 export interface EmployeeMemoRow {
   memo_id: string;
@@ -58,25 +57,18 @@ function fmtDate(iso: string | null) {
   });
 }
 
-// Employee-facing memo list. Client-fetched (unlike incidents which are
-// hydrated by the server page). Deep-links via ?openMemo=<id>#memos so
-// the bell notification opens the memo dialog immediately.
+// Employee-facing memo list. Rows navigate to /memos/[id] — the memo
+// detail is a full page, not a dialog, since memos can be long-form.
+// Bell notifications from publishMemo point directly at that page too.
 export function MemoPanel({
-  employeeFullName,
   title = "Memos",
   description,
 }: {
-  employeeFullName: string | null;
   title?: string;
   description?: string;
 }) {
-  const searchParams = useSearchParams();
-  const openMemoId = searchParams.get("openMemo");
-
   const [rows, setRows] = useState<EmployeeMemoRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -90,123 +82,99 @@ export function MemoPanel({
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (!openMemoId) return;
-    if (!rows.some((r) => r.memo_id === openMemoId)) return;
-    setSelected(openMemoId);
-    setOpen(true);
-  }, [openMemoId, rows]);
-
-  const openRow = (id: string) => {
-    setSelected(id);
-    setOpen(true);
-  };
-
   const pending = rows.filter(
-    (r) =>
-      r.acknowledgement_mode !== "informational" && !r.acknowledged_at,
+    (r) => r.acknowledgement_mode !== "informational" && !r.acknowledged_at,
   ).length;
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {title}
-            {pending > 0 && (
-              <Badge variant="destructive">{pending} to acknowledge</Badge>
-            )}
-          </CardTitle>
-          {description && (
-            <p className="text-sm text-muted-foreground mt-1">{description}</p>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {title}
+          {pending > 0 && (
+            <Badge variant="destructive">{pending} to acknowledge</Badge>
           )}
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No memos delivered to you yet.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Published</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>From</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((r) => {
-                  const needsAck =
-                    r.acknowledgement_mode !== "informational" &&
-                    !r.acknowledged_at;
-                  const acked = !!r.acknowledged_at;
-                  return (
-                    <TableRow key={r.memo_id}>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {formatMemoNumber(r.number)}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {fmtDate(r.published_at)}
-                      </TableCell>
-                      <TableCell className="font-medium">{r.title}</TableCell>
-                      <TableCell className="text-sm">
-                        {r.author_name || "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {MEMO_CATEGORY_LABEL[r.category]}
+        </CardTitle>
+        {description && (
+          <p className="text-sm text-muted-foreground mt-1">{description}</p>
+        )}
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No memos delivered to you yet.
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>Published</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>From</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => {
+                const needsAck =
+                  r.acknowledgement_mode !== "informational" &&
+                  !r.acknowledged_at;
+                const acked = !!r.acknowledged_at;
+                return (
+                  <TableRow key={r.memo_id}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {formatMemoNumber(r.number)}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {fmtDate(r.published_at)}
+                    </TableCell>
+                    <TableCell className="font-medium">{r.title}</TableCell>
+                    <TableCell className="text-sm">
+                      {r.author_name || "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {MEMO_CATEGORY_LABEL[r.category]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={PRIORITY_VARIANT[r.priority]}>
+                        {MEMO_PRIORITY_LABEL[r.priority]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {acked ? (
+                        <Badge variant="secondary">Acknowledged</Badge>
+                      ) : needsAck ? (
+                        <Badge variant="destructive">
+                          {MEMO_ACK_MODE_LABEL[r.acknowledgement_mode]}
                         </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={PRIORITY_VARIANT[r.priority]}>
-                          {MEMO_PRIORITY_LABEL[r.priority]}
+                      ) : (
+                        <Badge variant="secondary">
+                          {r.read_at ? "Read" : "Delivered"}
                         </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {acked ? (
-                          <Badge variant="secondary">Acknowledged</Badge>
-                        ) : needsAck ? (
-                          <Badge variant="destructive">
-                            {MEMO_ACK_MODE_LABEL[r.acknowledgement_mode]}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">
-                            {r.read_at ? "Read" : "Delivered"}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="ghost" onClick={() => openRow(r.memo_id)}>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="ghost" asChild>
+                        <Link href={`/memos/${r.memo_id}`}>
                           {needsAck ? "Review & acknowledge" : "View"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <EmployeeMemoDialog
-        memoId={selected}
-        open={open}
-        onOpenChange={(o) => {
-          setOpen(o);
-          if (!o) setSelected(null);
-        }}
-        onAcknowledged={load}
-        employeeFullName={employeeFullName}
-      />
-    </>
+                        </Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   );
 }

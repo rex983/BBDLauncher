@@ -130,7 +130,7 @@ export async function publishMemo(params: {
         type: "office_memo_published",
         title: "New memo from BBD management.",
         body: bodyLine,
-        href: `/profile?openMemo=${memoId}#memos`,
+        href: `/memos/${memoId}`,
         referenceType: "office_memo",
         referenceId: memoId,
       }).catch(() => undefined),

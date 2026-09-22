@@ -23,8 +23,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ComposeMemoDialog } from "@/components/features/memos/ComposeMemoDialog";
-import { ManagerMemoDialog } from "@/components/features/memos/ManagerMemoDialog";
+import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
+import { Megaphone } from "lucide-react";
 import {
   formatMemoNumber,
   MEMO_CATEGORIES,
@@ -93,12 +94,7 @@ export default function MemosShell({
 }: {
   initialRows: MemoSummary[];
 }) {
-  const { data: session } = useSession();
-  const role = session?.user?.role || "employee";
-  const office = session?.user?.office || null;
-  const department = session?.user?.department || null;
-  const viewerProfileId = session?.user?.profileId || null;
-
+  useSession(); // keep the SessionProvider dependency for consistency
   const [rows, setRows] = useState<MemoSummary[]>(initialRows);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"active" | "archive">("active");
@@ -107,8 +103,6 @@ export default function MemosShell({
   );
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<string | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
   // Skip the initial refetch — server rendered with the right rows.
   const skipInitialFetch = useRef(true);
 
@@ -148,10 +142,6 @@ export default function MemosShell({
       });
   }, [rows, tab, priorityFilter, categoryFilter, query]);
 
-  const openRow = (id: string) => {
-    setSelected(id);
-    setDialogOpen(true);
-  };
 
   return (
     <div className="space-y-6">
@@ -168,12 +158,12 @@ export default function MemosShell({
             reads and acknowledgements.
           </p>
         </div>
-        <ComposeMemoDialog
-          viewerRole={role}
-          viewerOffice={office}
-          viewerDepartment={department}
-          onPublished={load}
-        />
+        <Button size="sm" asChild>
+          <Link href="/management/memos/new">
+            <Megaphone className="mr-2 h-4 w-4" />
+            New memo
+          </Link>
+        </Button>
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
@@ -234,7 +224,6 @@ export default function MemosShell({
           <MemoRowTable
             rows={filtered}
             loading={loading}
-            onRowClick={openRow}
             emptyLabel="No active memos."
           />
         </TabsContent>
@@ -242,23 +231,10 @@ export default function MemosShell({
           <MemoRowTable
             rows={filtered}
             loading={loading}
-            onRowClick={openRow}
             emptyLabel="No archived memos."
           />
         </TabsContent>
       </Tabs>
-
-      <ManagerMemoDialog
-        memoId={selected}
-        open={dialogOpen}
-        onOpenChange={(o) => {
-          setDialogOpen(o);
-          if (!o) setSelected(null);
-        }}
-        onChanged={load}
-        viewerProfileId={viewerProfileId}
-        viewerIsAdmin={role === "admin"}
-      />
     </div>
   );
 }
@@ -266,14 +242,13 @@ export default function MemosShell({
 function MemoRowTable({
   rows,
   loading,
-  onRowClick,
   emptyLabel,
 }: {
   rows: MemoSummary[];
   loading: boolean;
-  onRowClick: (id: string) => void;
   emptyLabel: string;
 }) {
+  const router = useRouter();
   return (
     <Table>
       <TableHeader>
@@ -308,7 +283,7 @@ function MemoRowTable({
           <TableRow
             key={r.id}
             className="cursor-pointer hover:bg-muted/40"
-            onClick={() => onRowClick(r.id)}
+            onClick={() => router.push(`/management/memos/${r.id}`)}
           >
             <TableCell className="font-mono text-xs text-muted-foreground">
               {formatMemoNumber(r.number)}
