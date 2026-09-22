@@ -21,6 +21,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
 import { ManagerIncidentDialog, type ManagerIncidentSummary } from "@/components/features/incidents/ManagerIncidentDialog";
 import { FileIncidentDialog } from "@/components/features/incidents/FileIncidentDialog";
 import {
@@ -74,6 +76,7 @@ export default function IncidentsShell({
 }) {
   const { data: session } = useSession();
   const viewerFullName = session?.user?.name || null;
+  const isAdmin = session?.user?.role === "admin";
 
   const [rows, setRows] = useState<ManagerIncidentSummary[]>(initialRows);
   const [loading, setLoading] = useState(false);
@@ -197,6 +200,8 @@ export default function IncidentsShell({
             loading={loading}
             onRowClick={openRow}
             emptyLabel="No incidents in progress."
+            showPurge={false}
+            onPurged={load}
           />
         </TabsContent>
         <TabsContent value="archive" className="mt-4">
@@ -205,6 +210,8 @@ export default function IncidentsShell({
             loading={loading}
             onRowClick={openRow}
             emptyLabel="No archived incidents."
+            showPurge={isAdmin}
+            onPurged={load}
           />
         </TabsContent>
       </Tabs>
@@ -223,17 +230,38 @@ export default function IncidentsShell({
   );
 }
 
+async function purgeIncidentRow(id: string, numberLabel: string): Promise<boolean> {
+  const answer = window.prompt(
+    `PERMANENT DELETE. Type "${numberLabel}" to confirm. This removes the report, its audit log, and every attachment file. Cannot be undone.`,
+  );
+  if (!answer || answer.trim() !== numberLabel) return false;
+  const res = await fetch(`/api/management/incidents/${id}/purge`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    alert(typeof b.error === "string" ? b.error : "Delete failed");
+    return false;
+  }
+  return true;
+}
+
 function IncidentRowTable({
   rows,
   loading,
   onRowClick,
   emptyLabel,
+  showPurge,
+  onPurged,
 }: {
   rows: ManagerIncidentSummary[];
   loading: boolean;
   onRowClick: (id: string) => void;
   emptyLabel: string;
+  showPurge: boolean;
+  onPurged: () => void;
 }) {
+  const cols = showPurge ? 8 : 7;
   return (
     <Table>
       <TableHeader>
@@ -245,19 +273,20 @@ function IncidentRowTable({
           <TableHead>Category</TableHead>
           <TableHead>Severity</TableHead>
           <TableHead>Status</TableHead>
+          {showPurge && <TableHead />}
         </TableRow>
       </TableHeader>
       <TableBody>
         {loading && (
           <TableRow>
-            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+            <TableCell colSpan={cols} className="text-center py-6 text-muted-foreground">
               Loading…
             </TableCell>
           </TableRow>
         )}
         {!loading && rows.length === 0 && (
           <TableRow>
-            <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+            <TableCell colSpan={cols} className="text-center py-6 text-muted-foreground">
               {emptyLabel}
             </TableCell>
           </TableRow>
@@ -288,6 +317,22 @@ function IncidentRowTable({
             <TableCell>
               <Badge variant="secondary">{INCIDENT_STATUS_LABEL[r.status]}</Badge>
             </TableCell>
+            {showPurge && (
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={async () => {
+                    const ok = await purgeIncidentRow(r.id, formatIncidentNumber(r.number));
+                    if (ok) onPurged();
+                  }}
+                  title="Admin-only hard delete"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </TableCell>
+            )}
           </TableRow>
         ))}
       </TableBody>

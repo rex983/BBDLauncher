@@ -25,7 +25,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-import { Megaphone } from "lucide-react";
+import { Megaphone, Trash2 } from "lucide-react";
 import {
   formatMemoNumber,
   MEMO_CATEGORIES,
@@ -94,7 +94,8 @@ export default function MemosShell({
 }: {
   initialRows: MemoSummary[];
 }) {
-  useSession(); // keep the SessionProvider dependency for consistency
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "admin";
   const [rows, setRows] = useState<MemoSummary[]>(initialRows);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"active" | "archive">("active");
@@ -225,6 +226,8 @@ export default function MemosShell({
             rows={filtered}
             loading={loading}
             emptyLabel="No active memos."
+            showPurge={false}
+            onPurged={load}
           />
         </TabsContent>
         <TabsContent value="archive" className="mt-4">
@@ -232,6 +235,8 @@ export default function MemosShell({
             rows={filtered}
             loading={loading}
             emptyLabel="No archived memos."
+            showPurge={isAdmin}
+            onPurged={load}
           />
         </TabsContent>
       </Tabs>
@@ -239,14 +244,34 @@ export default function MemosShell({
   );
 }
 
+async function purgeMemoRow(id: string, numberLabel: string): Promise<boolean> {
+  const answer = window.prompt(
+    `PERMANENT DELETE. Type "${numberLabel}" to confirm. This scrubs the memo, its recipient roster, every audit event, and all attachment files. Cannot be undone.`,
+  );
+  if (!answer || answer.trim() !== numberLabel) return false;
+  const res = await fetch(`/api/management/memos/${id}/purge`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    alert(typeof b.error === "string" ? b.error : "Delete failed");
+    return false;
+  }
+  return true;
+}
+
 function MemoRowTable({
   rows,
   loading,
   emptyLabel,
+  showPurge,
+  onPurged,
 }: {
   rows: MemoSummary[];
   loading: boolean;
   emptyLabel: string;
+  showPurge: boolean;
+  onPurged: () => void;
 }) {
   const router = useRouter();
   return (
@@ -262,19 +287,20 @@ function MemoRowTable({
           <TableHead>Priority</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Acks</TableHead>
+          {showPurge && <TableHead />}
         </TableRow>
       </TableHeader>
       <TableBody>
         {loading && (
           <TableRow>
-            <TableCell colSpan={9} className="text-center py-6 text-muted-foreground">
+            <TableCell colSpan={showPurge ? 10 : 9} className="text-center py-6 text-muted-foreground">
               Loading…
             </TableCell>
           </TableRow>
         )}
         {!loading && rows.length === 0 && (
           <TableRow>
-            <TableCell colSpan={9} className="text-center py-6 text-muted-foreground">
+            <TableCell colSpan={showPurge ? 10 : 9} className="text-center py-6 text-muted-foreground">
               {emptyLabel}
             </TableCell>
           </TableRow>
@@ -316,6 +342,22 @@ function MemoRowTable({
                 <span className="text-muted-foreground">—</span>
               )}
             </TableCell>
+            {showPurge && (
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={async () => {
+                    const ok = await purgeMemoRow(r.id, formatMemoNumber(r.number));
+                    if (ok) onPurged();
+                  }}
+                  title="Admin-only hard delete"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </TableCell>
+            )}
           </TableRow>
         ))}
       </TableBody>
