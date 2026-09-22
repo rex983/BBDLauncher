@@ -26,7 +26,7 @@ import {
   MEMO_STATUS_LABEL,
   type MemoPriority,
 } from "@/lib/memos/types";
-import { Archive, CheckCircle2, Eye, Pencil, Save, Send, X } from "lucide-react";
+import { Archive, CheckCircle2, Eye, Pencil, Save, Send, Trash2, X } from "lucide-react";
 import type { ManagerMemoPageData } from "./page";
 
 function fmtDate(iso: string | null | undefined) {
@@ -115,6 +115,24 @@ export function ManagerMemoView({
     });
     if (!res.ok) {
       setError((await res.json().catch(() => ({}))).error || "Archive failed");
+      return;
+    }
+    router.push("/management/memos");
+  };
+
+  // Admin-only HARD delete. Removes the row, recipient roster, audit
+  // log, and attachment files. Server enforces admin.
+  const purge = async () => {
+    const numberLabel = formatMemoNumber(memo.number);
+    const answer = window.prompt(
+      `PERMANENT DELETE. Type "${numberLabel}" to confirm. This scrubs the memo, its recipient roster, every audit event, and all attachment files. Cannot be undone.`,
+    );
+    if (!answer || answer.trim() !== numberLabel) return;
+    const res = await fetch(`/api/management/memos/${memo.id}/purge`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      setError((await res.json().catch(() => ({}))).error || "Delete failed");
       return;
     }
     router.push("/management/memos");
@@ -284,6 +302,17 @@ export function ManagerMemoView({
           <Button size="sm" onClick={publish} disabled={publishing}>
             <Send className="mr-2 h-4 w-4" />
             {publishing ? "Publishing…" : "Publish now"}
+          </Button>
+        )}
+        {viewerIsAdmin && !editing && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={purge}
+            title="Admin-only hard delete. Removes the memo, roster, audit log, and attachment files."
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete permanently
           </Button>
         )}
         {canArchive && !editing && (

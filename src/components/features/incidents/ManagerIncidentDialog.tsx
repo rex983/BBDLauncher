@@ -424,6 +424,30 @@ export function ManagerIncidentDialog({
     onOpenChange(false);
   };
 
+  // Admin-only HARD delete. Distinct from cancel (soft) — this scrubs
+  // the row, audit log, and attachment files. Requires typing the
+  // report number to confirm; server enforces admin.
+  const purge = async () => {
+    if (!report) return;
+    const numberLabel = formatIncidentNumber(report.number);
+    const answer = window.prompt(
+      `PERMANENT DELETE. Type "${numberLabel}" to confirm. This removes the report, its audit log, and every attachment file. Cannot be undone.`,
+    );
+    if (!answer || answer.trim() !== numberLabel) return;
+    setCancelling(true);
+    const res = await fetch(`/api/management/incidents/${report.id}/purge`, {
+      method: "POST",
+    });
+    setCancelling(false);
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      setError(typeof b.error === "string" ? b.error : "Delete failed");
+      return;
+    }
+    onChanged();
+    onOpenChange(false);
+  };
+
   const save = async () => {
     if (!report) return;
     setError(null);
@@ -1161,6 +1185,18 @@ export function ManagerIncidentDialog({
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   {cancelling ? "Cancelling…" : "Cancel report"}
+                </Button>
+              )}
+              {viewerIsAdmin && !editing && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={purge}
+                  disabled={cancelling}
+                  title="Admin-only hard delete. Removes the row, audit log, and attachment files."
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete permanently
                 </Button>
               )}
               {report.status === "awaiting_manager_sig" && !editing && (

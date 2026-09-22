@@ -257,6 +257,72 @@ export async function notifyIncidentCompleted(p: IncidentCompletedPayload): Prom
   await postSlack(url, body, "incident-completed");
 }
 
+// Admin-only HARD-DELETE notification. Fired from the purge endpoint —
+// once the row is gone this Slack message is the only surviving audit
+// trail, so we snapshot enough context to reconstruct what was deleted.
+export interface IncidentPurgedPayload {
+  numberLabel: string;
+  title: string;
+  employeeName: string | null;
+  employeeEmail: string | null;
+  actorName: string;
+  attachmentCount: number;
+  createdAt: string;
+  priorStatus: string;
+}
+
+export async function notifyIncidentPurged(p: IncidentPurgedPayload): Promise<void> {
+  const url = process.env.SLACK_INCIDENT_WEBHOOK_URL;
+  if (!url) return;
+
+  const body = {
+    text: `Incident report ${p.numberLabel} purged by ${p.actorName}`,
+    attachments: [
+      {
+        color: "#dc2626",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: [
+                `*Incident report PURGED (hard delete)*`,
+                `*${p.numberLabel}* — ${p.title}`,
+                `Actioned by *${p.actorName}*.`,
+              ].join("\n"),
+            },
+          },
+          {
+            type: "section",
+            fields: [
+              {
+                type: "mrkdwn",
+                text: `*Employee*\n${p.employeeName || "Unknown"}\n\`${p.employeeEmail || ""}\``,
+              },
+              { type: "mrkdwn", text: `*Prior status*\n${p.priorStatus}` },
+              { type: "mrkdwn", text: `*Filed*\n${new Date(p.createdAt).toLocaleString()}` },
+              ...(p.attachmentCount > 0
+                ? [{ type: "mrkdwn", text: `*Attachments purged*\n${p.attachmentCount}` }]
+                : []),
+            ],
+          },
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: "This record has been permanently deleted. The row, its audit-event log, and all attachment files are gone.",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  await postSlack(url, body, "incident-purged");
+}
+
 // =====================================================================
 // Office memos — separate webhook (SLACK_MEMO_WEBHOOK_URL) so
 // company-wide memos don't clutter the HR incident channel. Priority
@@ -331,6 +397,75 @@ export async function notifyMemoPublished(p: MemoPublishedPayload): Promise<void
   };
 
   await postSlack(url, body, "memo-published");
+}
+
+// Admin hard-delete audit trail — mirrors notifyIncidentPurged.
+export interface MemoPurgedPayload {
+  numberLabel: string;
+  title: string;
+  authorName: string | null;
+  authorEmail: string | null;
+  actorName: string;
+  attachmentCount: number;
+  recipientCount: number;
+  createdAt: string;
+  priorStatus: string;
+}
+
+export async function notifyMemoPurged(p: MemoPurgedPayload): Promise<void> {
+  const url = process.env.SLACK_MEMO_WEBHOOK_URL;
+  if (!url) return;
+
+  const body = {
+    text: `Memo ${p.numberLabel} purged by ${p.actorName}`,
+    attachments: [
+      {
+        color: "#dc2626",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: [
+                `*Memo PURGED (hard delete)*`,
+                `*${p.numberLabel}* — ${p.title}`,
+                `Actioned by *${p.actorName}*.`,
+              ].join("\n"),
+            },
+          },
+          {
+            type: "section",
+            fields: [
+              {
+                type: "mrkdwn",
+                text: `*Author*\n${p.authorName || "Unknown"}\n\`${p.authorEmail || ""}\``,
+              },
+              { type: "mrkdwn", text: `*Prior status*\n${p.priorStatus}` },
+              {
+                type: "mrkdwn",
+                text: `*Recipients erased*\n${p.recipientCount}`,
+              },
+              { type: "mrkdwn", text: `*Created*\n${new Date(p.createdAt).toLocaleString()}` },
+              ...(p.attachmentCount > 0
+                ? [{ type: "mrkdwn", text: `*Attachments purged*\n${p.attachmentCount}` }]
+                : []),
+            ],
+          },
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: "This memo, its recipient roster, audit log, and attachment files are permanently gone.",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  await postSlack(url, body, "memo-purged");
 }
 
 async function postSlack(url: string, body: unknown, label: string): Promise<void> {
