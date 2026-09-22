@@ -1,4 +1,5 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
+import { loadTimeoffQueue } from "@/lib/timeoff/queries";
 import { TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -52,39 +53,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid department" }, { status: 400 });
   }
 
-  let profileQuery = supabase
-    .from("profiles")
-    .select("id, email, name:full_name, office, department")
-    .eq("is_active", true);
-  if (scope.department) {
-    profileQuery = profileQuery.eq("department", scope.department);
-  } else if (departmentFilter) {
-    profileQuery = profileQuery.eq("department", departmentFilter);
-  }
-  if (scope.office) {
-    profileQuery = profileQuery.eq("office", scope.office);
-  } else if (officeFilter) {
-    profileQuery = profileQuery.eq("office", officeFilter);
-  }
-  const { data: profiles } = await profileQuery;
-  const profileIds = (profiles || []).map((p) => p.id);
-  if (profileIds.length === 0) return NextResponse.json([]);
-
-  const { data: requests, error } = await supabase
-    .from("time_off_requests")
-    .select(
-      "id, profile_id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_by, decided_at, created_at, attachments",
-    )
-    .in("profile_id", profileIds)
-    .in("status", statuses)
-    .order("start_date", { ascending: true });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
-  return NextResponse.json(
-    (requests || []).map((r) => ({ ...r, profile: profileMap.get(r.profile_id) })),
-  );
+  const rows = await loadTimeoffQueue({
+    supabase,
+    scope: { department: scope.department, office: scope.office },
+    statuses,
+    departmentOverride: departmentFilter,
+    officeOverride: officeFilter,
+  });
+  return NextResponse.json(rows);
 }
 
 export async function POST(req: NextRequest) {
