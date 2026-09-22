@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth/permissions";
 import { logMemoEvent } from "@/lib/memos/audit";
 import { hashAuthorSignature, hashMemoDocument } from "@/lib/memos/hashing";
+import { listMemosForManagement } from "@/lib/memos/queries";
 import { publishMemo } from "@/lib/memos/service";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -58,96 +59,20 @@ export async function GET(req: NextRequest) {
   const statusParam = url.searchParams.get("status");
   const statuses = statusParam
     ? statusParam.split(",").map((s) => s.trim()).filter(Boolean)
-    : ["draft", "published", "archived"];
+    : undefined;
 
   const supabase = createAdminClient();
-  const admin = isAdmin(session.user.role);
-
-  let query = supabase
-    .from("office_memos")
-    .select(
-      "id, number, author_profile_id, title, category, priority, acknowledgement_mode, audience_scope, audience_office, audience_department, status, effective_date, published_at, created_at, updated_at",
-    )
-    .in("status", statuses)
-    .order("created_at", { ascending: false });
-
-  if (!admin) {
-    // Manager sees: memos they authored OR published memos whose audience
-    // covers their office/department. Drafts stay private to their author
-    // (only admins see everyone's).
-    const orParts: string[] = [`author_profile_id.eq.${session.user.profileId}`];
-    if (session.user.office) {
-      orParts.push(
-        `and(status.eq.published,audience_scope.eq.office,audience_office.eq.${session.user.office})`,
-      );
-      orParts.push(`and(status.eq.published,audience_scope.eq.company)`);
-    }
-    if (session.user.department) {
-      orParts.push(
-        `and(status.eq.published,audience_scope.eq.department,audience_department.eq.${session.user.department})`,
-      );
-    }
-    query = query.or(orParts.join(","));
-  }
-
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  // Attach recipient stats (delivered / read / acknowledged) so the list
-  // view can show progress badges. One roundtrip using a single aggregate.
-  const memoIds = (data || []).map((m) => m.id);
-  const statsByMemo = new Map<
-    string,
-    { delivered: number; read: number; acknowledged: number }
-  >();
-  if (memoIds.length > 0) {
-    const { data: recips } = await supabase
-      .from("office_memo_recipients")
-      .select("memo_id, read_at, acknowledged_at")
-      .in("memo_id", memoIds);
-    for (const row of recips || []) {
-      const s = statsByMemo.get(row.memo_id) || {
-        delivered: 0,
-        read: 0,
-        acknowledged: 0,
-      };
-      s.delivered += 1;
-      if (row.read_at) s.read += 1;
-      if (row.acknowledged_at) s.acknowledged += 1;
-      statsByMemo.set(row.memo_id, s);
-    }
-  }
-
-  // Also join author name for display.
-  const authorIds = Array.from(
-    new Set(
-      (data || [])
-        .map((m) => m.author_profile_id)
-        .filter((id): id is string => !!id),
-    ),
-  );
-  const authorMap = new Map<string, { id: string; full_name: string | null }>();
-  if (authorIds.length > 0) {
-    const { data: authors } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", authorIds);
-    for (const a of authors || []) authorMap.set(a.id, a);
-  }
-
-  return NextResponse.json(
-    (data || []).map((m) => ({
-      ...m,
-      author_name: m.author_profile_id
-        ? authorMap.get(m.author_profile_id)?.full_name || null
-        : null,
-      stats: statsByMemo.get(m.id) || {
-        delivered: 0,
-        read: 0,
-        acknowledged: 0,
-      },
-    })),
-  );
+  const rows = await listMemosForManagement({
+    supabase,
+    viewer: {
+      profileId: session.user.profileId,
+      role: session.user.role || "employee",
+      office: session.user.office ?? null,
+      department: session.user.department ?? null,
+    },
+    statuses,
+  });
+  return NextResponse.json(rows);
 }
 
 export async function POST(req: NextRequest) {

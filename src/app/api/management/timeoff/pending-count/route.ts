@@ -1,9 +1,11 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { NextResponse } from "next/server";
 
-// Count of pending time-off requests the current viewer can act on.
-// Powers the sidebar badge — kept small (just a number) so it can be
-// polled cheaply from the sidebar without dragging in row payloads.
+// Count of pending time-off requests the viewer can act on. Sidebar
+// polls this on every dashboard mount, so it's on the hot path.
+//
+// Inner-join filter on profiles collapses the previous two-query pattern
+// (scoped profile IDs → count) into one roundtrip.
 export async function GET() {
   const gate = await requireTimeDataAccess(null, "view");
   if (!gate.ok) {
@@ -14,27 +16,18 @@ export async function GET() {
   }
   const { supabase, scope } = gate;
 
-  let profileQuery = supabase
-    .from("profiles")
-    .select("id")
-    .eq("is_active", true);
-  if (scope.department) profileQuery = profileQuery.eq("department", scope.department);
-  if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
-
-  const { data: profiles } = await profileQuery;
-  const profileIds = (profiles || []).map((p) => p.id);
-  if (profileIds.length === 0) return NextResponse.json({ count: 0 });
-
-  // Fetch id rows and count client-side. Supabase's { count: "exact",
-  // head: true } sometimes returns count=null under PostgREST; a plain
-  // select-and-length is trivial for the low volumes involved (pending
-  // rows in the tens at most) and avoids the ambiguity.
-  const { data: rows, error } = await supabase
+  let query = supabase
     .from("time_off_requests")
-    .select("id")
-    .in("profile_id", profileIds)
-    .eq("status", "pending");
+    .select("id, profile:profiles!profile_id!inner(id)", {
+      count: "exact",
+      head: true,
+    })
+    .eq("status", "pending")
+    .eq("profile.is_active", true);
+  if (scope.department) query = query.eq("profile.department", scope.department);
+  if (scope.office) query = query.eq("profile.office", scope.office);
 
+  const { count, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ count: rows?.length ?? 0 });
+  return NextResponse.json({ count: count ?? 0 });
 }
