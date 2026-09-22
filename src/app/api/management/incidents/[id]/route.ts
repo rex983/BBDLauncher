@@ -83,6 +83,13 @@ export async function GET(
   });
 }
 
+const attachmentSchema = z.object({
+  path: z.string().min(1),
+  filename: z.string().min(1),
+  size: z.number().nonnegative(),
+  mime: z.string().min(1),
+});
+
 const editSchema = z.object({
   title: z.string().min(3).max(200).optional(),
   severity: z.enum(["low", "medium", "high", "critical"]).optional(),
@@ -97,6 +104,10 @@ const editSchema = z.object({
   manager_notes: z.string().max(15_000).nullable().optional(),
   document: z.string().min(10).max(30_000).optional(),
   acknowledgement_text: z.string().max(5_000).optional(),
+  // Full attachment list at edit-save time — server diffs against the
+  // existing array to produce an audit log entry showing what was added
+  // or removed. Absent means "no change".
+  attachments: z.array(attachmentSchema).max(10).optional(),
 });
 
 // PATCH — edit an incident report.
@@ -127,7 +138,7 @@ export async function PATCH(
   const { data: existing } = await supabase
     .from("incident_reports")
     .select(
-      "id, employee_profile_id, status, title, severity, category, document, problem, proposed_solution, manager_notes, acknowledgement_text, manager_signed_at, employee_signed_at",
+      "id, employee_profile_id, status, title, severity, category, document, problem, proposed_solution, manager_notes, acknowledgement_text, attachments, manager_signed_at, employee_signed_at",
     )
     .eq("id", id)
     .single<{
@@ -142,6 +153,7 @@ export async function PATCH(
       proposed_solution: string | null;
       manager_notes: string | null;
       acknowledgement_text: string;
+      attachments: { path: string; filename: string; size: number; mime: string }[] | null;
       manager_signed_at: string | null;
       employee_signed_at: string | null;
     }>();
@@ -236,6 +248,43 @@ export async function PATCH(
         field: "document",
         from: existing.document,
         to: nextDoc,
+      });
+    }
+  }
+
+  // Attachment diff — added / removed lists are recorded in the audit log
+  // and the whole array is replaced on the row. Attachment changes are
+  // NOT considered document-body edits, so they don't reset signatures
+  // (see comment on `resetSignatures` below).
+  if (parsed.data.attachments !== undefined) {
+    const currentAttachments = Array.isArray(existing.attachments)
+      ? existing.attachments
+      : [];
+    const currentPaths = new Set(currentAttachments.map((a) => a.path));
+    const incomingPaths = new Set(parsed.data.attachments.map((a) => a.path));
+
+    // Any newly-added attachment path must belong to this report's employee —
+    // stops a manager smuggling in a file uploaded against a different
+    // employee. Existing paths (retained from before this edit) are trusted.
+    for (const a of parsed.data.attachments) {
+      if (!currentPaths.has(a.path)) {
+        if (!a.path.startsWith(`${existing.employee_profile_id}/`)) {
+          return NextResponse.json(
+            { error: "Invalid attachment path" },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
+    const added = parsed.data.attachments.filter((a) => !currentPaths.has(a.path));
+    const removed = currentAttachments.filter((a) => !incomingPaths.has(a.path));
+    if (added.length > 0 || removed.length > 0) {
+      update.attachments = parsed.data.attachments;
+      changes.push({
+        field: "attachments",
+        from: currentAttachments.map((a) => a.filename),
+        to: parsed.data.attachments.map((a) => a.filename),
       });
     }
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,15 +34,25 @@ import {
   type IncidentStatus,
 } from "@/lib/incidents/types";
 import { isAdmin as isAdminRole } from "@/lib/auth/permissions";
-import { AttachmentPreview } from "@/components/shared/AttachmentPreview";
+import {
+  AttachmentPreview,
+  FileKindIcon,
+  formatBytes,
+  isImageMime,
+} from "@/components/shared/AttachmentPreview";
 import {
   AlertTriangle,
+  CheckCircle2,
   Download,
+  Loader2,
+  Paperclip,
   Pencil,
+  RotateCcw,
   Save,
   ShieldCheck,
   Trash2,
   X,
+  XCircle,
 } from "lucide-react";
 
 export interface ManagerIncidentSummary {
@@ -165,6 +175,147 @@ export function ManagerIncidentDialog({
     document: "",
   });
 
+  // Attachment edit state. Kept as a single list where each item carries a
+  // discriminated status: `existing` for attachments already on the report
+  // when edit began, `uploading` / `error` for pending uploads, `uploaded`
+  // for successful ones. At save time we filter to items that have a meta
+  // (existing + uploaded) and post the combined list.
+  type EditAttachmentItem =
+    | { key: string; kind: "existing"; meta: IncidentAttachment }
+    | { key: string; kind: "uploading"; file: File; previewUrl: string | null }
+    | {
+        key: string;
+        kind: "error";
+        file: File;
+        previewUrl: string | null;
+        error: string;
+      }
+    | {
+        key: string;
+        kind: "uploaded";
+        file: File;
+        previewUrl: string | null;
+        meta: IncidentAttachment;
+      };
+  const [editAttachments, setEditAttachments] = useState<EditAttachmentItem[]>([]);
+  const editFileRef = useRef<HTMLInputElement | null>(null);
+
+  // Revoke object URLs on unmount to avoid leaking during long-lived tabs.
+  useEffect(() => {
+    return () => {
+      editAttachments.forEach((a) => {
+        if (a.kind !== "existing" && a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const makePreviewUrl = (file: File): string | null => {
+    if (!file.type.toLowerCase().startsWith("image/")) return null;
+    try {
+      return URL.createObjectURL(file);
+    } catch {
+      return null;
+    }
+  };
+
+  const runEditUpload = useCallback(
+    async (key: string, file: File, employeeProfileId: string) => {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("employeeProfileId", employeeProfileId);
+      let res: Response;
+      try {
+        res = await fetch("/api/incidents/attachments", { method: "POST", body });
+      } catch {
+        setEditAttachments((prev) =>
+          prev.map((a) =>
+            a.key === key && a.kind === "uploading"
+              ? { ...a, kind: "error", error: "Network error" }
+              : a,
+          ),
+        );
+        return;
+      }
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        const msg = typeof b.error === "string" ? b.error : "Upload failed";
+        setEditAttachments((prev) =>
+          prev.map((a) =>
+            a.key === key && a.kind === "uploading"
+              ? { ...a, kind: "error", error: msg }
+              : a,
+          ),
+        );
+        return;
+      }
+      const meta: IncidentAttachment = await res.json();
+      setEditAttachments((prev) =>
+        prev.map((a) =>
+          a.key === key && a.kind === "uploading"
+            ? {
+                key,
+                kind: "uploaded",
+                file: a.file,
+                previewUrl: a.previewUrl,
+                meta,
+              }
+            : a,
+        ),
+      );
+    },
+    [],
+  );
+
+  const queueEditFiles = (files: File[]) => {
+    if (!report) return;
+    const currentCount = editAttachments.length;
+    const remaining = Math.max(0, 10 - currentCount);
+    const accepted = files.slice(0, remaining);
+    if (files.length > accepted.length) {
+      setError(`Only ${remaining} more file(s) can be attached (max 10).`);
+    }
+    const newItems: EditAttachmentItem[] = accepted.map((file) => ({
+      key: crypto.randomUUID(),
+      kind: "uploading" as const,
+      file,
+      previewUrl: makePreviewUrl(file),
+    }));
+    setEditAttachments((prev) => [...prev, ...newItems]);
+    newItems.forEach((item) => {
+      if (item.kind === "uploading") {
+        runEditUpload(item.key, item.file, report.employee_profile_id);
+      }
+    });
+  };
+
+  const retryEditUpload = (key: string) => {
+    if (!report) return;
+    const target = editAttachments.find((a) => a.key === key);
+    if (!target || target.kind !== "error") return;
+    setEditAttachments((prev) =>
+      prev.map((a) =>
+        a.key === key && a.kind === "error"
+          ? { key, kind: "uploading", file: a.file, previewUrl: a.previewUrl }
+          : a,
+      ),
+    );
+    runEditUpload(key, target.file, report.employee_profile_id);
+  };
+
+  const removeEditAttachment = (key: string) => {
+    setEditAttachments((prev) => {
+      const gone = prev.find((a) => a.key === key);
+      if (gone && gone.kind !== "existing" && gone.previewUrl) {
+        URL.revokeObjectURL(gone.previewUrl);
+      }
+      return prev.filter((a) => a.key !== key);
+    });
+  };
+
+  const editUploadingCount = editAttachments.filter((a) => a.kind === "uploading").length;
+  const editErroredCount = editAttachments.filter((a) => a.kind === "error").length;
+
   const load = async (id: string) => {
     setLoading(true);
     setError(null);
@@ -186,6 +337,16 @@ export function ManagerIncidentDialog({
         // preserves the raw document body for editing directly.
         document: data.document,
       });
+      // Reset the attachment editor to mirror what's on the row. Existing
+      // attachments start as `existing` items; the user can remove them
+      // or upload new ones on top.
+      setEditAttachments(
+        (data.attachments ?? []).map((a) => ({
+          key: a.path,
+          kind: "existing" as const,
+          meta: a,
+        })),
+      );
     } catch (e) {
       setError((e as Error).message || "Failed to load");
     } finally {
@@ -284,6 +445,14 @@ export function ManagerIncidentDialog({
       setError("Report body must be at least 10 characters.");
       return;
     }
+    if (editUploadingCount > 0) {
+      setError("Wait for attachments to finish uploading before saving.");
+      return;
+    }
+    if (editErroredCount > 0) {
+      setError("Remove or retry the failed attachment(s) before saving.");
+      return;
+    }
     setSaving(true);
 
     // Only send fields that actually changed. For split-section rows, send
@@ -304,6 +473,33 @@ export function ManagerIncidentDialog({
       }
     } else if (editForm.document !== report.document) {
       patchBody.document = editForm.document;
+    }
+
+    // Attachment diff — send the full array whenever the set of paths
+    // differs from what's currently on the row. Server records added +
+    // removed in the audit log.
+    const currentPaths = new Set(
+      (report.attachments ?? []).map((a) => a.path),
+    );
+    const nextAttachments: IncidentAttachment[] = editAttachments
+      .filter(
+        (a): a is Extract<EditAttachmentItem, { kind: "existing" | "uploaded" }> =>
+          a.kind === "existing" || a.kind === "uploaded",
+      )
+      .map((a) => a.meta);
+    const nextPaths = new Set(nextAttachments.map((a) => a.path));
+    const attachmentsChanged =
+      currentPaths.size !== nextPaths.size ||
+      [...currentPaths].some((p) => !nextPaths.has(p)) ||
+      [...nextPaths].some((p) => !currentPaths.has(p));
+    if (attachmentsChanged) {
+      patchBody.attachments = nextAttachments;
+    }
+
+    if (Object.keys(patchBody).length === 0) {
+      setSaving(false);
+      setEditing(false);
+      return;
     }
 
     const res = await fetch(`/api/management/incidents/${report.id}`, {
@@ -515,6 +711,145 @@ export function ManagerIncidentDialog({
                     />
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="edit-attach">
+                      Attachments
+                      {editAttachments.length > 0 && (
+                        <span className="text-muted-foreground font-normal">
+                          {" "}
+                          — {editAttachments.length}/10
+                        </span>
+                      )}
+                    </Label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => editFileRef.current?.click()}
+                      disabled={editAttachments.length >= 10}
+                    >
+                      <Paperclip className="mr-2 h-4 w-4" />
+                      Add file
+                    </Button>
+                  </div>
+                  <Input
+                    ref={editFileRef}
+                    id="edit-attach"
+                    type="file"
+                    multiple
+                    className="hidden"
+                    disabled={editAttachments.length >= 10}
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      if (files.length > 0) queueEditFiles(files);
+                      e.target.value = "";
+                    }}
+                  />
+                  {editAttachments.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No attachments. Click <span className="font-medium">Add file</span> to attach evidence.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {editAttachments.map((a) => {
+                        const meta =
+                          a.kind === "existing" || a.kind === "uploaded" ? a.meta : null;
+                        const mime = meta?.mime ?? (a.kind !== "existing" ? a.file.type : "");
+                        const filename = meta?.filename ?? (a.kind !== "existing" ? a.file.name : "");
+                        const size = meta?.size ?? (a.kind !== "existing" ? a.file.size : 0);
+                        const image = isImageMime(mime);
+                        const previewSrc =
+                          a.kind === "existing"
+                            ? `/api/incidents/attachments/${a.meta.path}`
+                            : a.previewUrl;
+                        return (
+                          <li
+                            key={a.key}
+                            className={`flex items-center gap-3 rounded-md border p-2 ${
+                              a.kind === "error"
+                                ? "border-destructive/40 bg-destructive/5"
+                                : a.kind === "uploaded"
+                                  ? "border-emerald-500/30 bg-emerald-500/5"
+                                  : "bg-background"
+                            }`}
+                          >
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted">
+                              {image && previewSrc ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={previewSrc}
+                                  alt={filename}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <FileKindIcon
+                                  mime={mime}
+                                  className="h-5 w-5 text-muted-foreground"
+                                />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium" title={filename}>
+                                {filename}
+                              </p>
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-muted-foreground">
+                                  {formatBytes(size)}
+                                </span>
+                                {a.kind === "existing" && (
+                                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                    Existing
+                                  </span>
+                                )}
+                                {a.kind === "uploading" && (
+                                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                    Uploading…
+                                  </span>
+                                )}
+                                {a.kind === "uploaded" && (
+                                  <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Newly uploaded
+                                  </span>
+                                )}
+                                {a.kind === "error" && (
+                                  <span className="inline-flex items-center gap-1 text-destructive">
+                                    <XCircle className="h-3 w-3" />
+                                    {a.error}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {a.kind === "error" && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => retryEditUpload(a.key)}
+                              >
+                                <RotateCcw className="mr-1 h-3 w-3" />
+                                Retry
+                              </Button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeEditAttachment(a.key)}
+                              className="text-muted-foreground hover:text-destructive"
+                              aria-label="Remove attachment"
+                              title="Remove"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+
                 {error && <p className="text-sm text-destructive">{error}</p>}
                 <div className="flex justify-end gap-2">
                   <Button
@@ -532,13 +867,32 @@ export function ManagerIncidentDialog({
                         manager_notes: report.manager_notes ?? "",
                         document: report.document,
                       });
+                      // Reset attachments to the report's original list,
+                      // and revoke any object URLs from pending uploads
+                      // the user was about to add before backing out.
+                      setEditAttachments((prev) => {
+                        prev.forEach((a) => {
+                          if (a.kind !== "existing" && a.previewUrl) {
+                            URL.revokeObjectURL(a.previewUrl);
+                          }
+                        });
+                        return (report.attachments ?? []).map((att) => ({
+                          key: att.path,
+                          kind: "existing" as const,
+                          meta: att,
+                        }));
+                      });
                     }}
                     disabled={saving}
                   >
                     <X className="mr-2 h-4 w-4" />
                     Cancel edit
                   </Button>
-                  <Button size="sm" onClick={save} disabled={saving}>
+                  <Button
+                    size="sm"
+                    onClick={save}
+                    disabled={saving || editUploadingCount > 0}
+                  >
                     <Save className="mr-2 h-4 w-4" />
                     {saving ? "Saving…" : "Save"}
                   </Button>
