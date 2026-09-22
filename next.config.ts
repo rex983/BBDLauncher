@@ -20,10 +20,19 @@ const csp = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
-  // @react-pdf/renderer ships PDFKit's .afm font files that need to be
-  // resolvable at runtime. Bundling breaks them on Vercel — mark as
-  // external so the serverless function loads them from node_modules.
-  serverExternalPackages: ["@react-pdf/renderer"],
+  // @react-pdf/renderer + pdfkit ship font files (.cjs / .afm) that need
+  // to be resolvable at runtime. Bundling breaks them on Vercel —
+  // marking them as external tells Next to load from node_modules,
+  // and outputFileTracingIncludes ensures the font subfolder is copied
+  // into the serverless bundle. Fixes MODULE_NOT_FOUND for
+  // pdfkit/js/standard-fonts/Helvetica.cjs at runtime.
+  serverExternalPackages: ["@react-pdf/renderer", "pdfkit"],
+  outputFileTracingIncludes: {
+    "/api/incidents/**/pdf/**": [
+      "./node_modules/pdfkit/**/*",
+      "./node_modules/@react-pdf/**/*",
+    ],
+  },
 
   async headers() {
     return [
