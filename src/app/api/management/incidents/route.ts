@@ -6,6 +6,7 @@ import {
 } from "@/lib/incidents/types";
 import { extractActorHeaders, logIncidentEvent } from "@/lib/incidents/audit";
 import { hashDocument, hashManagerSignature } from "@/lib/incidents/hashing";
+import { listScopedIncidentSummaries } from "@/lib/incidents/queries";
 import { createNotification } from "@/lib/notifications/service";
 import {
   notifyIncidentSubmitted,
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
   const statusParam = url.searchParams.get("statuses") || url.searchParams.get("status");
   const statuses = statusParam
     ? statusParam.split(",").map((s) => s.trim()).filter(Boolean)
-    : ["draft", "awaiting_manager_sig", "awaiting_employee_sig", "completed", "cancelled"];
+    : undefined;
 
   const officeFilter = url.searchParams.get("office");
   const departmentFilter = url.searchParams.get("department");
@@ -82,37 +83,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid department" }, { status: 400 });
   }
 
-  let profileQuery = supabase
-    .from("profiles")
-    .select("id, email, name:full_name, office, department")
-    .eq("is_active", true);
-  if (scope.department) profileQuery = profileQuery.eq("department", scope.department);
-  else if (departmentFilter) profileQuery = profileQuery.eq("department", departmentFilter);
-  if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
-  else if (officeFilter) profileQuery = profileQuery.eq("office", officeFilter);
-
-  const { data: profiles } = await profileQuery;
-  const profileIds = (profiles || []).map((p) => p.id);
-  if (profileIds.length === 0) return NextResponse.json([]);
-
-  const { data: reports, error } = await supabase
-    .from("incident_reports")
-    .select(
-      "id, number, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, attachments, manager_signed_at, employee_signed_at, cancelled_at, created_at, updated_at",
-    )
-    .in("employee_profile_id", profileIds)
-    .in("status", statuses)
-    .order("created_at", { ascending: false });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
-  return NextResponse.json(
-    (reports || []).map((r) => ({
-      ...r,
-      employee: profileMap.get(r.employee_profile_id) || null,
-    })),
-  );
+  const rows = await listScopedIncidentSummaries({
+    supabase,
+    scope: {
+      department: scope.department,
+      office: scope.office,
+    },
+    statuses,
+    departmentOverride: departmentFilter,
+    officeOverride: officeFilter,
+  });
+  return NextResponse.json(rows);
 }
 
 export async function POST(req: NextRequest) {
