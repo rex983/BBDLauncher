@@ -22,7 +22,8 @@ import {
   type IncidentSeverity,
   type IncidentStatus,
 } from "@/lib/incidents/types";
-import { Paperclip, Printer, ShieldCheck } from "lucide-react";
+import { AttachmentPreview } from "@/components/shared/AttachmentPreview";
+import { Download, ShieldCheck } from "lucide-react";
 
 interface EmployeeReport {
   id: string;
@@ -238,22 +239,18 @@ export function EmployeeIncidentDialog({
 
             {Array.isArray(report.attachments) && report.attachments.length > 0 && (
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Attachments</p>
-                <ul className="space-y-1">
+                <p className="text-xs text-muted-foreground mb-1">
+                  Attachments ({report.attachments.length})
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
                   {report.attachments.map((a) => (
-                    <li key={a.path}>
-                      <a
-                        href={`/api/incidents/attachments/${a.path}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs underline hover:text-foreground"
-                      >
-                        <Paperclip className="h-3 w-3" />
-                        {a.filename}
-                      </a>
-                    </li>
+                    <AttachmentPreview
+                      key={a.path}
+                      attachment={a}
+                      hrefPrefix="/api/incidents/attachments/"
+                    />
                   ))}
-                </ul>
+                </div>
               </div>
             )}
 
@@ -350,9 +347,19 @@ export function EmployeeIncidentDialog({
             )}
 
             <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
-              <Button variant="ghost" size="sm" onClick={() => window.print()}>
-                <Printer className="mr-2 h-4 w-4" />
-                Print
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+              >
+                <a
+                  href={`/api/incidents/${report.id}/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download PDF
+                </a>
               </Button>
               {report.status === "awaiting_employee_sig" && (
                 <Button size="sm" onClick={sign} disabled={signing}>

@@ -33,6 +33,7 @@ import {
   Clock,
   CalendarCheck,
   AlertTriangle,
+  Megaphone,
 } from "lucide-react";
 
 const navItems = [
@@ -43,6 +44,7 @@ const managementItems = [
   { href: "/management/timesheets", label: "Timesheets", icon: Clock },
   { href: "/management/timeoff", label: "Time-off Queue", icon: CalendarCheck },
   { href: "/management/incidents", label: "Incident Reports", icon: AlertTriangle },
+  { href: "/management/memos", label: "Office Memos", icon: Megaphone },
 ];
 
 const adminItems = [

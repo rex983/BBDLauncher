@@ -3,6 +3,7 @@ import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
 import { RolePreviewProvider } from "@/components/features/launcher/role-preview-context";
 import { PreviewBanner } from "@/components/features/launcher/preview-banner";
+import { ClockGate } from "@/components/features/timeclock/ClockGate";
 import { Suspense } from "react";
 
 function SidebarSkeleton() {
@@ -18,18 +19,20 @@ export default function DashboardLayout({
     <SessionProvider>
       <Suspense>
         <RolePreviewProvider>
-          <div className="min-h-screen bg-background">
-            <Header />
-            <div className="flex">
-              <Suspense fallback={<SidebarSkeleton />}>
-                <Sidebar />
-              </Suspense>
-              <main className="flex-1 p-6">
-                <PreviewBanner />
-                {children}
-              </main>
+          <ClockGate>
+            <div className="min-h-screen bg-background">
+              <Header />
+              <div className="flex">
+                <Suspense fallback={<SidebarSkeleton />}>
+                  <Sidebar />
+                </Suspense>
+                <main className="flex-1 p-6">
+                  <PreviewBanner />
+                  {children}
+                </main>
+              </div>
             </div>
-          </div>
+          </ClockGate>
         </RolePreviewProvider>
       </Suspense>
     </SessionProvider>

@@ -1,0 +1,212 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  formatMemoNumber,
+  MEMO_ACK_MODE_LABEL,
+  MEMO_CATEGORY_LABEL,
+  MEMO_PRIORITY_LABEL,
+  type MemoAcknowledgementMode,
+  type MemoCategory,
+  type MemoPriority,
+} from "@/lib/memos/types";
+import { useSearchParams } from "next/navigation";
+import { EmployeeMemoDialog } from "./EmployeeMemoDialog";
+
+export interface EmployeeMemoRow {
+  memo_id: string;
+  recipient_id: string;
+  delivered_at: string;
+  read_at: string | null;
+  acknowledged_at: string | null;
+  number: number | null;
+  title: string;
+  category: MemoCategory;
+  priority: MemoPriority;
+  acknowledgement_mode: MemoAcknowledgementMode;
+  effective_date: string | null;
+  published_at: string | null;
+  author_name: string | null;
+}
+
+const PRIORITY_VARIANT: Record<
+  MemoPriority,
+  "default" | "secondary" | "outline" | "destructive"
+> = {
+  informational: "outline",
+  important: "default",
+  mandatory: "destructive",
+};
+
+function fmtDate(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+// Employee-facing memo list. Client-fetched (unlike incidents which are
+// hydrated by the server page). Deep-links via ?openMemo=<id>#memos so
+// the bell notification opens the memo dialog immediately.
+export function MemoPanel({
+  employeeFullName,
+  title = "Memos",
+  description,
+}: {
+  employeeFullName: string | null;
+  title?: string;
+  description?: string;
+}) {
+  const searchParams = useSearchParams();
+  const openMemoId = searchParams.get("openMemo");
+
+  const [rows, setRows] = useState<EmployeeMemoRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch("/api/memos");
+    const body: EmployeeMemoRow[] = res.ok ? await res.json() : [];
+    setRows(body);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!openMemoId) return;
+    if (!rows.some((r) => r.memo_id === openMemoId)) return;
+    setSelected(openMemoId);
+    setOpen(true);
+  }, [openMemoId, rows]);
+
+  const openRow = (id: string) => {
+    setSelected(id);
+    setOpen(true);
+  };
+
+  const pending = rows.filter(
+    (r) =>
+      r.acknowledgement_mode !== "informational" && !r.acknowledged_at,
+  ).length;
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            {title}
+            {pending > 0 && (
+              <Badge variant="destructive">{pending} to acknowledge</Badge>
+            )}
+          </CardTitle>
+          {description && (
+            <p className="text-sm text-muted-foreground mt-1">{description}</p>
+          )}
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No memos delivered to you yet.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Published</TableHead>
+                  <TableHead>Title</TableHead>
+                  <TableHead>From</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => {
+                  const needsAck =
+                    r.acknowledgement_mode !== "informational" &&
+                    !r.acknowledged_at;
+                  const acked = !!r.acknowledged_at;
+                  return (
+                    <TableRow key={r.memo_id}>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {formatMemoNumber(r.number)}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {fmtDate(r.published_at)}
+                      </TableCell>
+                      <TableCell className="font-medium">{r.title}</TableCell>
+                      <TableCell className="text-sm">
+                        {r.author_name || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {MEMO_CATEGORY_LABEL[r.category]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={PRIORITY_VARIANT[r.priority]}>
+                          {MEMO_PRIORITY_LABEL[r.priority]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {acked ? (
+                          <Badge variant="secondary">Acknowledged</Badge>
+                        ) : needsAck ? (
+                          <Badge variant="destructive">
+                            {MEMO_ACK_MODE_LABEL[r.acknowledgement_mode]}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">
+                            {r.read_at ? "Read" : "Delivered"}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="ghost" onClick={() => openRow(r.memo_id)}>
+                          {needsAck ? "Review & acknowledge" : "View"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <EmployeeMemoDialog
+        memoId={selected}
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o) setSelected(null);
+        }}
+        onAcknowledged={load}
+        employeeFullName={employeeFullName}
+      />
+    </>
+  );
+}

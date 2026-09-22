@@ -150,7 +150,11 @@ export function TimeClockShell({
 
   const isClockedOut = !state || state.status === "clocked_out";
   const isOnBreak = state?.status === "on_break";
-  const isLocked = isClockedOut || isOnBreak;
+  // Breaks / lunch count as clocked in per company policy — the app grid
+  // stays live. Only a full clock-out (or no punches yet today) blurs the
+  // launcher; that path is also covered by <ClockGate> at the layout
+  // level, so this blur is a belt-and-braces for the /dashboard page.
+  const isLocked = isClockedOut;
 
   // Set / reset the T-5 prompt timer whenever the effective end changes.
   useEffect(() => {

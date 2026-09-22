@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,12 +28,53 @@ import {
   type IncidentCategory,
   type IncidentSeverity,
 } from "@/lib/incidents/types";
-import { AlertTriangle, Paperclip, X } from "lucide-react";
+import {
+  FileKindIcon,
+  formatBytes,
+  isImageMime,
+} from "@/components/shared/AttachmentPreview";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  RotateCcw,
+  X,
+  XCircle,
+} from "lucide-react";
 
-function formatBytes(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+// One upload slot in the dialog's queue. Each user-selected file gets a
+// stable client id so the row survives state churn (uploading → uploaded /
+// error → retry). Kept as a discriminated union so the render side can lean
+// on the compiler for which fields are present in each state.
+type UploadItem =
+  | {
+      id: string;
+      status: "uploading";
+      file: File;
+      previewUrl: string | null;
+    }
+  | {
+      id: string;
+      status: "error";
+      file: File;
+      previewUrl: string | null;
+      error: string;
+    }
+  | {
+      id: string;
+      status: "uploaded";
+      file: File;
+      previewUrl: string | null;
+      meta: IncidentAttachment;
+    };
+
+function makePreviewUrl(file: File): string | null {
+  if (!file.type.toLowerCase().startsWith("image/")) return null;
+  try {
+    return URL.createObjectURL(file);
+  } catch {
+    return null;
+  }
 }
 
 // Value shape a <input type="datetime-local"> expects: local wall-clock
@@ -95,10 +136,28 @@ export function FileIncidentDialog({
   const [problem, setProblem] = useState("");
   const [proposedSolution, setProposedSolution] = useState("");
   const [managerNotes, setManagerNotes] = useState("");
-  const [attachments, setAttachments] = useState<IncidentAttachment[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Any object URLs we created for image thumbnails must be revoked when
+  // the dialog closes or the row is removed, otherwise they leak memory
+  // for the life of the tab.
+  useEffect(() => {
+    return () => {
+      uploads.forEach((u) => {
+        if (u.previewUrl) URL.revokeObjectURL(u.previewUrl);
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const uploadCount = uploads.length;
+  const uploadingCount = uploads.filter((u) => u.status === "uploading").length;
+  const attachments: IncidentAttachment[] = uploads
+    .filter((u): u is Extract<UploadItem, { status: "uploaded" }> => u.status === "uploaded")
+    .map((u) => u.meta);
 
   // Load the scoped employee list only when the dialog opens AND we need
   // a picker. Same endpoint MarkDayOffDialog uses so the scope rules match.
@@ -140,33 +199,94 @@ export function FileIncidentDialog({
     setProblem("");
     setProposedSolution("");
     setManagerNotes("");
-    setAttachments([]);
+    setUploads((prev) => {
+      prev.forEach((u) => u.previewUrl && URL.revokeObjectURL(u.previewUrl));
+      return [];
+    });
     setError(null);
   };
 
-  const uploadFile = async (file: File) => {
+  const runUpload = useCallback(
+    async (id: string, file: File, targetEmployeeId: string) => {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("employeeProfileId", targetEmployeeId);
+      let res: Response;
+      try {
+        res = await fetch("/api/incidents/attachments", { method: "POST", body });
+      } catch {
+        setUploads((prev) =>
+          prev.map((u) =>
+            u.id === id && u.status === "uploading"
+              ? { ...u, status: "error", error: "Network error" }
+              : u,
+          ),
+        );
+        return;
+      }
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        const msg = typeof b.error === "string" ? b.error : "Upload failed";
+        setUploads((prev) =>
+          prev.map((u) =>
+            u.id === id && u.status === "uploading"
+              ? { ...u, status: "error", error: msg }
+              : u,
+          ),
+        );
+        return;
+      }
+      const meta: IncidentAttachment = await res.json();
+      setUploads((prev) =>
+        prev.map((u) =>
+          u.id === id && u.status === "uploading"
+            ? { id, status: "uploaded", file: u.file, previewUrl: u.previewUrl, meta }
+            : u,
+        ),
+      );
+    },
+    [],
+  );
+
+  const queueFiles = (files: File[]) => {
     if (!employeeProfileId) {
       setError("Select an employee before uploading attachments.");
       return;
     }
-    setUploading(true);
     setError(null);
-    const body = new FormData();
-    body.append("file", file);
-    body.append("employeeProfileId", employeeProfileId);
-    const res = await fetch("/api/incidents/attachments", { method: "POST", body });
-    setUploading(false);
-    if (!res.ok) {
-      const b = await res.json().catch(() => ({}));
-      setError(typeof b.error === "string" ? b.error : "Upload failed");
-      return;
+    const remaining = Math.max(0, 10 - uploads.length);
+    const accepted = files.slice(0, remaining);
+    if (files.length > accepted.length) {
+      setError(`Only ${remaining} more file(s) can be attached (max 10).`);
     }
-    const meta: IncidentAttachment = await res.json();
-    setAttachments((prev) => [...prev, meta]);
+    const newItems: UploadItem[] = accepted.map((file) => ({
+      id: crypto.randomUUID(),
+      status: "uploading" as const,
+      file,
+      previewUrl: makePreviewUrl(file),
+    }));
+    setUploads((prev) => [...prev, ...newItems]);
+    newItems.forEach((item) => runUpload(item.id, item.file, employeeProfileId));
   };
 
-  const removeAttachment = (path: string) => {
-    setAttachments((prev) => prev.filter((a) => a.path !== path));
+  const retryUpload = (id: string) => {
+    if (!employeeProfileId) return;
+    setUploads((prev) =>
+      prev.map((u) => {
+        if (u.id !== id || u.status !== "error") return u;
+        return { id: u.id, status: "uploading", file: u.file, previewUrl: u.previewUrl };
+      }),
+    );
+    const target = uploads.find((u) => u.id === id);
+    if (target) runUpload(id, target.file, employeeProfileId);
+  };
+
+  const removeUpload = (id: string) => {
+    setUploads((prev) => {
+      const gone = prev.find((u) => u.id === id);
+      if (gone?.previewUrl) URL.revokeObjectURL(gone.previewUrl);
+      return prev.filter((u) => u.id !== id);
+    });
   };
 
   const submit = async () => {
@@ -185,6 +305,15 @@ export function FileIncidentDialog({
     }
     if (proposedSolution.trim().length < 3) {
       setError("Please describe the proposed solution (min 3 characters).");
+      return;
+    }
+    if (uploadingCount > 0) {
+      setError("Wait for attachments to finish uploading before filing.");
+      return;
+    }
+    const failed = uploads.filter((u) => u.status === "error");
+    if (failed.length > 0) {
+      setError("Remove or retry the failed attachment(s) before filing.");
       return;
     }
     setSubmitting(true);
@@ -394,40 +523,132 @@ export function FileIncidentDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="i-attach">Attachments (optional)</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="i-attach">
+                Attachments (optional) {uploadCount > 0 && (
+                  <span className="text-muted-foreground font-normal">
+                    — {uploadCount}/10
+                  </span>
+                )}
+              </Label>
+              {uploadCount > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadCount >= 10}
+                >
+                  Add more
+                </Button>
+              )}
+            </div>
             <Input
+              ref={fileInputRef}
               id="i-attach"
               type="file"
+              multiple
               accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.spreadsheet,application/vnd.oasis.opendocument.presentation,application/rtf,application/zip,application/x-zip-compressed,application/x-7z-compressed,application/vnd.rar,message/rfc822,application/vnd.ms-outlook,text/*,.md,.log,.csv,.eml,.msg,.heic,.heif"
-              disabled={uploading || attachments.length >= 10}
+              disabled={uploadCount >= 10}
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadFile(f);
+                const files = Array.from(e.target.files ?? []);
+                if (files.length > 0) queueFiles(files);
                 e.target.value = "";
               }}
+              className={uploadCount > 0 ? "hidden" : undefined}
             />
-            {uploading && (
-              <p className="text-xs text-muted-foreground">Uploading…</p>
-            )}
-            {attachments.length > 0 && (
-              <ul className="space-y-1">
-                {attachments.map((a) => (
-                  <li key={a.path} className="flex items-center gap-2 text-sm">
-                    <Paperclip className="h-3 w-3 text-muted-foreground" />
-                    <span className="truncate flex-1">{a.filename}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatBytes(a.size)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(a.path)}
-                      className="text-muted-foreground hover:text-destructive"
-                      aria-label="Remove attachment"
+            {uploadCount > 0 && (
+              <ul className="space-y-2">
+                {uploads.map((u) => {
+                  const image = isImageMime(u.file.type);
+                  return (
+                    <li
+                      key={u.id}
+                      className={`flex items-center gap-3 rounded-md border p-2 ${
+                        u.status === "error"
+                          ? "border-destructive/40 bg-destructive/5"
+                          : u.status === "uploaded"
+                            ? "border-emerald-500/30 bg-emerald-500/5"
+                            : "bg-background"
+                      }`}
                     >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </li>
-                ))}
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted">
+                        {image && u.previewUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={u.previewUrl}
+                            alt={u.file.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <FileKindIcon
+                            mime={u.file.type}
+                            className="h-5 w-5 text-muted-foreground"
+                          />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        {u.status === "uploaded" ? (
+                          <a
+                            href={`/api/incidents/attachments/${u.meta.path}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="truncate block text-sm font-medium hover:underline"
+                            title={u.file.name}
+                          >
+                            {u.file.name}
+                          </a>
+                        ) : (
+                          <p className="truncate text-sm font-medium" title={u.file.name}>
+                            {u.file.name}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">
+                            {formatBytes(u.file.size)}
+                          </span>
+                          {u.status === "uploading" && (
+                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Uploading…
+                            </span>
+                          )}
+                          {u.status === "uploaded" && (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Uploaded
+                            </span>
+                          )}
+                          {u.status === "error" && (
+                            <span className="inline-flex items-center gap-1 text-destructive">
+                              <XCircle className="h-3 w-3" />
+                              {u.error}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {u.status === "error" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => retryUpload(u.id)}
+                        >
+                          <RotateCcw className="mr-1 h-3 w-3" />
+                          Retry
+                        </Button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeUpload(u.id)}
+                        className="text-muted-foreground hover:text-destructive"
+                        aria-label="Remove attachment"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
             <p className="text-xs text-muted-foreground">
@@ -449,7 +670,12 @@ export function FileIncidentDialog({
             <Button
               type="button"
               onClick={submit}
-              disabled={submitting || !problem.trim() || !proposedSolution.trim()}
+              disabled={
+                submitting ||
+                !problem.trim() ||
+                !proposedSolution.trim() ||
+                uploadingCount > 0
+              }
             >
               {submitting ? "Filing…" : "File & send for signature"}
             </Button>

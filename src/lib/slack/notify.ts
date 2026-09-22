@@ -7,6 +7,16 @@ import type { TimeOffType } from "@/lib/timeoff/types";
 import { TIME_OFF_TYPE_LABEL } from "@/lib/timeoff/types";
 import type { IncidentSeverity, IncidentCategory } from "@/lib/incidents/types";
 import { INCIDENT_CATEGORY_LABEL, INCIDENT_SEVERITY_LABEL } from "@/lib/incidents/types";
+import type {
+  MemoAcknowledgementMode,
+  MemoCategory,
+  MemoPriority,
+} from "@/lib/memos/types";
+import {
+  MEMO_ACK_MODE_LABEL,
+  MEMO_CATEGORY_LABEL,
+  MEMO_PRIORITY_LABEL,
+} from "@/lib/memos/types";
 
 const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
 
@@ -245,6 +255,82 @@ export async function notifyIncidentCompleted(p: IncidentCompletedPayload): Prom
   };
 
   await postSlack(url, body, "incident-completed");
+}
+
+// =====================================================================
+// Office memos — separate webhook (SLACK_MEMO_WEBHOOK_URL) so
+// company-wide memos don't clutter the HR incident channel. Priority
+// drives the side-bar color at a glance.
+// =====================================================================
+
+const MEMO_PRIORITY_COLOR: Record<MemoPriority, string> = {
+  informational: "#0ea5e9",
+  important: "#f59e0b",
+  mandatory: "#dc2626",
+};
+
+export interface MemoPublishedPayload {
+  memoId: string;
+  numberLabel: string;
+  title: string;
+  category: MemoCategory;
+  priority: MemoPriority;
+  audienceLabel: string;
+  recipientCount: number;
+  authorName: string;
+  ackMode: MemoAcknowledgementMode;
+}
+
+export async function notifyMemoPublished(p: MemoPublishedPayload): Promise<void> {
+  const url = process.env.SLACK_MEMO_WEBHOOK_URL;
+  if (!url) return;
+
+  const titleLine = p.numberLabel ? `${p.numberLabel} · ${p.title}` : p.title;
+
+  const body = {
+    text: `New memo from ${p.authorName}: ${p.title}`,
+    attachments: [
+      {
+        color: MEMO_PRIORITY_COLOR[p.priority],
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: [
+                `*New memo published*`,
+                `*${titleLine}*`,
+                `Author: ${p.authorName}`,
+              ].join("\n"),
+            },
+          },
+          {
+            type: "section",
+            fields: [
+              { type: "mrkdwn", text: `*Category*\n${MEMO_CATEGORY_LABEL[p.category]}` },
+              { type: "mrkdwn", text: `*Priority*\n${MEMO_PRIORITY_LABEL[p.priority]}` },
+              { type: "mrkdwn", text: `*Audience*\n${p.audienceLabel}` },
+              { type: "mrkdwn", text: `*Recipients*\n${p.recipientCount}` },
+              { type: "mrkdwn", text: `*Acknowledgement*\n${MEMO_ACK_MODE_LABEL[p.ackMode]}` },
+            ],
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: "Open in launcher" },
+                url: `${LAUNCHER_URL}/management/memos`,
+                style: "primary",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  await postSlack(url, body, "memo-published");
 }
 
 async function postSlack(url: string, body: unknown, label: string): Promise<void> {

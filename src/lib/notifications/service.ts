@@ -11,6 +11,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export type NotificationType =
   | "incident_report_awaiting"
   | "incident_report_completed"
+  | "office_memo_published"
+  | "office_memo_acknowledged"
   | "time_off_decided"
   | "generic";
 

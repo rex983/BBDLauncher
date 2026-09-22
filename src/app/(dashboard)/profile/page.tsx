@@ -14,6 +14,7 @@ import {
   IncidentPanel,
   type IncidentSummary,
 } from "@/components/features/incidents/IncidentPanel";
+import { MemoPanel } from "@/components/features/memos/MemoPanel";
 import {
   requestDays,
   TIME_OFF_TYPES,
@@ -311,6 +312,14 @@ export default async function ProfilePage() {
           employeeFullName={profile?.name || null}
           title="Incident reports"
           description="Reports issued to you. Sign any awaiting your signature; archived reports remain viewable here."
+        />
+      </div>
+
+      <div id="memos" className="scroll-mt-20">
+        <MemoPanel
+          employeeFullName={profile?.name || null}
+          title="Office memos"
+          description="Memos delivered to you. Acknowledge any that require it; the rest are here for reference."
         />
       </div>
 
