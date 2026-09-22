@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canEditTimeData, isAdmin } from "@/lib/auth/permissions";
 import { publishMemo } from "@/lib/memos/service";
+import { extractActorHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -48,8 +49,7 @@ export async function POST(
     );
   }
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-  const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
+  const { ip, ua } = extractActorHeaders(req);
 
   try {
     const result = await publishMemo({

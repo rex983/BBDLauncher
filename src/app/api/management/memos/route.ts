@@ -9,6 +9,7 @@ import { logMemoEvent } from "@/lib/memos/audit";
 import { hashAuthorSignature, hashMemoDocument } from "@/lib/memos/hashing";
 import { listMemosForManagement } from "@/lib/memos/queries";
 import { publishMemo } from "@/lib/memos/service";
+import { extractActorHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -173,8 +174,7 @@ export async function POST(req: NextRequest) {
     }
     documentHash = hashMemoDocument(parsed.data.body);
     authorSignedAt = now.toISOString();
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-    const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
+    const { ip, ua } = extractActorHeaders(req);
     authorSignatureHash = hashAuthorSignature({
       documentHash,
       signatureText: authorSignatureText,
@@ -184,8 +184,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-  const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
+  const { ip, ua } = extractActorHeaders(req);
 
   const { data: memo, error: insertErr } = await supabase
     .from("office_memos")

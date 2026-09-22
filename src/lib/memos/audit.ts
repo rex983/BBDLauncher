@@ -12,12 +12,6 @@ export type MemoEventType =
   | "recipient_read"
   | "recipient_acknowledged";
 
-export interface FieldChange {
-  field: string;
-  from: unknown;
-  to: unknown;
-}
-
 export interface LogMemoEventParams {
   memoId: string;
   eventType: MemoEventType;

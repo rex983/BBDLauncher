@@ -7,13 +7,7 @@
 //   recipient_signature_hash =
 //       sha256("recipient" || fields, chained on author hash)
 
-import { createHash } from "crypto";
-
-const DELIMITER = "|";
-
-function sha256(input: string): string {
-  return createHash("sha256").update(input, "utf8").digest("hex");
-}
+import { HASH_DELIMITER, sha256 } from "@/lib/hashing";
 
 export function hashMemoDocument(document: string): string {
   return sha256(document.replace(/\r\n/g, "\n"));
@@ -34,7 +28,7 @@ export function hashAuthorSignature(params: {
       params.signedAt,
       params.ip || "",
       params.ua || "",
-    ].join(DELIMITER),
+    ].join(HASH_DELIMITER),
   );
 }
 
@@ -55,6 +49,6 @@ export function hashRecipientSignature(params: {
       params.signedAt,
       params.ip || "",
       params.ua || "",
-    ].join(DELIMITER),
+    ].join(HASH_DELIMITER),
   );
 }

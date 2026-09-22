@@ -7,6 +7,7 @@ import type { IncidentSeverity, IncidentCategory } from "@/lib/incidents/types";
 import { hashDocument, hashManagerSignature } from "@/lib/incidents/hashing";
 import { formatIncidentNumber } from "@/lib/incidents/types";
 import { logIncidentEvent } from "@/lib/incidents/audit";
+import { extractActorHeaders } from "@/lib/http";
 import { createNotification } from "@/lib/notifications/service";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -108,8 +109,7 @@ export async function POST(
   }
 
   const now = new Date().toISOString();
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-  const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
+  const { ip, ua } = extractActorHeaders(req);
   const signatureText = parsed.data.signature_text.trim();
 
   // Freeze the document at manager-sign time by hashing it. The employee

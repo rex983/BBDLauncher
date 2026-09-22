@@ -6,6 +6,7 @@ import {
   isAdmin,
 } from "@/lib/auth/permissions";
 import { logMemoEvent } from "@/lib/memos/audit";
+import { extractActorHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -190,8 +191,7 @@ export async function PATCH(
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
   }
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-  const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
+  const { ip, ua } = extractActorHeaders(req);
   logMemoEvent({
     memoId: id,
     eventType: "edited",
@@ -247,8 +247,7 @@ export async function DELETE(
     .eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-  const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
+  const { ip, ua } = extractActorHeaders(req);
   logMemoEvent({
     memoId: id,
     eventType: "archived",

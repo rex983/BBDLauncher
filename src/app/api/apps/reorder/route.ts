@@ -28,14 +28,17 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createAdminClient();
-  for (const { id, section_id, display_order } of parsed.data.updates) {
-    const { error } = await supabase
-      .from("launcher_apps")
-      .update({ section_id, display_order })
-      .eq("id", id);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+  const results = await Promise.all(
+    parsed.data.updates.map(({ id, section_id, display_order }) =>
+      supabase
+        .from("launcher_apps")
+        .update({ section_id, display_order })
+        .eq("id", id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) {
+    return NextResponse.json({ error: failed.error.message }, { status: 500 });
   }
   bustLauncherCache("apps");
   return NextResponse.json({ success: true });

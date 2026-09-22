@@ -5,7 +5,6 @@
 // server console instead of unwinding the state change.
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { NextRequest } from "next/server";
 
 export type IncidentEventType =
   | "filed"
@@ -44,18 +43,6 @@ export async function logIncidentEvent(params: LogIncidentEventParams): Promise<
   if (error) {
     console.error("[incident-audit] log failed:", params.eventType, error.message);
   }
-}
-
-// Grab the IP + UA off a Next request the same way the sign endpoints do,
-// so an audit entry paired with a signature ends up with identical
-// evidentiary metadata.
-export function extractActorHeaders(req: NextRequest): {
-  ip: string | null;
-  ua: string | null;
-} {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-  const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
-  return { ip, ua };
 }
 
 // Human-readable label for the UI Activity timeline. Falls back to the raw

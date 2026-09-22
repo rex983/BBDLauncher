@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logMemoEvent } from "@/lib/memos/audit";
+import { extractActorHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/memos/[id] — employee's memo detail. Only accessible if the
@@ -47,8 +48,7 @@ export async function GET(
       .from("office_memo_recipients")
       .update({ read_at: now })
       .eq("id", recipient.id);
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-    const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
+    const { ip, ua } = extractActorHeaders(req);
     logMemoEvent({
       memoId: id,
       eventType: "recipient_read",

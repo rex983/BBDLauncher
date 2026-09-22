@@ -7,6 +7,7 @@ import {
 import type { IncidentSeverity } from "@/lib/incidents/types";
 import { hashDocument, hashEmployeeSignature } from "@/lib/incidents/hashing";
 import { logIncidentEvent } from "@/lib/incidents/audit";
+import { extractActorHeaders } from "@/lib/http";
 import { dismissNotificationsByReference } from "@/lib/notifications/service";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -98,8 +99,7 @@ export async function POST(
   }
 
   const now = new Date().toISOString();
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-  const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
+  const { ip, ua } = extractActorHeaders(req);
   const signatureText = parsed.data.signature_text.trim();
 
   // Chain the employee hash onto the document + manager's hash. Any later

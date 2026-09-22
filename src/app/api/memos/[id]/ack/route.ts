@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logMemoEvent } from "@/lib/memos/audit";
 import { hashRecipientSignature } from "@/lib/memos/hashing";
 import { dismissNotificationsByReference } from "@/lib/notifications/service";
+import { extractActorHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -56,8 +57,7 @@ export async function POST(
   }
 
   const now = new Date().toISOString();
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-  const ua = req.headers.get("user-agent")?.slice(0, 512) || null;
+  const { ip, ua } = extractActorHeaders(req);
 
   const update: Record<string, unknown> = { acknowledged_at: now };
   if (!recipient.acknowledged_at) update.read_at = now;

@@ -1,5 +1,3 @@
-"use client";
-
 import {
   ExternalLink,
   File as FileIcon,

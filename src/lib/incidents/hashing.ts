@@ -13,13 +13,7 @@
 // Chaining employee-onto-manager means editing either signature or the
 // document breaks the chain — a verifier sees the mismatch immediately.
 
-import { createHash } from "crypto";
-
-const DELIMITER = "|";
-
-function sha256(input: string): string {
-  return createHash("sha256").update(input, "utf8").digest("hex");
-}
+import { HASH_DELIMITER, sha256 } from "@/lib/hashing";
 
 export function hashDocument(document: string): string {
   // Normalize CRLF → LF so a signature captured on Windows verifies on
@@ -43,7 +37,7 @@ export function hashManagerSignature(params: {
       params.signedAt,
       params.ip || "",
       params.ua || "",
-    ].join(DELIMITER),
+    ].join(HASH_DELIMITER),
   );
 }
 
@@ -64,6 +58,6 @@ export function hashEmployeeSignature(params: {
       params.signedAt,
       params.ip || "",
       params.ua || "",
-    ].join(DELIMITER),
+    ].join(HASH_DELIMITER),
   );
 }

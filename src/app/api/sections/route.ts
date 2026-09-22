@@ -84,14 +84,14 @@ export async function PUT(req: NextRequest) {
   }
 
   const supabase = createAdminClient();
-  for (const { id, display_order } of parsed.data.orders) {
-    const { error } = await supabase
-      .from("launcher_sections")
-      .update({ display_order })
-      .eq("id", id);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+  const results = await Promise.all(
+    parsed.data.orders.map(({ id, display_order }) =>
+      supabase.from("launcher_sections").update({ display_order }).eq("id", id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) {
+    return NextResponse.json({ error: failed.error.message }, { status: 500 });
   }
   bustLauncherCache("sections");
   return NextResponse.json({ success: true });

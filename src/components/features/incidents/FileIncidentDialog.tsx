@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,7 +24,6 @@ import {
   EMPLOYEE_ACKNOWLEDGEMENT_TEMPLATE,
   INCIDENT_CATEGORIES,
   INCIDENT_SEVERITIES,
-  type IncidentAttachment,
   type IncidentCategory,
   type IncidentSeverity,
 } from "@/lib/incidents/types";
@@ -41,41 +40,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-
-// One upload slot in the dialog's queue. Each user-selected file gets a
-// stable client id so the row survives state churn (uploading → uploaded /
-// error → retry). Kept as a discriminated union so the render side can lean
-// on the compiler for which fields are present in each state.
-type UploadItem =
-  | {
-      id: string;
-      status: "uploading";
-      file: File;
-      previewUrl: string | null;
-    }
-  | {
-      id: string;
-      status: "error";
-      file: File;
-      previewUrl: string | null;
-      error: string;
-    }
-  | {
-      id: string;
-      status: "uploaded";
-      file: File;
-      previewUrl: string | null;
-      meta: IncidentAttachment;
-    };
-
-function makePreviewUrl(file: File): string | null {
-  if (!file.type.toLowerCase().startsWith("image/")) return null;
-  try {
-    return URL.createObjectURL(file);
-  } catch {
-    return null;
-  }
-}
+import { useIncidentAttachmentUploads } from "./useIncidentAttachmentUploads";
 
 // Value shape a <input type="datetime-local"> expects: local wall-clock
 // time as YYYY-MM-DDTHH:MM (no timezone suffix). Used to prefill the field
@@ -136,28 +101,22 @@ export function FileIncidentDialog({
   const [problem, setProblem] = useState("");
   const [proposedSolution, setProposedSolution] = useState("");
   const [managerNotes, setManagerNotes] = useState("");
-  const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Any object URLs we created for image thumbnails must be revoked when
-  // the dialog closes or the row is removed, otherwise they leak memory
-  // for the life of the tab.
-  useEffect(() => {
-    return () => {
-      uploads.forEach((u) => {
-        if (u.previewUrl) URL.revokeObjectURL(u.previewUrl);
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const {
+    uploads,
+    uploadingCount,
+    errorCount,
+    submittedAttachments,
+    queueFiles,
+    retryUpload,
+    removeUpload,
+    reset: resetUploads,
+  } = useIncidentAttachmentUploads({ maxTotal: 10 });
 
   const uploadCount = uploads.length;
-  const uploadingCount = uploads.filter((u) => u.status === "uploading").length;
-  const attachments: IncidentAttachment[] = uploads
-    .filter((u): u is Extract<UploadItem, { status: "uploaded" }> => u.status === "uploaded")
-    .map((u) => u.meta);
 
   // Load the scoped employee list only when the dialog opens AND we need
   // a picker. Same endpoint MarkDayOffDialog uses so the scope rules match.
@@ -199,94 +158,21 @@ export function FileIncidentDialog({
     setProblem("");
     setProposedSolution("");
     setManagerNotes("");
-    setUploads((prev) => {
-      prev.forEach((u) => u.previewUrl && URL.revokeObjectURL(u.previewUrl));
-      return [];
-    });
+    resetUploads();
     setError(null);
   };
 
-  const runUpload = useCallback(
-    async (id: string, file: File, targetEmployeeId: string) => {
-      const body = new FormData();
-      body.append("file", file);
-      body.append("employeeProfileId", targetEmployeeId);
-      let res: Response;
-      try {
-        res = await fetch("/api/incidents/attachments", { method: "POST", body });
-      } catch {
-        setUploads((prev) =>
-          prev.map((u) =>
-            u.id === id && u.status === "uploading"
-              ? { ...u, status: "error", error: "Network error" }
-              : u,
-          ),
-        );
-        return;
-      }
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}));
-        const msg = typeof b.error === "string" ? b.error : "Upload failed";
-        setUploads((prev) =>
-          prev.map((u) =>
-            u.id === id && u.status === "uploading"
-              ? { ...u, status: "error", error: msg }
-              : u,
-          ),
-        );
-        return;
-      }
-      const meta: IncidentAttachment = await res.json();
-      setUploads((prev) =>
-        prev.map((u) =>
-          u.id === id && u.status === "uploading"
-            ? { id, status: "uploaded", file: u.file, previewUrl: u.previewUrl, meta }
-            : u,
-        ),
-      );
-    },
-    [],
-  );
-
-  const queueFiles = (files: File[]) => {
+  const handleQueue = (files: File[]) => {
     if (!employeeProfileId) {
       setError("Select an employee before uploading attachments.");
       return;
     }
     setError(null);
-    const remaining = Math.max(0, 10 - uploads.length);
-    const accepted = files.slice(0, remaining);
-    if (files.length > accepted.length) {
+    const { rejected } = queueFiles(files, employeeProfileId);
+    if (rejected > 0) {
+      const remaining = Math.max(0, 10 - (uploads.length + files.length - rejected));
       setError(`Only ${remaining} more file(s) can be attached (max 10).`);
     }
-    const newItems: UploadItem[] = accepted.map((file) => ({
-      id: crypto.randomUUID(),
-      status: "uploading" as const,
-      file,
-      previewUrl: makePreviewUrl(file),
-    }));
-    setUploads((prev) => [...prev, ...newItems]);
-    newItems.forEach((item) => runUpload(item.id, item.file, employeeProfileId));
-  };
-
-  const retryUpload = (id: string) => {
-    if (!employeeProfileId) return;
-    setUploads((prev) =>
-      prev.map((u) => {
-        if (u.id !== id || u.status !== "error") return u;
-        return { id: u.id, status: "uploading", file: u.file, previewUrl: u.previewUrl };
-      }),
-    );
-    const target = uploads.find((u) => u.id === id);
-    if (target) runUpload(id, target.file, employeeProfileId);
-  };
-
-  const removeUpload = (id: string) => {
-    setUploads((prev) => {
-      const gone = prev.find((u) => u.id === id);
-      if (gone?.previewUrl) URL.revokeObjectURL(gone.previewUrl);
-      return prev.filter((u) => u.id !== id);
-    });
   };
 
   const submit = async () => {
@@ -311,8 +197,7 @@ export function FileIncidentDialog({
       setError("Wait for attachments to finish uploading before filing.");
       return;
     }
-    const failed = uploads.filter((u) => u.status === "error");
-    if (failed.length > 0) {
+    if (errorCount > 0) {
       setError("Remove or retry the failed attachment(s) before filing.");
       return;
     }
@@ -333,7 +218,7 @@ export function FileIncidentDialog({
         proposed_solution: proposedSolution,
         manager_notes: managerNotes.trim() || null,
         acknowledgement_text: EMPLOYEE_ACKNOWLEDGEMENT_TEMPLATE,
-        attachments,
+        attachments: submittedAttachments,
       }),
     });
     setSubmitting(false);
@@ -552,7 +437,7 @@ export function FileIncidentDialog({
               disabled={uploadCount >= 10}
               onChange={(e) => {
                 const files = Array.from(e.target.files ?? []);
-                if (files.length > 0) queueFiles(files);
+                if (files.length > 0) handleQueue(files);
                 e.target.value = "";
               }}
               className={uploadCount > 0 ? "hidden" : undefined}
@@ -560,6 +445,9 @@ export function FileIncidentDialog({
             {uploadCount > 0 && (
               <ul className="space-y-2">
                 {uploads.map((u) => {
+                  // FileIncidentDialog never seeds `existing` — the hook still
+                  // includes it in the union so we skip defensively.
+                  if (u.status === "existing") return null;
                   const image = isImageMime(u.file.type);
                   return (
                     <li
@@ -632,7 +520,7 @@ export function FileIncidentDialog({
                           type="button"
                           size="sm"
                           variant="outline"
-                          onClick={() => retryUpload(u.id)}
+                          onClick={() => retryUpload(u.id, employeeProfileId)}
                         >
                           <RotateCcw className="mr-1 h-3 w-3" />
                           Retry

@@ -1,10 +1,10 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import {
   EVENT_LABEL,
-  extractActorHeaders,
   logIncidentEvent,
   type FieldChange,
 } from "@/lib/incidents/audit";
+import { extractActorHeaders } from "@/lib/http";
 import { composeIncidentDocument } from "@/lib/incidents/types";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -34,23 +34,11 @@ export async function GET(
     return NextResponse.json({ error: error?.message || "Not found" }, { status: 404 });
   }
 
-  if (!viewerIsAdmin) {
-    const { data: emp } = await supabase
-      .from("profiles")
-      .select("department, office, is_active")
-      .eq("id", row.employee_profile_id)
-      .single();
-    if (!emp) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (emp.is_active === false) return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-    if (scope.department && emp.department !== scope.department) {
-      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-    }
-    if (scope.office && emp.office !== scope.office) {
-      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-    }
-  }
-
-  // Profile blurbs for reporter + employee + all event actors in one round trip.
+  // Events first — the actor id list depends on the event rows. Then a
+  // single batched profile fetch covers the reporter, the subject
+  // employee (which the scope check also reads), and every actor referenced
+  // by the audit trail. Old flow ran the employee scope check as its own
+  // query on top of these; folding it into the batch saves one round-trip.
   const { data: events } = await supabase
     .from("incident_report_events")
     .select("id, event_type, actor_profile_id, actor_ip, actor_ua, details, created_at")
@@ -65,9 +53,21 @@ export async function GET(
   }
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, email, name:full_name, office, department")
+    .select("id, email, name:full_name, office, department, is_active")
     .in("id", Array.from(actorIds));
   const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+
+  if (!viewerIsAdmin) {
+    const emp = profileMap.get(row.employee_profile_id);
+    if (!emp) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (emp.is_active === false) return NextResponse.json({ error: "Out of scope" }, { status: 403 });
+    if (scope.department && emp.department !== scope.department) {
+      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
+    }
+    if (scope.office && emp.office !== scope.office) {
+      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
+    }
+  }
 
   return NextResponse.json({
     ...row,

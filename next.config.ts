@@ -20,6 +20,14 @@ const csp = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Tree-shake modular imports so each `import { X } from "lucide-react"` /
+  // "radix-ui" pulls only X, not the full barrel. Meaningfully shrinks
+  // client bundles for pages that reference a handful of icons or Radix
+  // primitives out of very large packages.
+  experimental: {
+    optimizePackageImports: ["lucide-react", "radix-ui"],
+  },
+
   // @react-pdf/renderer + pdfkit ship font files (.cjs / .afm) that need
   // to be resolvable at runtime. Bundling breaks them on Vercel —
   // marking them as external tells Next to load from node_modules,

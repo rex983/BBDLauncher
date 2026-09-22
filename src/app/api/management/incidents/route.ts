@@ -4,7 +4,8 @@ import {
   EMPLOYEE_ACKNOWLEDGEMENT_TEMPLATE,
   formatIncidentNumber,
 } from "@/lib/incidents/types";
-import { extractActorHeaders, logIncidentEvent } from "@/lib/incidents/audit";
+import { logIncidentEvent } from "@/lib/incidents/audit";
+import { extractActorHeaders } from "@/lib/http";
 import { hashDocument, hashManagerSignature } from "@/lib/incidents/hashing";
 import { listScopedIncidentSummaries } from "@/lib/incidents/queries";
 import { createNotification } from "@/lib/notifications/service";
