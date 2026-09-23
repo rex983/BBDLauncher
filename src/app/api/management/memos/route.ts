@@ -10,11 +10,9 @@ import { hashAuthorSignature, hashMemoDocument } from "@/lib/memos/hashing";
 import { listMemosForManagement } from "@/lib/memos/queries";
 import { publishMemo } from "@/lib/memos/service";
 import { extractActorHeaders } from "@/lib/http";
+import { VALID_DEPARTMENTS, VALID_OFFICES } from "@/lib/org/constants";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-
-const VALID_OFFICES = new Set(["Harbor", "Marion", "BST", "RnD"]);
-const VALID_DEPARTMENTS = new Set(["SALES TEAM", "BST", "RnD"]);
 
 const attachmentSchema = z.object({
   path: z.string().min(1),

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  TIME_OFF_STATUS_VARIANT,
   TIME_OFF_SUBCATEGORIES,
   TIME_OFF_SUBCATEGORY_HINTS,
   TIME_OFF_TYPES,
@@ -21,6 +22,7 @@ import {
   type TimeOffStatus,
   type TimeOffType,
 } from "@/lib/timeoff/types";
+import { formatBytes } from "@/components/shared/AttachmentPreview";
 import { Check, Paperclip, Pencil, Trash2, X } from "lucide-react";
 
 // Everything the dialog needs to render + edit. Callers assemble this
@@ -67,12 +69,6 @@ function fmtDateTime(iso: string) {
     hour: "numeric", minute: "2-digit",
   });
 }
-function formatBytes(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export function RequestDetailDialog({ row, onClose, canDecide, canEdit, onChanged }: Props) {
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [busy, setBusy] = useState(false);
@@ -453,11 +449,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function StatusBadge({ status }: { status: TimeOffStatus }) {
-  const variants: Record<TimeOffStatus, "default" | "secondary" | "outline" | "destructive"> = {
-    pending: "outline",
-    approved: "default",
-    denied: "destructive",
-    cancelled: "secondary",
-  };
-  return <Badge variant={variants[status]}>{status}</Badge>;
+  return <Badge variant={TIME_OFF_STATUS_VARIANT[status]}>{status}</Badge>;
 }

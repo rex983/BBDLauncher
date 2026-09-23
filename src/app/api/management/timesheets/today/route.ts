@@ -1,9 +1,7 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
+import { VALID_DEPARTMENTS, VALID_OFFICES } from "@/lib/org/constants";
 import { loadTimesheetsToday } from "@/lib/timesheets/queries";
 import { NextRequest, NextResponse } from "next/server";
-
-const VALID_OFFICES = new Set(["Harbor", "Marion", "BST", "RnD"]);
-const VALID_DEPARTMENTS = new Set(["SALES TEAM", "BST", "RnD"]);
 
 export async function GET(req: NextRequest) {
   const gate = await requireTimeDataAccess(null, "view");

@@ -131,3 +131,25 @@ export function requestDays(r: {
   }
   return countBusinessDays(r.start_date, r.end_date);
 }
+
+// Today's date in local time as YYYY-MM-DD. Local — not UTC — because
+// employees see and pick dates in their own timezone; a UTC "today" would
+// flip a day early or late for anyone west/east of the deploy region.
+export function todayISO(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export type BadgeVariant = "default" | "secondary" | "outline" | "destructive";
+
+// Shared status→Badge variant mapping so the same request looks identical
+// across the employee panel, manager queue, ledger dialog, and detail view.
+export const TIME_OFF_STATUS_VARIANT: Record<TimeOffStatus, BadgeVariant> = {
+  pending: "outline",
+  approved: "default",
+  denied: "destructive",
+  cancelled: "secondary",
+};

@@ -1,12 +1,11 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
+import { VALID_DEPARTMENTS, VALID_OFFICES } from "@/lib/org/constants";
 import { loadTimeoffQueue } from "@/lib/timeoff/queries";
 import { TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 const VALID_STATUSES = new Set(["pending", "approved", "denied", "cancelled"]);
-const VALID_OFFICES = new Set(["Harbor", "Marion", "BST", "RnD"]);
-const VALID_DEPARTMENTS = new Set(["SALES TEAM", "BST", "RnD"]);
 
 // Manager creates a time-off row on behalf of an employee (sick day,
 // personal absence, whatever). Auto-approved with decided_by=manager so

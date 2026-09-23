@@ -12,6 +12,7 @@ import {
 } from "@/components/features/timeoff/RequestDetailDialog";
 import {
   TIME_OFF_TYPE_LABEL,
+  todayISO,
   type TimeOffAttachment,
   type TimeOffStatus,
   type TimeOffType,
@@ -213,7 +214,7 @@ export function TimeOffCalendar({
 
   const currentMonth = anchor.getMonth();
   const monthLabel = anchor.toLocaleDateString([], { month: "long", year: "numeric" });
-  const todayISOStr = isoDate(new Date());
+  const todayISOStr = todayISO();
 
   const shift = (delta: number) => {
     setAnchor((a) => new Date(a.getFullYear(), a.getMonth() + delta, 1));

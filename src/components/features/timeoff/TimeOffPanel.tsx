@@ -17,14 +17,17 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  TIME_OFF_STATUS_VARIANT,
   TIME_OFF_SUBCATEGORIES,
   TIME_OFF_SUBCATEGORY_HINTS,
   TIME_OFF_TYPES,
   TIME_OFF_TYPE_LABEL,
+  todayISO,
   type TimeOffAttachment,
   type TimeOffStatus,
   type TimeOffType,
 } from "@/lib/timeoff/types";
+import { formatBytes } from "@/components/shared/AttachmentPreview";
 import { Paperclip, Plus, X } from "lucide-react";
 
 export interface TimeOffRequest {
@@ -43,31 +46,10 @@ export interface TimeOffRequest {
   attachments?: TimeOffAttachment[] | null;
 }
 
-const STATUS_VARIANT: Record<TimeOffStatus, "default" | "secondary" | "outline" | "destructive"> = {
-  pending: "outline",
-  approved: "default",
-  denied: "destructive",
-  cancelled: "secondary",
-};
-
 function fmtDate(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString([], {
     month: "short", day: "numeric", year: "numeric",
   });
-}
-
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function formatBytes(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export interface TimeOffPanelProps {
@@ -452,7 +434,7 @@ export function TimeOffPanel({
                     {r.full_day ? "Full day" : `${r.hours}h`}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={STATUS_VARIANT[r.status]}>{r.status}</Badge>
+                    <Badge variant={TIME_OFF_STATUS_VARIANT[r.status]}>{r.status}</Badge>
                     {r.decided_note && (
                       <div className="text-xs text-muted-foreground mt-1">
                         {r.decided_note}

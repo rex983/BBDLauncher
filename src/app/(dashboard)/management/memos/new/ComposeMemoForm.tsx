@@ -31,6 +31,7 @@ import {
   formatBytes,
   isImageMime,
 } from "@/components/shared/AttachmentPreview";
+import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
 import {
   CheckCircle2,
   Loader2,
@@ -39,9 +40,6 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-
-const VALID_OFFICES = ["Harbor", "Marion", "BST", "RnD"] as const;
-const VALID_DEPARTMENTS = ["SALES TEAM", "BST", "RnD"] as const;
 
 type UploadItem =
   | { id: string; status: "uploading"; file: File; previewUrl: string | null }
@@ -451,7 +449,7 @@ export function ComposeMemoForm({
                     <SelectValue placeholder="Pick an office" />
                   </SelectTrigger>
                   <SelectContent>
-                    {VALID_OFFICES.map((o) => (
+                    {OFFICES.map((o) => (
                       <SelectItem key={o} value={o}>
                         {o}
                       </SelectItem>
@@ -471,7 +469,7 @@ export function ComposeMemoForm({
                       <SelectValue placeholder="Pick a department" />
                     </SelectTrigger>
                     <SelectContent>
-                      {VALID_DEPARTMENTS.map((d) => (
+                      {DEPARTMENTS.map((d) => (
                         <SelectItem key={d} value={d}>
                           {d}
                         </SelectItem>

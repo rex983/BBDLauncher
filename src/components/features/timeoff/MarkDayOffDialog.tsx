@@ -15,6 +15,7 @@ import {
   TIME_OFF_MANAGER_REASONS,
   TIME_OFF_SUBCATEGORIES,
   TIME_OFF_TYPES,
+  todayISO,
   type TimeOffType,
 } from "@/lib/timeoff/types";
 import { CalendarPlus } from "lucide-react";
@@ -34,14 +35,6 @@ interface TodayRow {
 interface Props {
   onCreated?: () => void;
   viewAsOffice?: string | null;
-}
-
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {

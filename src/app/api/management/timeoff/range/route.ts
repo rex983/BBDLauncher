@@ -2,10 +2,9 @@ import {
   requireTimeDataAccess,
   requireTimeDataAccessWithProfile,
 } from "@/lib/auth/scope-check";
+import { VALID_DEPARTMENTS, VALID_OFFICES } from "@/lib/org/constants";
 import { NextRequest, NextResponse } from "next/server";
 
-const VALID_OFFICES = new Set(["Harbor", "Marion", "BST", "RnD"]);
-const VALID_DEPARTMENTS = new Set(["SALES TEAM", "BST", "RnD"]);
 const MAX_RANGE_MS = 24 * 31 * 24 * 60 * 60 * 1000; // ~24 months
 const MAX_REQUESTS = 5000;
 

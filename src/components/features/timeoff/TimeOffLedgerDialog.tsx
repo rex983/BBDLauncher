@@ -23,6 +23,7 @@ import {
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import {
   requestDays,
+  TIME_OFF_STATUS_VARIANT,
   TIME_OFF_TYPE_LABEL,
   type TimeOffStatus,
   type TimeOffType,
@@ -83,13 +84,6 @@ function fmtDateTime(iso: string | null) {
     year: "numeric",
   });
 }
-
-const STATUS_VARIANT: Record<TimeOffStatus, "default" | "secondary" | "outline" | "destructive"> = {
-  pending: "outline",
-  approved: "default",
-  denied: "destructive",
-  cancelled: "secondary",
-};
 
 export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }: Props) {
   const { viewAsOffice } = useRolePreview();
@@ -239,7 +233,7 @@ export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }
                     {requestDays(r).toFixed(1)}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={STATUS_VARIANT[r.status]}>{r.status}</Badge>
+                    <Badge variant={TIME_OFF_STATUS_VARIANT[r.status]}>{r.status}</Badge>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                     {fmtDateTime(r.decided_at) || "—"}
