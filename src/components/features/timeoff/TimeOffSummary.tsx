@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -88,6 +90,32 @@ export function TimeOffSummary({
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [ledgerProfile, setLedgerProfile] = useState<Profile | null>(null);
+  const [availableYears, setAvailableYears] = useState<number[]>([currentYear]);
+
+  // Fetch the set of years that actually have data in the viewer's scope
+  // so the year picker only lists years worth clicking.
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/management/timeoff/years");
+      if (cancelled || !res.ok) return;
+      const body = await res.json();
+      if (Array.isArray(body.years) && body.years.length) {
+        setAvailableYears(body.years);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [active]);
+
+  // If the from/to range covers exactly one calendar year, treat that as
+  // the selected year in the dropdown; otherwise show a blank placeholder.
+  const selectedYear = useMemo(() => {
+    const m = from.match(/^(\d{4})-01-01$/);
+    if (!m) return "";
+    if (to !== `${m[1]}-12-31`) return "";
+    return m[1];
+  }, [from, to]);
 
   useEffect(() => {
     // Skip fetching when the containing tab isn't active — see TimeOffCalendar
@@ -205,13 +233,22 @@ export function TimeOffSummary({
             className="w-[160px]"
           />
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => { setFrom(defaultFrom); setTo(defaultTo); }}
-        >
-          Reset ({currentYear})
-        </Button>
+        <div className="space-y-1">
+          <Label htmlFor="year-picker" className="text-xs">Year</Label>
+          <Select
+            value={selectedYear}
+            onValueChange={(y) => { setFrom(`${y}-01-01`); setTo(`${y}-12-31`); }}
+          >
+            <SelectTrigger id="year-picker" className="w-[120px]">
+              <SelectValue placeholder="Custom" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableYears.map((y) => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
