@@ -154,7 +154,7 @@ export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }
 
   return (
     <Dialog open={!!profile} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[min(1400px,95vw)] w-[95vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{profile?.name || profile?.email || "Ledger"}</DialogTitle>
           <DialogDescription>
