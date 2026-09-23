@@ -40,13 +40,36 @@ interface Request {
 
 const TYPES: TimeOffType[] = ["vacation", "sick", "personal", "parental", "other"];
 
+// Compact date-range label: "Sep 25", "Sep 25 – Oct 2", or "Dec 30, 2026 –
+// Jan 3, 2027" when the range straddles years. Kept short so three upcoming
+// entries fit in a table cell without wrapping.
+function fmtRange(start: string, end: string) {
+  const s = new Date(start + "T00:00:00");
+  const e = new Date(end + "T00:00:00");
+  const sameYear = s.getFullYear() === e.getFullYear();
+  const short: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  const full: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
+  if (start === end) return s.toLocaleDateString([], short);
+  if (sameYear) {
+    return `${s.toLocaleDateString([], short)} – ${e.toLocaleDateString([], short)}`;
+  }
+  return `${s.toLocaleDateString([], full)} – ${e.toLocaleDateString([], full)}`;
+}
+
+interface UpcomingEntry {
+  start_date: string;
+  end_date: string;
+  type: TimeOffType;
+  days: number;
+}
+
 interface EmployeeRow {
   profile: Profile;
   approvedByType: Record<TimeOffType, number>;
   pending: number;
   denied: number;
   totalApproved: number;
-  latestReasons: string[];
+  upcoming: UpcomingEntry[];
 }
 
 export function TimeOffSummary({
@@ -100,35 +123,49 @@ export function TimeOffSummary({
         pending: 0,
         denied: 0,
         totalApproved: 0,
-        latestReasons: [],
+        upcoming: [],
       });
     }
-    // Sort by created_at desc for "latest reasons"; the range API already
-    // returns start_date asc, so we walk the array and lift the last few
-    // notes per person.
-    const sortedByDate = [...requests].sort((a, b) =>
-      b.start_date.localeCompare(a.start_date),
+    // "Upcoming" = approved and not yet ended as of today. Sort ascending
+    // by start_date so the soonest request lands first for at-a-glance
+    // "who's off next" reading.
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const sortedByStart = [...requests].sort((a, b) =>
+      a.start_date.localeCompare(b.start_date),
     );
-    for (const r of sortedByDate) {
+    for (const r of sortedByStart) {
       const row = byId.get(r.profile_id);
       if (!row) continue;
       const days = requestDays(r);
       if (r.status === "approved") {
         row.approvedByType[r.type] += days;
         row.totalApproved += days;
+        if (r.end_date >= todayIso) {
+          row.upcoming.push({
+            start_date: r.start_date,
+            end_date: r.end_date,
+            type: r.type,
+            days,
+          });
+        }
       } else if (r.status === "pending") {
         row.pending += days;
       } else if (r.status === "denied") {
         row.denied += days;
       }
-      const note = r.reason?.trim();
-      if (note && row.latestReasons.length < 3 && !row.latestReasons.includes(note)) {
-        row.latestReasons.push(note);
-      }
     }
     return [...byId.values()]
       .filter((r) => r.totalApproved > 0 || r.pending > 0 || r.denied > 0)
-      .sort((a, b) => b.totalApproved - a.totalApproved);
+      .sort((a, b) => {
+        // Employees with something coming up rise to the top, ordered by
+        // the soonest start. Then fall back to total approved.
+        const aNext = a.upcoming[0]?.start_date;
+        const bNext = b.upcoming[0]?.start_date;
+        if (aNext && bNext) return aNext.localeCompare(bNext);
+        if (aNext) return -1;
+        if (bNext) return 1;
+        return b.totalApproved - a.totalApproved;
+      });
   }, [profiles, requests]);
 
   const totals = useMemo(() => {
@@ -204,7 +241,7 @@ export function TimeOffSummary({
               <TableHead className="text-right">Other</TableHead>
               <TableHead className="text-right">Approved</TableHead>
               <TableHead className="text-right">Pending</TableHead>
-              <TableHead>Recent notes</TableHead>
+              <TableHead>Upcoming approved time off</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -235,10 +272,29 @@ export function TimeOffSummary({
                     <Badge variant="outline">{r.pending.toFixed(1)}</Badge>
                   ) : "—"}
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground max-w-md">
-                  {r.latestReasons.length === 0
-                    ? "—"
-                    : r.latestReasons.slice(0, 2).join(" · ")}
+                <TableCell className="text-sm max-w-md">
+                  {r.upcoming.length === 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {r.upcoming.slice(0, 3).map((u, i) => (
+                        <div key={i} className="whitespace-nowrap">
+                          <span className="font-medium">{fmtRange(u.start_date, u.end_date)}</span>
+                          <span className="text-muted-foreground">
+                            {" · "}
+                            {TIME_OFF_TYPE_LABEL[u.type]}
+                            {" · "}
+                            {u.days.toFixed(1)}d
+                          </span>
+                        </div>
+                      ))}
+                      {r.upcoming.length > 3 && (
+                        <div className="text-xs text-muted-foreground">
+                          +{r.upcoming.length - 3} more
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
