@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { RolePreviewProvider } from "@/components/features/launcher/role-preview-context";
 import { PreviewBanner } from "@/components/features/launcher/preview-banner";
 import { ClockGate } from "@/components/features/timeclock/ClockGate";
+import { ShiftEndPrompt } from "@/components/features/timeclock/ShiftEndPrompt";
 import { Suspense } from "react";
 
 function SidebarSkeleton() {
@@ -32,6 +33,7 @@ export default function DashboardLayout({
                 </main>
               </div>
             </div>
+            <ShiftEndPrompt />
           </ClockGate>
         </RolePreviewProvider>
       </Suspense>
