@@ -6,8 +6,13 @@ import { decryptStrapiCookie } from "@/lib/auth/strapi-sso";
 import { rateLimit } from "@/lib/rate-limit";
 import type { Department, Office, UserRole } from "@/types/auth";
 
-// Dev bypass ONLY in actual development, never via env var in production
-const isDev = process.env.NODE_ENV === "development";
+// Dev bypass ONLY in actual development, never via env var in production.
+// Belt-and-suspenders: also refuse when running under Vercel (preview or
+// production) so a mis-set NODE_ENV in a deployed environment can't enable
+// the credential bypass. `VERCEL_ENV` is present on every Vercel deploy.
+const isDev =
+  process.env.NODE_ENV === "development" &&
+  (!process.env.VERCEL_ENV || process.env.VERCEL_ENV === "development");
 
 // AUTH_SECRET signs/encrypts JWTs — refuse to start without it in production
 // rather than fall back to an unstable per-deploy secret that breaks sessions.

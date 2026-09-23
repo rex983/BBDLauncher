@@ -1,4 +1,7 @@
-import { requireTimeDataAccess } from "@/lib/auth/scope-check";
+import {
+  requireTimeDataAccess,
+  requireTimeDataAccessWithProfile,
+} from "@/lib/auth/scope-check";
 import { TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -22,18 +25,18 @@ const editSchema = z.object({
   reason: z.string().max(2000).nullable().optional(),
 });
 
-// Scope + row-fetch helper shared by PATCH and DELETE. Returns either the
-// resolved request row or a `NextResponse` to short-circuit with.
-async function loadRowWithScope(
-  id: string,
-  gate: Awaited<ReturnType<typeof requireTimeDataAccess>>,
-) {
-  if (!gate.ok) return { fail: gate.response as NextResponse };
-  const { supabase, scope, viewerIsAdmin } = gate;
+// Scope + row-fetch helper shared by PATCH and DELETE. Two-phase gate:
+// (1) session/role check via requireTimeDataAccess so we have an admin
+// client, (2) load the request row to learn its profile_id, (3) re-gate
+// through requireTimeDataAccessWithProfile so the scope check on that
+// target is contractual and shared with the rest of the time-off routes.
+async function loadRowWithScope(id: string) {
+  const initial = await requireTimeDataAccess(null, "edit");
+  if (!initial.ok) return { fail: initial.response };
 
   // Split fetch to avoid the ambiguous profiles!inner(...) join — the table
   // has two FKs to profiles (profile_id and decided_by).
-  const { data: reqRow } = await supabase
+  const { data: reqRow } = await initial.supabase
     .from("time_off_requests")
     .select("profile_id, status")
     .eq("id", id)
@@ -42,25 +45,14 @@ async function loadRowWithScope(
     return { fail: NextResponse.json({ error: "Not found" }, { status: 404 }) };
   }
 
-  if (!viewerIsAdmin) {
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("department, office, is_active")
-      .eq("id", reqRow.profile_id)
-      .single<{ department: string | null; office: string | null; is_active: boolean }>();
-    if (!prof) return { fail: NextResponse.json({ error: "Not found" }, { status: 404 }) };
-    if (prof.is_active === false) {
-      return { fail: NextResponse.json({ error: "Employee is inactive" }, { status: 403 }) };
-    }
-    if (scope.department && prof.department !== scope.department) {
-      return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
-    }
-    if (scope.office && prof.office !== scope.office) {
-      return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
-    }
-  }
+  const gate = await requireTimeDataAccessWithProfile<{
+    department: string | null;
+    office: string | null;
+    is_active: boolean;
+  }>(reqRow.profile_id, "edit", "department, office, is_active");
+  if (!gate.ok) return { fail: gate.response };
 
-  return { row: reqRow };
+  return { row: reqRow, gate };
 }
 
 export async function PATCH(
@@ -68,19 +60,16 @@ export async function PATCH(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const gate = await requireTimeDataAccess(null, "edit");
-  if (!gate.ok) return gate.response;
-  const { session, supabase, viewerIsAdmin } = gate;
-
   const body = await req.json();
 
   // Route on payload shape: if the client sent a `status`, it's a decide;
   // otherwise it's a field-level edit.
   const isDecide = body && typeof body === "object" && "status" in body;
 
-  const scopeResult = await loadRowWithScope(id, gate);
+  const scopeResult = await loadRowWithScope(id);
   if ("fail" in scopeResult) return scopeResult.fail;
-  const { row: reqRow } = scopeResult;
+  const { row: reqRow, gate } = scopeResult;
+  const { session, supabase, viewerIsAdmin } = gate;
 
   if (isDecide) {
     const parsed = decideSchema.safeParse(body);
@@ -195,12 +184,9 @@ export async function DELETE(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const gate = await requireTimeDataAccess(null, "edit");
-  if (!gate.ok) return gate.response;
-  const { supabase } = gate;
-
-  const scopeResult = await loadRowWithScope(id, gate);
+  const scopeResult = await loadRowWithScope(id);
   if ("fail" in scopeResult) return scopeResult.fail;
+  const { supabase } = scopeResult.gate;
 
   const { error } = await supabase
     .from("time_off_requests")
