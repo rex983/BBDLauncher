@@ -9,6 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
+import { TimeOffLedgerDialog } from "@/components/features/timeoff/TimeOffLedgerDialog";
 import {
   requestDays,
   TIME_OFF_TYPE_LABEL,
@@ -63,6 +64,7 @@ export function TimeOffSummary({
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ledgerProfile, setLedgerProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
     // Skip fetching when the containing tab isn't active — see TimeOffCalendar
@@ -207,9 +209,15 @@ export function TimeOffSummary({
           </TableHeader>
           <TableBody>
             {rows.map((r) => (
-              <TableRow key={r.profile.id}>
+              <TableRow
+                key={r.profile.id}
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => setLedgerProfile(r.profile)}
+              >
                 <TableCell>
-                  <div className="font-medium">{r.profile.name || r.profile.email}</div>
+                  <div className="font-medium hover:underline">
+                    {r.profile.name || r.profile.email}
+                  </div>
                   <div className="text-xs text-muted-foreground">
                     {r.profile.office}{r.profile.department ? ` · ${r.profile.department}` : ""}
                   </div>
@@ -239,7 +247,15 @@ export function TimeOffSummary({
       )}
       <p className="text-xs text-muted-foreground">
         Days = business days (Mon–Fri) for full-day requests; partial days credit hours ÷ 8.
+        Click a row to open the full ledger.
       </p>
+
+      <TimeOffLedgerDialog
+        profile={ledgerProfile}
+        initialFrom={from}
+        initialTo={to}
+        onClose={() => setLedgerProfile(null)}
+      />
     </div>
   );
 }

@@ -40,6 +40,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid department" }, { status: 400 });
   }
 
+  const profileIdFilter = url.searchParams.get("profile_id");
+  if (profileIdFilter && !/^[0-9a-f-]{36}$/i.test(profileIdFilter)) {
+    return NextResponse.json({ error: "Invalid profile_id" }, { status: 400 });
+  }
+
   let profileQuery = supabase
     .from("profiles")
     .select("id, email, name:full_name, office, department")
@@ -48,6 +53,7 @@ export async function GET(req: NextRequest) {
   else if (departmentFilter) profileQuery = profileQuery.eq("department", departmentFilter);
   if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
   else if (officeFilter) profileQuery = profileQuery.eq("office", officeFilter);
+  if (profileIdFilter) profileQuery = profileQuery.eq("id", profileIdFilter);
 
   const { data: profiles } = await profileQuery;
   const profileIds = (profiles || []).map((p) => p.id);
