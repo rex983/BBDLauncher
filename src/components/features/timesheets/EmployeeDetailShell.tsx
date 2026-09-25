@@ -19,7 +19,7 @@ import {
   computeState, formatDuration, STATUS_LABEL,
   type PunchEventType, type TimePunch,
 } from "@/lib/timesheets/state";
-import { computeDayWorkedMs } from "@/lib/timesheets/weekly";
+import { computeDayWorkedMs, OVERTIME_THRESHOLD_MS } from "@/lib/timesheets/weekly";
 import { localDateInZone } from "@/lib/timesheets/tz";
 import { canEditTimeData } from "@/lib/auth/permissions";
 import {
@@ -30,6 +30,8 @@ import {
 import type {
   EmployeeDetailData,
   EmployeeDetailProfile,
+  EmployeeOvertime,
+  OvertimeWeek,
   WindowTimeOffRow,
   YtdBreakdown,
 } from "@/lib/timesheets/detail";
@@ -112,6 +114,28 @@ const PUNCH_COLUMNS: ExportColumn<TimePunch>[] = [
   { key: "id", label: "Punch ID", get: (p) => p.id },
 ];
 
+const OVERTIME_WEEK_COLUMNS: ExportColumn<OvertimeWeek>[] = [
+  {
+    key: "week_start",
+    label: "Week starting (ET)",
+    get: (w) => localDateInZone(new Date(w.week_start)),
+  },
+  { key: "worked_hours", label: "Worked hours", get: (w) => msToHours(w.worked_ms) },
+  { key: "overtime_hours", label: "Overtime hours", get: (w) => msToHours(w.overtime_ms) },
+];
+
+// Weeks shown before "Show all" — enough for a pay-period glance.
+const OVERTIME_WEEKS_PREVIEW = 6;
+
+function msToHours(ms: number): number {
+  return Math.round((ms / 3_600_000) * 100) / 100;
+}
+
+function fmtWeekOf(iso: string) {
+  const [y, m, d] = localDateInZone(new Date(iso)).split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 const TIME_OFF_WINDOW_COLUMNS: ExportColumn<WindowTimeOffRow>[] = [
   { key: "start_date", label: "Start date", get: (r) => r.start_date },
   { key: "end_date", label: "End date", get: (r) => r.end_date },
@@ -148,6 +172,10 @@ export default function EmployeeDetailShell({
   const [timeOffYtd, setTimeOffYtd] = useState<YtdBreakdown>(
     initialData?.time_off.ytd ?? emptyYtd(),
   );
+  const [overtime, setOvertime] = useState<EmployeeOvertime | null>(
+    initialData?.overtime ?? null,
+  );
+  const [showAllOtWeeks, setShowAllOtWeeks] = useState(false);
   const [loading, setLoading] = useState(
     initialData === null && initialError === null,
   );
@@ -186,6 +214,7 @@ export default function EmployeeDetailShell({
         setTimeOffWindow(data.time_off.window ?? []);
         setTimeOffYtd(data.time_off.ytd ?? emptyYtd());
       }
+      if (data.overtime) setOvertime(data.overtime);
     } else {
       const body = await res.json().catch(() => ({}));
       setError(typeof body.error === "string" ? body.error : "Failed to load");
@@ -269,6 +298,18 @@ export default function EmployeeDetailShell({
     list.push(p);
     byDay.set(key, list);
   }
+  // Newest week first; skip weeks with no clocked time (pre-hire, leave).
+  const otWeeksDesc = (overtime?.weeks ?? [])
+    .filter((w) => w.worked_ms > 0)
+    .reverse();
+  const thisWeek = overtime?.weeks[overtime.weeks.length - 1] ?? null;
+  const otWeeksShown = showAllOtWeeks
+    ? otWeeksDesc
+    : otWeeksDesc.slice(0, OVERTIME_WEEKS_PREVIEW);
+  const employeeSlug = (profile?.name || profile?.email || profileId)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
+
   const days_desc = [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
   for (const [, list] of days_desc) {
     list.sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime());
@@ -333,6 +374,81 @@ export default function EmployeeDetailShell({
         <StatCard label="Breaks" value={formatDuration(state.break_ms)} />
         <StatCard label="Time off (YTD)" value={`${fmtDays(timeOffYtd.total)} d`} />
       </div>
+
+      {overtime && (
+        <Card className="gap-0 py-0">
+          <CardHeader className="flex flex-row items-center justify-between px-4 py-2 border-b">
+            <div className="text-sm font-semibold">Overtime — YTD</div>
+            <div className="flex items-center gap-3">
+              <div className="text-xs text-muted-foreground">
+                Hours past 40 in a Sun–Sat week (ET)
+              </div>
+              <ExportMenu
+                filename={`overtime-${employeeSlug}-ytd`}
+                rows={otWeeksDesc}
+                columns={OVERTIME_WEEK_COLUMNS}
+                size="sm"
+                disabled={otWeeksDesc.length === 0}
+              />
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 py-3 space-y-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <OtStat
+                label="This week"
+                value={formatDuration(thisWeek?.worked_ms ?? 0)}
+                sub={
+                  thisWeek && thisWeek.overtime_ms > 0
+                    ? `+${formatDuration(thisWeek.overtime_ms)} OT`
+                    : `${formatDuration(Math.max(0, OVERTIME_THRESHOLD_MS - (thisWeek?.worked_ms ?? 0)))} to 40h`
+                }
+                highlight={!!thisWeek && thisWeek.overtime_ms > 0}
+              />
+              <OtStat
+                label="Overtime (YTD)"
+                value={formatDuration(overtime.ytd_overtime_ms)}
+                highlight={overtime.ytd_overtime_ms > 0}
+              />
+              <OtStat
+                label="Weeks over 40h"
+                value={String(overtime.ytd_overtime_weeks)}
+                sub={`of ${otWeeksDesc.length} worked`}
+              />
+              <OtStat label="Worked (YTD)" value={formatDuration(overtime.ytd_worked_ms)} />
+            </div>
+            {otWeeksDesc.length > 0 && (
+              <ul className="divide-y border-t">
+                {otWeeksShown.map((w) => (
+                  <li
+                    key={w.week_start}
+                    className="grid grid-cols-[120px_100px_1fr] items-center gap-3 py-1.5 text-sm leading-tight"
+                  >
+                    <div className="tabular-nums font-medium">Wk {fmtWeekOf(w.week_start)}</div>
+                    <div className="tabular-nums">{formatDuration(w.worked_ms)}</div>
+                    <div>
+                      {w.overtime_ms > 0 ? (
+                        <Badge variant="destructive">+{formatDuration(w.overtime_ms)} OT</Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {otWeeksDesc.length > OVERTIME_WEEKS_PREVIEW && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="print:hidden"
+                onClick={() => setShowAllOtWeeks((v) => !v)}
+              >
+                {showAllOtWeeks ? "Show fewer" : `Show all ${otWeeksDesc.length} weeks`}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {timeOffYtd.total > 0 && (
         <Card className="gap-0 py-0">
@@ -602,6 +718,30 @@ function StatCard({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border bg-card p-4">
       <div className="text-xs text-muted-foreground uppercase tracking-wider">{label}</div>
       <div className="text-lg font-semibold mt-1">{value}</div>
+    </div>
+  );
+}
+
+function OtStat({
+  label,
+  value,
+  sub,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-md border p-3 ${
+        highlight ? "border-destructive/60 bg-destructive/5" : ""
+      }`}
+    >
+      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
+      <div className="tabular-nums font-semibold mt-0.5">{value}</div>
+      {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

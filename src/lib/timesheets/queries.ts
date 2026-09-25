@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeState, type TimePunch, type LiveState } from "@/lib/timesheets/state";
 import { computeWeeklyHours } from "@/lib/timesheets/weekly";
+import { fetchPunchesPaged } from "@/lib/timesheets/punches";
 import { startOfDayInZone, startOfWeekSundayInZone } from "@/lib/timesheets/tz";
 import type { Department, Office } from "@/types/auth";
 
@@ -64,15 +65,14 @@ export async function loadTimesheetsToday(
   const profileIds = (profiles || []).map((p) => p.id);
   if (profileIds.length === 0) return [];
 
-  const { data: punches } = await supabase
-    .from("time_punches")
-    .select("id, profile_id, event_type, occurred_at, source, note")
-    .in("profile_id", profileIds)
-    .gte("occurred_at", weekStart.toISOString())
-    .order("occurred_at", { ascending: true });
+  const { data: punches } = await fetchPunchesPaged(
+    supabase,
+    profileIds,
+    weekStart.toISOString(),
+  );
 
   const punchesByProfile = new Map<string, TimePunch[]>();
-  for (const p of (punches || []) as TimePunch[]) {
+  for (const p of punches) {
     const list = punchesByProfile.get(p.profile_id) || [];
     list.push(p);
     punchesByProfile.set(p.profile_id, list);

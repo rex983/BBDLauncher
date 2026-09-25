@@ -1,5 +1,6 @@
 import { requireTimeDataAccessWithProfile } from "@/lib/auth/scope-check";
 import { startOfDayInZone } from "@/lib/timesheets/tz";
+import { loadEmployeeOvertime } from "@/lib/timesheets/detail";
 import { requestDays, type TimeOffType } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -56,7 +57,7 @@ export async function GET(
   const windowToDate = isoDate(endDate);
   const yearStart = `${now.getFullYear()}-01-01`;
 
-  const [punchesRes, windowTimeOffRes, ytdTimeOffRes] = await Promise.all([
+  const [punchesRes, windowTimeOffRes, ytdTimeOffRes, overtimeRes] = await Promise.all([
     gate.supabase
       .from("time_punches")
       .select("id, profile_id, event_type, occurred_at, source, note, edited_by")
@@ -82,11 +83,13 @@ export async function GET(
       .eq("profile_id", profileId)
       .eq("status", "approved")
       .gte("start_date", yearStart),
+    loadEmployeeOvertime(gate.supabase, profileId, now),
   ]);
 
   if (punchesRes.error) return NextResponse.json({ error: punchesRes.error.message }, { status: 500 });
   if (windowTimeOffRes.error) return NextResponse.json({ error: windowTimeOffRes.error.message }, { status: 500 });
   if (ytdTimeOffRes.error) return NextResponse.json({ error: ytdTimeOffRes.error.message }, { status: 500 });
+  if (overtimeRes.error) return NextResponse.json({ error: overtimeRes.error }, { status: 500 });
 
   const ytdByType = emptyTimeOffByType();
   for (const t of ytdTimeOffRes.data || []) {
@@ -110,6 +113,7 @@ export async function GET(
       window: windowTimeOffRes.data || [],
       ytd: { ...ytdByType, total: ytdTotal },
     },
+    overtime: overtimeRes.data,
   });
 }
 

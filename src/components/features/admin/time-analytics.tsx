@@ -42,10 +42,21 @@ interface Row {
   };
   total_ms: number;
   overtime_ms: number;
+  overtime_weeks: number;
   lunch_ms: number;
   break_ms: number;
+  ytd_worked_ms: number;
+  ytd_overtime_ms: number;
+  ytd_overtime_weeks: number;
   time_off: TimeOffBreakdown;
   weeks: WeekTotal[];
+}
+
+interface TeamWeek {
+  week_start: string;
+  worked_ms: number;
+  overtime_ms: number;
+  in_overtime_count: number;
 }
 
 interface Summary {
@@ -56,12 +67,16 @@ interface Summary {
   total_lunch_ms: number;
   total_break_ms: number;
   in_overtime_count: number;
+  ytd_overtime_ms: number;
+  ytd_in_overtime_count: number;
   avg_ms_per_working_employee: number;
   time_off: TimeOffBreakdown;
+  weekly: TeamWeek[];
 }
 
 interface Response {
   range: { from: string; to: string; weeks: number };
+  ytd_from: string;
   week_starts: string[];
   rows: Row[];
   summary: Summary;
@@ -86,6 +101,28 @@ function msToHours(ms: number): number {
   return Math.round((ms / 3_600_000) * 100) / 100;
 }
 
+const YTD_OVERTIME_COLUMNS: ExportColumn<Row>[] = [
+  { key: "worked_hours_ytd", label: "Worked hours (YTD)", get: (r) => msToHours(r.ytd_worked_ms) },
+  { key: "overtime_hours_ytd", label: "Overtime hours (YTD)", get: (r) => msToHours(r.ytd_overtime_ms) },
+  { key: "overtime_weeks_ytd", label: "Weeks over 40h (YTD)", get: (r) => r.ytd_overtime_weeks },
+];
+
+const TIME_OFF_YTD_COLUMNS: ExportColumn<Row>[] = [
+  { key: "sick_days_ytd", label: "Sick days (YTD)", get: (r) => r.time_off.sick },
+  { key: "vacation_days_ytd", label: "Vacation days (YTD)", get: (r) => r.time_off.vacation },
+  { key: "personal_days_ytd", label: "Personal days (YTD)", get: (r) => r.time_off.personal },
+  { key: "parental_days_ytd", label: "Parental days (YTD)", get: (r) => r.time_off.parental },
+  { key: "other_days_ytd", label: "Other days (YTD)", get: (r) => r.time_off.other },
+  { key: "time_off_total_ytd", label: "Time off (YTD, days)", get: (r) => r.time_off.total },
+];
+
+const TEAM_WEEK_COLUMNS: ExportColumn<TeamWeek>[] = [
+  { key: "week_start", label: "Week starting", get: (w) => w.week_start },
+  { key: "worked_hours", label: "Team hours", get: (w) => msToHours(w.worked_ms) },
+  { key: "overtime_hours", label: "Overtime hours", get: (w) => msToHours(w.overtime_ms) },
+  { key: "in_overtime_count", label: "Employees over 40h", get: (w) => w.in_overtime_count },
+];
+
 const ALL = "__all__";
 const RANGE_OPTIONS: { value: number; label: string }[] = [
   { value: 1, label: "This week" },
@@ -96,7 +133,9 @@ const RANGE_OPTIONS: { value: number; label: string }[] = [
 const OFFICES: Office[] = ["Harbor", "Marion", "BST", "RnD"];
 const DEPARTMENTS: Department[] = ["SALES TEAM", "BST", "RnD"];
 
-type SortKey = "name" | "office" | "department" | "total" | "overtime" | "lunch" | "break" | "time_off";
+type SortKey =
+  | "name" | "office" | "department" | "total" | "overtime" | "ytd_overtime"
+  | "lunch" | "break" | "time_off";
 
 function fmtWeekLabel(iso: string) {
   return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
@@ -149,6 +188,7 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
       department: (r) => r.profile.department ?? "",
       total: (r) => r.total_ms,
       overtime: (r) => r.overtime_ms,
+      ytd_overtime: (r) => r.ytd_overtime_ms,
       lunch: (r) => r.lunch_ms,
       break: (r) => r.break_ms,
       time_off: (r) => r.time_off.total,
@@ -174,20 +214,22 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
       { key: "department", label: "Department", get: (r) => r.profile.department ?? "" },
       { key: "total_hours", label: "Total hours", get: (r) => msToHours(r.total_ms) },
       { key: "overtime_hours", label: "Overtime hours", get: (r) => msToHours(r.overtime_ms) },
+      { key: "overtime_weeks", label: "Weeks over 40h", get: (r) => r.overtime_weeks },
       { key: "lunch_hours", label: "Lunch hours", get: (r) => msToHours(r.lunch_ms) },
       { key: "break_hours", label: "Break hours", get: (r) => msToHours(r.break_ms) },
-      { key: "sick_days_ytd", label: "Sick days (YTD)", get: (r) => r.time_off.sick },
-      { key: "vacation_days_ytd", label: "Vacation days (YTD)", get: (r) => r.time_off.vacation },
-      { key: "personal_days_ytd", label: "Personal days (YTD)", get: (r) => r.time_off.personal },
-      { key: "parental_days_ytd", label: "Parental days (YTD)", get: (r) => r.time_off.parental },
-      { key: "other_days_ytd", label: "Other days (YTD)", get: (r) => r.time_off.other },
-      { key: "time_off_total_ytd", label: "Time off (YTD, days)", get: (r) => r.time_off.total },
+      ...YTD_OVERTIME_COLUMNS,
+      ...TIME_OFF_YTD_COLUMNS,
     ];
     for (const ws of data?.week_starts ?? []) {
       base.push({
         key: `wk_${ws}_hours`,
         label: `Wk ${fmtWeekLabel(ws)} hours`,
         get: (r) => msToHours(r.weeks.find((w) => w.week_start === ws)?.worked_ms ?? 0),
+      });
+      base.push({
+        key: `wk_${ws}_overtime`,
+        label: `Wk ${fmtWeekLabel(ws)} OT hours`,
+        get: (r) => msToHours(r.weeks.find((w) => w.week_start === ws)?.overtime_ms ?? 0),
       });
     }
     return base;
@@ -259,7 +301,11 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
         <Stat
           label="Total hours"
           value={loading || !data ? "…" : formatDuration(data.summary.total_ms)}
-          sub={data ? `${data.summary.working_employee_count} employees on the clock` : undefined}
+          sub={
+            data
+              ? `${data.summary.working_employee_count} of ${data.summary.employee_count} employees on the clock`
+              : undefined
+          }
         />
         <Stat
           label="Avg per employee"
@@ -272,8 +318,10 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
           highlight={!!data && data.summary.in_overtime_count > 0}
         />
         <Stat
-          label="Employees in scope"
-          value={loading || !data ? "…" : String(data.summary.employee_count)}
+          label="Overtime (YTD)"
+          value={loading || !data ? "…" : formatDuration(data.summary.ytd_overtime_ms)}
+          sub={data ? `${data.summary.ytd_in_overtime_count} employees this year` : undefined}
+          highlight={!!data && data.summary.ytd_overtime_ms > 0}
         />
         <Stat
           label="Total lunch"
@@ -317,6 +365,54 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
         </Card>
       )}
 
+      {data && weeks > 1 && data.summary.weekly.some((w) => w.overtime_ms > 0) && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Overtime by week</CardTitle>
+            <ExportMenu
+              filename={`${filenameBase}-overtime-by-week`}
+              rows={data.summary.weekly}
+              columns={TEAM_WEEK_COLUMNS}
+              size="sm"
+            />
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Week of</TableHead>
+                  <TableHead>Team hours</TableHead>
+                  <TableHead>Overtime</TableHead>
+                  <TableHead>Employees over 40h</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...data.summary.weekly].reverse().map((w) => (
+                  <TableRow key={w.week_start}>
+                    <TableCell className="text-sm">{fmtWeekLabel(w.week_start)}</TableCell>
+                    <TableCell>{formatDuration(w.worked_ms)}</TableCell>
+                    <TableCell>
+                      {w.overtime_ms > 0 ? (
+                        <Badge variant="destructive">+{formatDuration(w.overtime_ms)}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {w.in_overtime_count > 0 ? (
+                        w.in_overtime_count
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Per-employee hours</CardTitle>
@@ -335,6 +431,7 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
                   <SortHeader columnKey="department" label="Dept" sort={rowSort.sort} onToggle={rowSort.toggle} />
                   <SortHeader columnKey="total" label="Total" sort={rowSort.sort} onToggle={rowSort.toggle} />
                   <SortHeader columnKey="overtime" label="Overtime" sort={rowSort.sort} onToggle={rowSort.toggle} />
+                  <SortHeader columnKey="ytd_overtime" label="OT (YTD)" sort={rowSort.sort} onToggle={rowSort.toggle} />
                   {weeks > 1 &&
                     data?.week_starts.map((iso) => (
                       <TableHead key={iso}>Wk {fmtWeekLabel(iso)}</TableHead>
@@ -376,7 +473,28 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
                     <TableCell className="font-medium">{formatDuration(row.total_ms)}</TableCell>
                     <TableCell>
                       {row.overtime_ms > 0 ? (
-                        <Badge variant="destructive">+{formatDuration(row.overtime_ms)}</Badge>
+                        <div>
+                          <Badge variant="destructive">+{formatDuration(row.overtime_ms)}</Badge>
+                          {weeks > 1 && (
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {row.overtime_weeks} of {weeks} wk
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {row.ytd_overtime_ms > 0 ? (
+                        <div>
+                          <span className="font-medium text-destructive">
+                            +{formatDuration(row.ytd_overtime_ms)}
+                          </span>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {row.ytd_overtime_weeks} wk
+                          </div>
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -390,7 +508,9 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
-                            {w.overtime_ms > 0 && <Badge variant="destructive">OT</Badge>}
+                            {w.overtime_ms > 0 && (
+                              <Badge variant="destructive">+{formatDuration(w.overtime_ms)}</Badge>
+                            )}
                           </span>
                         </TableCell>
                       ))}
@@ -404,6 +524,7 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
 
       <p className="text-xs text-muted-foreground">
         Weeks run Sunday–Saturday, ET. Overtime is any time past 40 hours in a week.
+        YTD counts every week since the one containing Jan 1, whatever range is selected.
       </p>
 
       <EmployeeTimeStatsDialog
@@ -439,14 +560,11 @@ function EmployeeTimeStatsDialog({
       { key: "department", label: "Department", get: (r) => r.profile.department ?? "" },
       { key: "total_hours", label: "Total hours", get: (r) => msToHours(r.total_ms) },
       { key: "overtime_hours", label: "Overtime hours", get: (r) => msToHours(r.overtime_ms) },
+      { key: "overtime_weeks", label: "Weeks over 40h", get: (r) => r.overtime_weeks },
       { key: "lunch_hours", label: "Lunch hours", get: (r) => msToHours(r.lunch_ms) },
       { key: "break_hours", label: "Break hours", get: (r) => msToHours(r.break_ms) },
-      { key: "sick_days_ytd", label: "Sick days (YTD)", get: (r) => r.time_off.sick },
-      { key: "vacation_days_ytd", label: "Vacation days (YTD)", get: (r) => r.time_off.vacation },
-      { key: "personal_days_ytd", label: "Personal days (YTD)", get: (r) => r.time_off.personal },
-      { key: "parental_days_ytd", label: "Parental days (YTD)", get: (r) => r.time_off.parental },
-      { key: "other_days_ytd", label: "Other days (YTD)", get: (r) => r.time_off.other },
-      { key: "time_off_total_ytd", label: "Time off (YTD, days)", get: (r) => r.time_off.total },
+      ...YTD_OVERTIME_COLUMNS,
+      ...TIME_OFF_YTD_COLUMNS,
     ],
     [],
   );
@@ -511,6 +629,21 @@ function EmployeeTimeStatsDialog({
                 />
                 <Stat label="Lunch" value={formatDuration(row.lunch_ms)} />
                 <Stat label="Breaks" value={formatDuration(row.break_ms)} />
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                Overtime — YTD
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <Stat
+                  label="Overtime"
+                  value={formatDuration(row.ytd_overtime_ms)}
+                  highlight={row.ytd_overtime_ms > 0}
+                />
+                <Stat label="Weeks over 40h" value={String(row.ytd_overtime_weeks)} />
+                <Stat label="Worked" value={formatDuration(row.ytd_worked_ms)} />
               </div>
             </div>
 

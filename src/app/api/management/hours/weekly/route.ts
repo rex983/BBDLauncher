@@ -1,6 +1,7 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { type TimePunch } from "@/lib/timesheets/state";
 import { computeWeeklyHours } from "@/lib/timesheets/weekly";
+import { fetchPunchesPaged } from "@/lib/timesheets/punches";
 import { startOfWeekSundayInZone } from "@/lib/timesheets/tz";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -42,15 +43,14 @@ export async function GET(req: NextRequest) {
   const profileIds = (profiles || []).map((p) => p.id);
   if (profileIds.length === 0) return NextResponse.json({ week_start: weekStart.toISOString(), rows: [] });
 
-  const { data: punches } = await supabase
-    .from("time_punches")
-    .select("id, profile_id, event_type, occurred_at, source, note")
-    .in("profile_id", profileIds)
-    .gte("occurred_at", weekStart.toISOString())
-    .order("occurred_at", { ascending: true });
+  const { data: punches } = await fetchPunchesPaged(
+    supabase,
+    profileIds,
+    weekStart.toISOString(),
+  );
 
   const byProfile = new Map<string, TimePunch[]>();
-  for (const p of (punches || []) as TimePunch[]) {
+  for (const p of punches) {
     const list = byProfile.get(p.profile_id) || [];
     list.push(p);
     byProfile.set(p.profile_id, list);
