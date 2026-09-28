@@ -6,6 +6,23 @@
 
 export const DEFAULT_ZONE = "America/New_York";
 
+// toLocaleDateString builds a fresh Intl.DateTimeFormat on every call, which
+// dominates when folding a year of punches. Cache one formatter per zone.
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+function dateFormatter(zone: string): Intl.DateTimeFormat {
+  let f = dateFormatters.get(zone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-CA", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    dateFormatters.set(zone, f);
+  }
+  return f;
+}
+
 // Returns the UTC Date corresponding to `HH:MM` on the ET-local calendar
 // day that `baseDate` falls into.
 //
@@ -19,7 +36,7 @@ export function scheduledTimeInZone(
   const [hhStr, mmStr] = timeStr.split(":");
   const hh = Number(hhStr);
   const mm = Number(mmStr);
-  const dateInZone = baseDate.toLocaleDateString("en-CA", { timeZone: zone });
+  const dateInZone = localDateInZone(baseDate, zone);
   // Interpret the naive local time as if it were UTC. Then compute the zone
   // offset at that approximate moment and subtract it.
   const naiveUtc = new Date(
@@ -36,14 +53,14 @@ export function scheduledTimeInZone(
 // 0 = Sunday .. 6 = Saturday, matching JS Date.getDay(), but computed
 // against the zone-local calendar (so 11:30pm ET Saturday isn't Sunday).
 export function weekdayInZone(date: Date, zone: string = DEFAULT_ZONE): number {
-  const iso = date.toLocaleDateString("en-CA", { timeZone: zone });
+  const iso = localDateInZone(date, zone);
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
 // "YYYY-MM-DD" as the zone-local calendar date.
 export function localDateInZone(date: Date, zone: string = DEFAULT_ZONE): string {
-  return date.toLocaleDateString("en-CA", { timeZone: zone });
+  return dateFormatter(zone).format(date);
 }
 
 // Midnight (00:00) of the zone-local day containing `date`, as a UTC Date.
@@ -66,6 +83,17 @@ export function startOfWeekSundayInZone(
   const shifted = new Date(Date.UTC(y, m - 1, d - wd));
   const shiftedIso = `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`;
   return scheduledTimeInZone(new Date(shiftedIso + "T12:00:00Z"), "00:00", zone);
+}
+
+// "Sep 14" label for a week-start ISO, read on the zone calendar so a
+// browser outside ET doesn't render the Sunday boundary as Saturday.
+export function formatWeekOf(iso: string, zone: string = DEFAULT_ZONE): string {
+  const [y, m, d] = localDateInZone(new Date(iso), zone).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 function pad(n: number): string {

@@ -148,6 +148,11 @@ export function formatDuration(ms: number): string {
   return `${hours}h ${String(minutes).padStart(2, "0")}m`;
 }
 
+// Decimal hours (2dp) for CSV exports.
+export function msToHours(ms: number): number {
+  return Math.round((ms / 3_600_000) * 100) / 100;
+}
+
 export const STATUS_LABEL: Record<LiveStatus, string> = {
   clocked_out: "Clocked out",
   working:     "Working",

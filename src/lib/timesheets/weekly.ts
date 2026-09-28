@@ -56,29 +56,16 @@ export function computeDayWorkedMs(
   return computeDayTotals(dayPunches, dayKey, now).worked_ms;
 }
 
-// Bucket punches by ET-local day and fold each day into its own state so
-// an open shift at week-end can't leak into a sibling day. Then sum daily
-// worked_ms and derive overtime = max(0, total - 40h).
+// Current Sun–Sat ET week only. Callers pass punches from the week start.
 export function computeWeeklyHours(
   punches: TimePunch[],
   now: Date = new Date(),
 ): WeeklyHours {
-  const buckets = new Map<string, TimePunch[]>();
-  for (const p of punches) {
-    const key = localDateInZone(new Date(p.occurred_at));
-    const list = buckets.get(key) || [];
-    list.push(p);
-    buckets.set(key, list);
-  }
-  let total = 0;
-  for (const [dayKey, list] of buckets) {
-    total += computeDayWorkedMs(list, dayKey, now);
-  }
-  const overtime = Math.max(0, total - OVERTIME_THRESHOLD_MS);
+  const [week] = computeWeeklyBreakdown(punches, [startOfWeekSundayInZone(now)], now);
   return {
-    worked_ms: total,
-    overtime_ms: overtime,
-    is_overtime: overtime > 0,
+    worked_ms: week.worked_ms,
+    overtime_ms: week.overtime_ms,
+    is_overtime: week.overtime_ms > 0,
   };
 }
 
@@ -159,4 +146,26 @@ export function computeWeeklyBreakdown(
       break_ms: brk,
     };
   });
+}
+
+export interface WeeksSummary {
+  worked_ms: number;
+  overtime_ms: number;
+  overtime_weeks: number; // weeks with any time past 40h
+  lunch_ms: number;
+  break_ms: number;
+}
+
+// Roll a run of weeks (one employee's range/YTD, or one week across a team)
+// into totals — the single definition of "weeks over 40h".
+export function summarizeWeeks(weeks: WeekTotals[]): WeeksSummary {
+  const out: WeeksSummary = { worked_ms: 0, overtime_ms: 0, overtime_weeks: 0, lunch_ms: 0, break_ms: 0 };
+  for (const w of weeks) {
+    out.worked_ms += w.worked_ms;
+    out.overtime_ms += w.overtime_ms;
+    out.lunch_ms += w.lunch_ms;
+    out.break_ms += w.break_ms;
+    if (w.overtime_ms > 0) out.overtime_weeks++;
+  }
+  return out;
 }

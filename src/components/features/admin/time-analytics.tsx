@@ -18,7 +18,8 @@ import { ExportMenu } from "@/components/ui/export-menu";
 import { SortHeader } from "@/components/ui/sort-header";
 import { useSortableRows } from "@/lib/hooks/use-sortable-rows";
 import type { ExportColumn } from "@/lib/export/csv";
-import { formatDuration } from "@/lib/timesheets/state";
+import { formatDuration, msToHours } from "@/lib/timesheets/state";
+import { formatWeekOf } from "@/lib/timesheets/tz";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { TIME_OFF_TYPE_LABEL, type TimeOffType } from "@/lib/timeoff/types";
 import type { Department, Office } from "@/types/auth";
@@ -76,7 +77,6 @@ interface Summary {
 
 interface Response {
   range: { from: string; to: string; weeks: number };
-  ytd_from: string;
   week_starts: string[];
   rows: Row[];
   summary: Summary;
@@ -97,9 +97,6 @@ function fmtDays(d: number): string {
 
 // ms → hours as a plain number (2 decimals) — friendlier for spreadsheets
 // than "5h 42m" strings when the user wants to sum or chart the column.
-function msToHours(ms: number): number {
-  return Math.round((ms / 3_600_000) * 100) / 100;
-}
 
 const YTD_OVERTIME_COLUMNS: ExportColumn<Row>[] = [
   { key: "worked_hours_ytd", label: "Worked hours (YTD)", get: (r) => msToHours(r.ytd_worked_ms) },
@@ -137,9 +134,6 @@ type SortKey =
   | "name" | "office" | "department" | "total" | "overtime" | "ytd_overtime"
   | "lunch" | "break" | "time_off";
 
-function fmtWeekLabel(iso: string) {
-  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
-}
 
 // Time-data analytics widget. Rendered inside /admin/analytics as its own
 // tab; sources data from /api/management/analytics/time. Scope is enforced
@@ -223,12 +217,12 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
     for (const ws of data?.week_starts ?? []) {
       base.push({
         key: `wk_${ws}_hours`,
-        label: `Wk ${fmtWeekLabel(ws)} hours`,
+        label: `Wk ${formatWeekOf(ws)} hours`,
         get: (r) => msToHours(r.weeks.find((w) => w.week_start === ws)?.worked_ms ?? 0),
       });
       base.push({
         key: `wk_${ws}_overtime`,
-        label: `Wk ${fmtWeekLabel(ws)} OT hours`,
+        label: `Wk ${formatWeekOf(ws)} OT hours`,
         get: (r) => msToHours(r.weeks.find((w) => w.week_start === ws)?.overtime_ms ?? 0),
       });
     }
@@ -389,7 +383,7 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
               <TableBody>
                 {[...data.summary.weekly].reverse().map((w) => (
                   <TableRow key={w.week_start}>
-                    <TableCell className="text-sm">{fmtWeekLabel(w.week_start)}</TableCell>
+                    <TableCell className="text-sm">{formatWeekOf(w.week_start)}</TableCell>
                     <TableCell>{formatDuration(w.worked_ms)}</TableCell>
                     <TableCell>
                       {w.overtime_ms > 0 ? (
@@ -434,7 +428,7 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
                   <SortHeader columnKey="ytd_overtime" label="OT (YTD)" sort={rowSort.sort} onToggle={rowSort.toggle} />
                   {weeks > 1 &&
                     data?.week_starts.map((iso) => (
-                      <TableHead key={iso}>Wk {fmtWeekLabel(iso)}</TableHead>
+                      <TableHead key={iso}>Wk {formatWeekOf(iso)}</TableHead>
                     ))}
                 </TableRow>
               </TableHeader>
@@ -692,7 +686,7 @@ function EmployeeTimeStatsDialog({
                     {row.weeks.map((w, i) => (
                       <TableRow key={w.week_start}>
                         <TableCell className="text-sm">
-                          {fmtWeekLabel(weekStarts[i] ?? w.week_start)}
+                          {formatWeekOf(weekStarts[i] ?? w.week_start)}
                         </TableCell>
                         <TableCell>
                           {w.worked_ms > 0 ? formatDuration(w.worked_ms) : (

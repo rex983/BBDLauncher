@@ -12,6 +12,8 @@ import {
   buildWeekStarts,
   computeWeeklyBreakdown,
   startOfYearWeekInZone,
+  summarizeWeeks,
+  type WeekTotals,
 } from "@/lib/timesheets/weekly";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Department, Office, UserRole } from "@/types/auth";
@@ -53,17 +55,12 @@ export interface WindowTimeOffRow {
 
 export type YtdBreakdown = Record<TimeOffType, number> & { total: number };
 
-export interface OvertimeWeek {
-  week_start: string;
-  worked_ms: number;
-  overtime_ms: number;
-}
+export type OvertimeWeek = WeekTotals;
 
 // YTD weekly hours for one employee. Independent of the days-selector —
 // overtime is a per-week (Sun–Sat, ET) figure, so a 7-day window would
 // slice weeks in half.
 export interface EmployeeOvertime {
-  ytd_from: string;
   ytd_worked_ms: number;
   ytd_overtime_ms: number;
   ytd_overtime_weeks: number;
@@ -78,7 +75,7 @@ export interface EmployeeDetailData {
     window: WindowTimeOffRow[];
     ytd: YtdBreakdown;
   };
-  overtime: EmployeeOvertime;
+  overtime: EmployeeOvertime | null; // only when requested (timesheet page)
 }
 
 // Shared by getEmployeeDetail (SSR) and the GET route (client refresh).
@@ -94,21 +91,13 @@ export async function loadEmployeeOvertime(
     ytdStart.toISOString(),
   );
   if (error) return { data: null, error };
-  const weeks = computeWeeklyBreakdown(
-    punches,
-    buildWeekStarts(ytdStart, now),
-    now,
-  ).map(({ week_start, worked_ms, overtime_ms }) => ({
-    week_start,
-    worked_ms,
-    overtime_ms,
-  }));
+  const weeks = computeWeeklyBreakdown(punches, buildWeekStarts(ytdStart, now), now);
+  const ytd = summarizeWeeks(weeks);
   return {
     data: {
-      ytd_from: ytdStart.toISOString(),
-      ytd_worked_ms: weeks.reduce((acc, w) => acc + w.worked_ms, 0),
-      ytd_overtime_ms: weeks.reduce((acc, w) => acc + w.overtime_ms, 0),
-      ytd_overtime_weeks: weeks.filter((w) => w.overtime_ms > 0).length,
+      ytd_worked_ms: ytd.worked_ms,
+      ytd_overtime_ms: ytd.overtime_ms,
+      ytd_overtime_weeks: ytd.overtime_weeks,
       weeks,
     },
     error: null,
@@ -155,6 +144,8 @@ export async function getEmployeeDetail(
   viewerRole: string,
   viewerDepartment: string | null,
   viewerOffice: string | null,
+  // YTD overtime reads a year of punches; only the timesheet page shows it.
+  { includeOvertime = false }: { includeOvertime?: boolean } = {},
 ): Promise<EmployeeDetailResult> {
   void viewerProfileId; // reserved for future audit logging; scope keys off role/dept/office
 
@@ -234,7 +225,9 @@ export async function getEmployeeDetail(
       .eq("profile_id", profileId)
       .eq("status", "approved")
       .gte("start_date", yearStart),
-    loadEmployeeOvertime(supabase, profileId, now),
+    includeOvertime
+      ? loadEmployeeOvertime(supabase, profileId, now)
+      : { data: null, error: null },
   ]);
 
   if (punchesRes.error) {
@@ -246,8 +239,8 @@ export async function getEmployeeDetail(
   if (ytdTimeOffRes.error) {
     return { ok: false, status: 500, message: ytdTimeOffRes.error.message };
   }
-  if (overtimeRes.error || !overtimeRes.data) {
-    return { ok: false, status: 500, message: overtimeRes.error ?? "Overtime load failed" };
+  if (overtimeRes.error) {
+    return { ok: false, status: 500, message: overtimeRes.error };
   }
 
   const ytd = emptyYtd();

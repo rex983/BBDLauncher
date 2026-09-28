@@ -16,11 +16,11 @@ import {
 } from "@/components/ui/select";
 import { Plus, Pencil, Trash2, LogIn, LogOut, Utensils, Coffee, Wand2 } from "lucide-react";
 import {
-  computeState, formatDuration, STATUS_LABEL,
+  computeState, formatDuration, msToHours, STATUS_LABEL,
   type PunchEventType, type TimePunch,
 } from "@/lib/timesheets/state";
 import { computeDayWorkedMs, OVERTIME_THRESHOLD_MS } from "@/lib/timesheets/weekly";
-import { localDateInZone } from "@/lib/timesheets/tz";
+import { formatWeekOf, localDateInZone } from "@/lib/timesheets/tz";
 import { canEditTimeData } from "@/lib/auth/permissions";
 import {
   requestDays,
@@ -127,15 +127,6 @@ const OVERTIME_WEEK_COLUMNS: ExportColumn<OvertimeWeek>[] = [
 // Weeks shown before "Show all" — enough for a pay-period glance.
 const OVERTIME_WEEKS_PREVIEW = 6;
 
-function msToHours(ms: number): number {
-  return Math.round((ms / 3_600_000) * 100) / 100;
-}
-
-function fmtWeekOf(iso: string) {
-  const [y, m, d] = localDateInZone(new Date(iso)).split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString([], { month: "short", day: "numeric" });
-}
-
 const TIME_OFF_WINDOW_COLUMNS: ExportColumn<WindowTimeOffRow>[] = [
   { key: "start_date", label: "Start date", get: (r) => r.start_date },
   { key: "end_date", label: "End date", get: (r) => r.end_date },
@@ -204,7 +195,7 @@ export default function EmployeeDetailShell({
     const from = new Date(now);
     from.setDate(from.getDate() - days);
     from.setHours(0, 0, 0, 0);
-    const url = `/api/management/timesheets/employee/${profileId}?from=${from.toISOString()}&to=${now.toISOString()}`;
+    const url = `/api/management/timesheets/employee/${profileId}?from=${from.toISOString()}&to=${now.toISOString()}&overtime=1`;
     const res = await fetch(url);
     if (res.ok) {
       const data = await res.json();
@@ -344,7 +335,7 @@ export default function EmployeeDetailShell({
             </SelectContent>
           </Select>
           <ExportMenu
-            filename={`timesheet-${(profile?.name || profile?.email || profileId).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${days}d`}
+            filename={`timesheet-${employeeSlug}-${days}d`}
             rows={punches}
             columns={PUNCH_COLUMNS}
             disabled={loading || punches.length === 0}
@@ -394,7 +385,7 @@ export default function EmployeeDetailShell({
           </CardHeader>
           <CardContent className="px-4 py-3 space-y-3">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <OtStat
+              <StatCard
                 label="This week"
                 value={formatDuration(thisWeek?.worked_ms ?? 0)}
                 sub={
@@ -404,17 +395,17 @@ export default function EmployeeDetailShell({
                 }
                 highlight={!!thisWeek && thisWeek.overtime_ms > 0}
               />
-              <OtStat
+              <StatCard
                 label="Overtime (YTD)"
                 value={formatDuration(overtime.ytd_overtime_ms)}
                 highlight={overtime.ytd_overtime_ms > 0}
               />
-              <OtStat
+              <StatCard
                 label="Weeks over 40h"
                 value={String(overtime.ytd_overtime_weeks)}
                 sub={`of ${otWeeksDesc.length} worked`}
               />
-              <OtStat label="Worked (YTD)" value={formatDuration(overtime.ytd_worked_ms)} />
+              <StatCard label="Worked (YTD)" value={formatDuration(overtime.ytd_worked_ms)} />
             </div>
             {otWeeksDesc.length > 0 && (
               <ul className="divide-y border-t">
@@ -423,7 +414,7 @@ export default function EmployeeDetailShell({
                     key={w.week_start}
                     className="grid grid-cols-[120px_100px_1fr] items-center gap-3 py-1.5 text-sm leading-tight"
                   >
-                    <div className="tabular-nums font-medium">Wk {fmtWeekOf(w.week_start)}</div>
+                    <div className="tabular-nums font-medium">Wk {formatWeekOf(w.week_start)}</div>
                     <div className="tabular-nums">{formatDuration(w.worked_ms)}</div>
                     <div>
                       {w.overtime_ms > 0 ? (
@@ -494,7 +485,7 @@ export default function EmployeeDetailShell({
                 {timeOffWindow.length} {timeOffWindow.length === 1 ? "entry" : "entries"}
               </div>
               <ExportMenu
-                filename={`timeoff-${(profile?.name || profile?.email || profileId).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${days}d`}
+                filename={`timeoff-${employeeSlug}-${days}d`}
                 rows={timeOffWindow}
                 columns={TIME_OFF_WINDOW_COLUMNS}
                 size="sm"
@@ -713,16 +704,7 @@ function fmtDayHeader(dayKey: string) {
   });
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border bg-card p-4">
-      <div className="text-xs text-muted-foreground uppercase tracking-wider">{label}</div>
-      <div className="text-lg font-semibold mt-1">{value}</div>
-    </div>
-  );
-}
-
-function OtStat({
+function StatCard({
   label,
   value,
   sub,
@@ -735,13 +717,13 @@ function OtStat({
 }) {
   return (
     <div
-      className={`rounded-md border p-3 ${
+      className={`rounded-md border bg-card p-4 ${
         highlight ? "border-destructive/60 bg-destructive/5" : ""
       }`}
     >
-      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
-      <div className="tabular-nums font-semibold mt-0.5">{value}</div>
-      {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
+      <div className="text-xs text-muted-foreground uppercase tracking-wider">{label}</div>
+      <div className="text-lg font-semibold mt-1">{value}</div>
+      {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
     </div>
   );
 }

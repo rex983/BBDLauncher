@@ -39,6 +39,7 @@ export async function GET(
   const url = new URL(req.url);
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
+  const includeOvertime = url.searchParams.get("overtime") === "1";
 
   const now = new Date();
   const todayStart = startOfDayInZone(now);
@@ -83,7 +84,9 @@ export async function GET(
       .eq("profile_id", profileId)
       .eq("status", "approved")
       .gte("start_date", yearStart),
-    loadEmployeeOvertime(gate.supabase, profileId, now),
+    includeOvertime
+      ? loadEmployeeOvertime(gate.supabase, profileId, now)
+      : { data: null, error: null },
   ]);
 
   if (punchesRes.error) return NextResponse.json({ error: punchesRes.error.message }, { status: 500 });

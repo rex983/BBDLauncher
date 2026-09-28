@@ -37,6 +37,7 @@ export default async function EmployeeDetailPage({
         session.user.role ?? "",
         session.user.department ?? null,
         session.user.office ?? null,
+        { includeOvertime: true },
       );
       if (result.ok) {
         initialData = result.data;

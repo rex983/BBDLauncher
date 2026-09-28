@@ -4,7 +4,7 @@ import {
   buildWeekStarts,
   computeWeeklyBreakdown,
   startOfYearWeekInZone,
-  type WeekTotals,
+  summarizeWeeks,
 } from "@/lib/timesheets/weekly";
 import { fetchPunchesPaged } from "@/lib/timesheets/punches";
 import { requestDays, type TimeOffType } from "@/lib/timeoff/types";
@@ -14,6 +14,9 @@ const TIME_OFF_TYPES_ALL: TimeOffType[] = ["vacation", "sick", "personal", "pare
 type TimeOffByType = Record<TimeOffType, number>;
 function emptyTimeOffByType(): TimeOffByType {
   return { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0 };
+}
+function withTotal(t: TimeOffByType) {
+  return { ...t, total: TIME_OFF_TYPES_ALL.reduce((acc, k) => acc + t[k], 0) };
 }
 
 // Time-data analytics for managers + admins. Returns per-employee weekly
@@ -46,12 +49,18 @@ export async function GET(req: NextRequest) {
     isAdmin && url.searchParams.get("includeInactive") === "1";
 
   const now = new Date();
-  // Walk back a spare week then keep the last N zone-local week starts, so
-  // a DST shift can't pull the range boundary off Sunday midnight.
-  const rangeStart = buildWeekStarts(
-    new Date(now.getTime() - weeks * MS_PER_WEEK),
-    now,
-  ).slice(-weeks)[0];
+  // One zone-local week list covering both the selected range and YTD
+  // (whichever reaches further back); range + YTD are slices of it.
+  // Subtracting N×7d may land an hour off a boundary around DST, but it's
+  // always ≥ N weeks back, and the last N entries are exact week starts.
+  const ytdStart = startOfYearWeekInZone(now);
+  const approxRangeStart = new Date(now.getTime() - weeks * MS_PER_WEEK);
+  const fetchStart = approxRangeStart < ytdStart ? approxRangeStart : ytdStart;
+  const allWeekStarts = buildWeekStarts(fetchStart, now);
+  const rangeFirstIdx = allWeekStarts.length - weeks;
+  const rangeStart = allWeekStarts[rangeFirstIdx];
+  const ytdFirstIdx = allWeekStarts.findIndex((d) => d >= ytdStart);
+  const weekStartIsos = allWeekStarts.slice(rangeFirstIdx).map((d) => d.toISOString());
 
   let profileQuery = supabase
     .from("profiles")
@@ -73,45 +82,26 @@ export async function GET(req: NextRequest) {
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
 
   const profileIds = (profiles || []).map((p) => p.id);
-  if (profileIds.length === 0) {
-    return NextResponse.json({
-      range: {
-        from: rangeStart.toISOString(),
-        to: now.toISOString(),
-        weeks,
-      },
-      ytd_from: startOfYearWeekInZone(now).toISOString(),
-      week_starts: buildWeekStarts(rangeStart, now).map((d) => d.toISOString()),
-      rows: [],
-      summary: emptySummary(),
-    });
-  }
 
   // Punches reach back to whichever is earlier: the selected range or the
   // start of the year (YTD overtime). Paged — see fetchPunchesPaged.
-  const ytdStart = startOfYearWeekInZone(now);
-  const fetchStart = rangeStart < ytdStart ? rangeStart : ytdStart;
-
   const [punchesRes, { data: yearOffs, error: toErr }] = await Promise.all([
-    fetchPunchesPaged(supabase, profileIds, fetchStart.toISOString()),
+    fetchPunchesPaged(supabase, profileIds, allWeekStarts[0].toISOString()),
     // YTD approved time-off — used for per-employee breakdown + the
     // aggregate summary. Kept independent of the `weeks` selector
     // because "days off this year" is what managers ask about, not
     // "days off in the last 4 weeks".
-    supabase
-      .from("time_off_requests")
-      .select("profile_id, type, start_date, end_date, full_day, hours")
-      .in("profile_id", profileIds)
-      .eq("status", "approved")
-      .gte("start_date", `${now.getFullYear()}-01-01`),
+    profileIds.length === 0
+      ? { data: [], error: null }
+      : supabase
+          .from("time_off_requests")
+          .select("profile_id, type, start_date, end_date, full_day, hours")
+          .in("profile_id", profileIds)
+          .eq("status", "approved")
+          .gte("start_date", `${now.getFullYear()}-01-01`),
   ]);
   if (punchesRes.error) return NextResponse.json({ error: punchesRes.error }, { status: 500 });
   if (toErr) return NextResponse.json({ error: toErr.message }, { status: 500 });
-
-  const allWeekStarts = buildWeekStarts(fetchStart, now);
-  const rangeFirstIdx = allWeekStarts.length - weeks;
-  const ytdStartMs = ytdStart.getTime();
-  const weekStartIsos = allWeekStarts.slice(rangeFirstIdx).map((d) => d.toISOString());
 
   const punchesByProfile = new Map<string, TimePunch[]>();
   for (const p of punchesRes.data) {
@@ -144,30 +134,20 @@ export async function GET(req: NextRequest) {
       now,
     );
     const rangeWeeks = allWeeks.slice(rangeFirstIdx);
-    const ytdWeeks = allWeeks.filter(
-      (w) => new Date(w.week_start).getTime() >= ytdStartMs,
-    );
-    const sum = (list: WeekTotals[], k: keyof Omit<WeekTotals, "week_start">) =>
-      list.reduce((acc, w) => acc + w[k], 0);
-    const timeOff = timeOffByProfile.get(profile.id) ?? emptyTimeOffByType();
-    const timeOffTotal =
-      timeOff.vacation + timeOff.sick + timeOff.personal + timeOff.parental + timeOff.other;
+    const range = summarizeWeeks(rangeWeeks);
+    const ytd = summarizeWeeks(allWeeks.slice(ytdFirstIdx));
     return {
       profile,
-      total_ms: sum(rangeWeeks, "worked_ms"),
-      overtime_ms: sum(rangeWeeks, "overtime_ms"),
-      overtime_weeks: rangeWeeks.filter((w) => w.overtime_ms > 0).length,
-      lunch_ms: sum(rangeWeeks, "lunch_ms"),
-      break_ms: sum(rangeWeeks, "break_ms"),
-      ytd_worked_ms: sum(ytdWeeks, "worked_ms"),
-      ytd_overtime_ms: sum(ytdWeeks, "overtime_ms"),
-      ytd_overtime_weeks: ytdWeeks.filter((w) => w.overtime_ms > 0).length,
-      time_off: { ...timeOff, total: timeOffTotal },
-      weeks: rangeWeeks.map(({ week_start, worked_ms, overtime_ms }) => ({
-        week_start,
-        worked_ms,
-        overtime_ms,
-      })),
+      total_ms: range.worked_ms,
+      overtime_ms: range.overtime_ms,
+      overtime_weeks: range.overtime_weeks,
+      lunch_ms: range.lunch_ms,
+      break_ms: range.break_ms,
+      ytd_worked_ms: ytd.worked_ms,
+      ytd_overtime_ms: ytd.overtime_ms,
+      ytd_overtime_weeks: ytd.overtime_weeks,
+      time_off: withTotal(timeOffByProfile.get(profile.id) ?? emptyTimeOffByType()),
+      weeks: rangeWeeks,
     };
   });
 
@@ -183,18 +163,16 @@ export async function GET(req: NextRequest) {
   const ytdInOvertimeCount = rows.filter((r) => r.ytd_overtime_ms > 0).length;
 
   // Team roll-up per week so the tab can show whether overtime is a
-  // one-off spike or a steady trend.
+  // one-off spike or a steady trend. Across rows, "weeks over 40h" for a
+  // single week is the number of employees in overtime.
   const weekly = weekStartIsos.map((week_start, i) => {
-    let worked = 0;
-    let overtime = 0;
-    let inOt = 0;
-    for (const r of rows) {
-      const w = r.weeks[i];
-      worked += w.worked_ms;
-      overtime += w.overtime_ms;
-      if (w.overtime_ms > 0) inOt++;
-    }
-    return { week_start, worked_ms: worked, overtime_ms: overtime, in_overtime_count: inOt };
+    const s = summarizeWeeks(rows.map((r) => r.weeks[i]));
+    return {
+      week_start,
+      worked_ms: s.worked_ms,
+      overtime_ms: s.overtime_ms,
+      in_overtime_count: s.overtime_weeks,
+    };
   });
 
   // Aggregate YTD time-off across the scope so the top-of-tab panel can
@@ -203,8 +181,6 @@ export async function GET(req: NextRequest) {
   for (const r of rows) {
     for (const t of TIME_OFF_TYPES_ALL) aggTimeOff[t] += r.time_off[t];
   }
-  const aggTimeOffTotal =
-    aggTimeOff.vacation + aggTimeOff.sick + aggTimeOff.personal + aggTimeOff.parental + aggTimeOff.other;
 
   return NextResponse.json({
     range: {
@@ -212,7 +188,6 @@ export async function GET(req: NextRequest) {
       to: now.toISOString(),
       weeks,
     },
-    ytd_from: ytdStart.toISOString(),
     week_starts: weekStartIsos,
     rows,
     summary: {
@@ -228,25 +203,8 @@ export async function GET(req: NextRequest) {
       avg_ms_per_working_employee: workingProfileCount
         ? Math.round(totalMs / workingProfileCount)
         : 0,
-      time_off: { ...aggTimeOff, total: aggTimeOffTotal },
+      time_off: withTotal(aggTimeOff),
       weekly,
     },
   });
-}
-
-function emptySummary() {
-  return {
-    employee_count: 0,
-    working_employee_count: 0,
-    total_ms: 0,
-    total_overtime_ms: 0,
-    total_lunch_ms: 0,
-    total_break_ms: 0,
-    in_overtime_count: 0,
-    ytd_overtime_ms: 0,
-    ytd_in_overtime_count: 0,
-    avg_ms_per_working_employee: 0,
-    time_off: { ...emptyTimeOffByType(), total: 0 },
-    weekly: [],
-  };
 }
