@@ -3,21 +3,20 @@ import type { TimePunch } from "@/lib/timesheets/state";
 import {
   buildWeekStarts,
   computeWeeklyBreakdown,
+  lastWeekStarts,
   startOfYearWeekInZone,
   summarizeWeeks,
 } from "@/lib/timesheets/weekly";
 import { fetchPunchesPaged } from "@/lib/timesheets/punches";
-import { requestDays, type TimeOffType } from "@/lib/timeoff/types";
+import {
+  emptyTimeOffByType,
+  requestDays,
+  TIME_OFF_TYPES,
+  withTotal,
+  type TimeOffByType,
+  type TimeOffType,
+} from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
-
-const TIME_OFF_TYPES_ALL: TimeOffType[] = ["vacation", "sick", "personal", "parental", "other"];
-type TimeOffByType = Record<TimeOffType, number>;
-function emptyTimeOffByType(): TimeOffByType {
-  return { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0 };
-}
-function withTotal(t: TimeOffByType) {
-  return { ...t, total: TIME_OFF_TYPES_ALL.reduce((acc, k) => acc + t[k], 0) };
-}
 
 // Time-data analytics for managers + admins. Returns per-employee weekly
 // totals for the last N weeks, YTD overtime (weeks past 40h since the week
@@ -32,7 +31,6 @@ function withTotal(t: TimeOffByType) {
 //                    have punches in the range)
 
 const ALLOWED_WEEK_COUNTS = new Set([1, 2, 4, 12]);
-const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
 
 export async function GET(req: NextRequest) {
   const gate = await requireTimeDataAccess(null, "view");
@@ -51,14 +49,10 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   // One zone-local week list covering both the selected range and YTD
   // (whichever reaches further back); range + YTD are slices of it.
-  // Subtracting N×7d may land an hour off a boundary around DST, but it's
-  // always ≥ N weeks back, and the last N entries are exact week starts.
   const ytdStart = startOfYearWeekInZone(now);
-  const approxRangeStart = new Date(now.getTime() - weeks * MS_PER_WEEK);
-  const fetchStart = approxRangeStart < ytdStart ? approxRangeStart : ytdStart;
-  const allWeekStarts = buildWeekStarts(fetchStart, now);
+  const rangeStart = lastWeekStarts(weeks, now)[0];
+  const allWeekStarts = buildWeekStarts(rangeStart < ytdStart ? rangeStart : ytdStart, now);
   const rangeFirstIdx = allWeekStarts.length - weeks;
-  const rangeStart = allWeekStarts[rangeFirstIdx];
   const ytdFirstIdx = allWeekStarts.findIndex((d) => d >= ytdStart);
   const weekStartIsos = allWeekStarts.slice(rangeFirstIdx).map((d) => d.toISOString());
 
@@ -91,14 +85,12 @@ export async function GET(req: NextRequest) {
     // aggregate summary. Kept independent of the `weeks` selector
     // because "days off this year" is what managers ask about, not
     // "days off in the last 4 weeks".
-    profileIds.length === 0
-      ? { data: [], error: null }
-      : supabase
-          .from("time_off_requests")
-          .select("profile_id, type, start_date, end_date, full_day, hours")
-          .in("profile_id", profileIds)
-          .eq("status", "approved")
-          .gte("start_date", `${now.getFullYear()}-01-01`),
+    supabase
+      .from("time_off_requests")
+      .select("profile_id, type, start_date, end_date, full_day, hours")
+      .in("profile_id", profileIds)
+      .eq("status", "approved")
+      .gte("start_date", `${now.getFullYear()}-01-01`),
   ]);
   if (punchesRes.error) return NextResponse.json({ error: punchesRes.error }, { status: 500 });
   if (toErr) return NextResponse.json({ error: toErr.message }, { status: 500 });
@@ -153,14 +145,17 @@ export async function GET(req: NextRequest) {
 
   rows.sort((a, b) => b.total_ms - a.total_ms);
 
-  const workingProfileCount = rows.filter((r) => r.total_ms > 0).length;
-  const totalMs = rows.reduce((acc, r) => acc + r.total_ms, 0);
-  const totalOvertime = rows.reduce((acc, r) => acc + r.overtime_ms, 0);
-  const totalLunch = rows.reduce((acc, r) => acc + r.lunch_ms, 0);
-  const totalBreak = rows.reduce((acc, r) => acc + r.break_ms, 0);
-  const inOvertimeCount = rows.filter((r) => r.overtime_ms > 0).length;
-  const ytdOvertime = rows.reduce((acc, r) => acc + r.ytd_overtime_ms, 0);
-  const ytdInOvertimeCount = rows.filter((r) => r.ytd_overtime_ms > 0).length;
+  const team = summarizeWeeks(rows.flatMap((r) => r.weeks));
+  let workingProfileCount = 0;
+  let inOvertimeCount = 0;
+  let ytdOvertime = 0;
+  let ytdInOvertimeCount = 0;
+  for (const r of rows) {
+    if (r.total_ms > 0) workingProfileCount++;
+    if (r.overtime_ms > 0) inOvertimeCount++;
+    ytdOvertime += r.ytd_overtime_ms;
+    if (r.ytd_overtime_ms > 0) ytdInOvertimeCount++;
+  }
 
   // Team roll-up per week so the tab can show whether overtime is a
   // one-off spike or a steady trend. Across rows, "weeks over 40h" for a
@@ -179,7 +174,7 @@ export async function GET(req: NextRequest) {
   // show "team took N sick days this year" etc. without a second call.
   const aggTimeOff = emptyTimeOffByType();
   for (const r of rows) {
-    for (const t of TIME_OFF_TYPES_ALL) aggTimeOff[t] += r.time_off[t];
+    for (const { value } of TIME_OFF_TYPES) aggTimeOff[value] += r.time_off[value];
   }
 
   return NextResponse.json({
@@ -193,15 +188,15 @@ export async function GET(req: NextRequest) {
     summary: {
       employee_count: rows.length,
       working_employee_count: workingProfileCount,
-      total_ms: totalMs,
-      total_overtime_ms: totalOvertime,
-      total_lunch_ms: totalLunch,
-      total_break_ms: totalBreak,
+      total_ms: team.worked_ms,
+      total_overtime_ms: team.overtime_ms,
+      total_lunch_ms: team.lunch_ms,
+      total_break_ms: team.break_ms,
       in_overtime_count: inOvertimeCount,
       ytd_overtime_ms: ytdOvertime,
       ytd_in_overtime_count: ytdInOvertimeCount,
       avg_ms_per_working_employee: workingProfileCount
-        ? Math.round(totalMs / workingProfileCount)
+        ? Math.round(team.worked_ms / workingProfileCount)
         : 0,
       time_off: withTotal(aggTimeOff),
       weekly,

@@ -29,8 +29,8 @@ export function computeDayTotals(
   dayPunches: TimePunch[],
   dayKey: string,
   now: Date = new Date(),
+  todayKey: string = localDateInZone(now),
 ): DayTotals {
-  const todayKey = localDateInZone(now);
   let dayNow: Date;
   if (dayKey === todayKey) {
     dayNow = now;
@@ -83,13 +83,25 @@ export interface WeekTotals {
 // boundary off midnight.
 export function buildWeekStarts(from: Date, now: Date = new Date()): Date[] {
   const first = startOfWeekSundayInZone(from).getTime();
+  return walkWeekStarts(now, (cur) => cur.getTime() >= first);
+}
+
+// The last `count` week starts, oldest → newest, ending with `now`'s week.
+export function lastWeekStarts(count: number, now: Date = new Date()): Date[] {
+  return walkWeekStarts(now, (_cur, n) => n < count);
+}
+
+function walkWeekStarts(
+  now: Date,
+  keep: (cur: Date, taken: number) => boolean,
+): Date[] {
   const starts: Date[] = [];
   let cur = startOfWeekSundayInZone(now);
-  while (cur.getTime() >= first) {
-    starts.unshift(cur);
+  while (keep(cur, starts.length)) {
+    starts.push(cur);
     cur = startOfWeekSundayInZone(new Date(cur.getTime() - DAY_MS));
   }
-  return starts;
+  return starts.reverse();
 }
 
 // Week start of the week containing Jan 1 (ET) of `now`'s year. YTD
@@ -128,12 +140,13 @@ export function computeWeeklyBreakdown(
     days[idx].set(dayKey, list);
   }
 
+  const todayKey = localDateInZone(now);
   return weekStarts.map((ws, i) => {
     let worked = 0;
     let lunch = 0;
     let brk = 0;
     for (const [dayKey, list] of days[i]) {
-      const t = computeDayTotals(list, dayKey, now);
+      const t = computeDayTotals(list, dayKey, now, todayKey);
       worked += t.worked_ms;
       lunch += t.lunch_ms;
       brk += t.break_ms;

@@ -5,7 +5,13 @@ import {
   timeDataScope,
 } from "@/lib/auth/permissions";
 import { startOfDayInZone } from "@/lib/timesheets/tz";
-import { requestDays, type TimeOffType, type TimeOffStatus } from "@/lib/timeoff/types";
+import {
+  emptyTimeOffByType,
+  requestDays,
+  withTotal,
+  type TimeOffType,
+  type TimeOffStatus,
+} from "@/lib/timeoff/types";
 import type { TimePunch } from "@/lib/timesheets/state";
 import { fetchPunchesPaged } from "@/lib/timesheets/punches";
 import {
@@ -55,8 +61,6 @@ export interface WindowTimeOffRow {
 
 export type YtdBreakdown = Record<TimeOffType, number> & { total: number };
 
-export type OvertimeWeek = WeekTotals;
-
 // YTD weekly hours for one employee. Independent of the days-selector —
 // overtime is a per-week (Sun–Sat, ET) figure, so a 7-day window would
 // slice weeks in half.
@@ -64,7 +68,7 @@ export interface EmployeeOvertime {
   ytd_worked_ms: number;
   ytd_overtime_ms: number;
   ytd_overtime_weeks: number;
-  weeks: OvertimeWeek[]; // oldest → newest, through the current week
+  weeks: WeekTotals[]; // oldest → newest, through the current week
 }
 
 export interface EmployeeDetailData {
@@ -120,10 +124,6 @@ interface EmployeeScopeRow {
   department: string | null;
   is_active: boolean;
   created_at: string;
-}
-
-function emptyYtd(): YtdBreakdown {
-  return { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0, total: 0 };
 }
 
 // Normalizes the days-selector to a supported range. Anything unexpected
@@ -243,7 +243,7 @@ export async function getEmployeeDetail(
     return { ok: false, status: 500, message: overtimeRes.error };
   }
 
-  const ytd = emptyYtd();
+  const ytdByType = emptyTimeOffByType();
   for (const t of ytdTimeOffRes.data || []) {
     const row = t as {
       type: TimeOffType;
@@ -252,10 +252,8 @@ export async function getEmployeeDetail(
       full_day: boolean;
       hours: number | null;
     };
-    ytd[row.type] += requestDays(row);
+    ytdByType[row.type] += requestDays(row);
   }
-  ytd.total =
-    ytd.vacation + ytd.sick + ytd.personal + ytd.parental + ytd.other;
 
   return {
     ok: true,
@@ -265,7 +263,7 @@ export async function getEmployeeDetail(
       range: { from: startISO, to: endISO },
       time_off: {
         window: (windowTimeOffRes.data || []) as WindowTimeOffRow[],
-        ytd,
+        ytd: withTotal(ytdByType),
       },
       overtime: overtimeRes.data,
     },

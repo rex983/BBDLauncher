@@ -1,14 +1,14 @@
 import { requireTimeDataAccessWithProfile } from "@/lib/auth/scope-check";
 import { startOfDayInZone } from "@/lib/timesheets/tz";
 import { loadEmployeeOvertime } from "@/lib/timesheets/detail";
-import { requestDays, type TimeOffType } from "@/lib/timeoff/types";
+import {
+  emptyTimeOffByType,
+  requestDays,
+  withTotal,
+  type TimeOffType,
+} from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-
-type TimeOffByType = Record<TimeOffType, number>;
-function emptyTimeOffByType(): TimeOffByType {
-  return { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0 };
-}
 
 interface EmployeeRow {
   id: string;
@@ -105,8 +105,6 @@ export async function GET(
     };
     ytdByType[row.type] += requestDays(row);
   }
-  const ytdTotal =
-    ytdByType.vacation + ytdByType.sick + ytdByType.personal + ytdByType.parental + ytdByType.other;
 
   return NextResponse.json({
     profile: gate.target,
@@ -114,7 +112,7 @@ export async function GET(
     range: { from: startISO, to: endISO },
     time_off: {
       window: windowTimeOffRes.data || [],
-      ytd: { ...ytdByType, total: ytdTotal },
+      ytd: withTotal(ytdByType),
     },
     overtime: overtimeRes.data,
   });

@@ -27,6 +27,16 @@ export const TIME_OFF_TYPES: { value: TimeOffType; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+export type TimeOffByType = Record<TimeOffType, number>;
+
+export function emptyTimeOffByType(): TimeOffByType {
+  return { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0 };
+}
+
+export function withTotal(t: TimeOffByType): TimeOffByType & { total: number } {
+  return { ...t, total: TIME_OFF_TYPES.reduce((acc, { value }) => acc + t[value], 0) };
+}
+
 export const TIME_OFF_TYPE_LABEL: Record<TimeOffType, string> = Object.fromEntries(
   TIME_OFF_TYPES.map((t) => [t.value, t.label]),
 ) as Record<TimeOffType, string>;

@@ -20,6 +20,7 @@ import { useSortableRows } from "@/lib/hooks/use-sortable-rows";
 import type { ExportColumn } from "@/lib/export/csv";
 import { formatDuration, msToHours } from "@/lib/timesheets/state";
 import { formatWeekOf } from "@/lib/timesheets/tz";
+import { StatCard } from "@/components/ui/stat-card";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { TIME_OFF_TYPE_LABEL, type TimeOffType } from "@/lib/timeoff/types";
 import type { Department, Office } from "@/types/auth";
@@ -95,9 +96,6 @@ function fmtDays(d: number): string {
   return (Math.round(d * 10) / 10).toString();
 }
 
-// ms → hours as a plain number (2 decimals) — friendlier for spreadsheets
-// than "5h 42m" strings when the user wants to sum or chart the column.
-
 const YTD_OVERTIME_COLUMNS: ExportColumn<Row>[] = [
   { key: "worked_hours_ytd", label: "Worked hours (YTD)", get: (r) => msToHours(r.ytd_worked_ms) },
   { key: "overtime_hours_ytd", label: "Overtime hours (YTD)", get: (r) => msToHours(r.ytd_overtime_ms) },
@@ -133,7 +131,6 @@ const DEPARTMENTS: Department[] = ["SALES TEAM", "BST", "RnD"];
 type SortKey =
   | "name" | "office" | "department" | "total" | "overtime" | "ytd_overtime"
   | "lunch" | "break" | "time_off";
-
 
 // Time-data analytics widget. Rendered inside /admin/analytics as its own
 // tab; sources data from /api/management/analytics/time. Scope is enforced
@@ -292,7 +289,7 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat
+        <StatCard
           label="Total hours"
           value={loading || !data ? "…" : formatDuration(data.summary.total_ms)}
           sub={
@@ -301,36 +298,36 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
               : undefined
           }
         />
-        <Stat
+        <StatCard
           label="Avg per employee"
           value={loading || !data ? "…" : formatDuration(data.summary.avg_ms_per_working_employee)}
         />
-        <Stat
+        <StatCard
           label="Overtime hours"
           value={loading || !data ? "…" : formatDuration(data.summary.total_overtime_ms)}
           sub={data ? `${data.summary.in_overtime_count} over 40h/wk` : undefined}
           highlight={!!data && data.summary.in_overtime_count > 0}
         />
-        <Stat
+        <StatCard
           label="Overtime (YTD)"
           value={loading || !data ? "…" : formatDuration(data.summary.ytd_overtime_ms)}
           sub={data ? `${data.summary.ytd_in_overtime_count} employees this year` : undefined}
           highlight={!!data && data.summary.ytd_overtime_ms > 0}
         />
-        <Stat
+        <StatCard
           label="Total lunch"
           value={loading || !data ? "…" : formatDuration(data.summary.total_lunch_ms)}
         />
-        <Stat
+        <StatCard
           label="Total breaks"
           value={loading || !data ? "…" : formatDuration(data.summary.total_break_ms)}
         />
-        <Stat
+        <StatCard
           label="Time off (YTD)"
           value={loading || !data ? "…" : `${fmtDays(data.summary.time_off.total)} d`}
           sub={data ? "approved days across scope" : undefined}
         />
-        <Stat
+        <StatCard
           label="Sick days (YTD)"
           value={loading || !data ? "…" : `${fmtDays(data.summary.time_off.sick)} d`}
           sub={data ? `vs ${fmtDays(data.summary.time_off.vacation)} vac` : undefined}
@@ -345,7 +342,7 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               {TIME_OFF_TYPES_ORDERED.map((t) => (
-                <Stat
+                <StatCard
                   key={t}
                   label={TIME_OFF_TYPE_LABEL[t]}
                   value={`${fmtDays(data.summary.time_off[t])} d`}
@@ -615,14 +612,14 @@ function EmployeeTimeStatsDialog({
                 Time on the clock — last {weeks === 1 ? "week" : `${weeks} weeks`}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Stat label="Worked" value={formatDuration(row.total_ms)} />
-                <Stat
+                <StatCard label="Worked" value={formatDuration(row.total_ms)} />
+                <StatCard
                   label="Overtime"
                   value={formatDuration(row.overtime_ms)}
                   highlight={row.overtime_ms > 0}
                 />
-                <Stat label="Lunch" value={formatDuration(row.lunch_ms)} />
-                <Stat label="Breaks" value={formatDuration(row.break_ms)} />
+                <StatCard label="Lunch" value={formatDuration(row.lunch_ms)} />
+                <StatCard label="Breaks" value={formatDuration(row.break_ms)} />
               </div>
             </div>
 
@@ -631,13 +628,13 @@ function EmployeeTimeStatsDialog({
                 Overtime — YTD
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <Stat
+                <StatCard
                   label="Overtime"
                   value={formatDuration(row.ytd_overtime_ms)}
                   highlight={row.ytd_overtime_ms > 0}
                 />
-                <Stat label="Weeks over 40h" value={String(row.ytd_overtime_weeks)} />
-                <Stat label="Worked" value={formatDuration(row.ytd_worked_ms)} />
+                <StatCard label="Weeks over 40h" value={String(row.ytd_overtime_weeks)} />
+                <StatCard label="Worked" value={formatDuration(row.ytd_worked_ms)} />
               </div>
             </div>
 
@@ -647,13 +644,13 @@ function EmployeeTimeStatsDialog({
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {TIME_OFF_TYPES_ORDERED.map((t) => (
-                  <Stat
+                  <StatCard
                     key={t}
                     label={TIME_OFF_TYPE_LABEL[t]}
                     value={`${fmtDays(row.time_off[t])} d`}
                   />
                 ))}
-                <Stat label="Total" value={`${fmtDays(row.time_off.total)} d`} />
+                <StatCard label="Total" value={`${fmtDays(row.time_off.total)} d`} />
               </div>
             </div>
 
@@ -719,29 +716,5 @@ function EmployeeTimeStatsDialog({
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  sub,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-md border bg-card p-4 ${
-        highlight ? "border-destructive/60 bg-destructive/5" : ""
-      }`}
-    >
-      <div className="text-xs text-muted-foreground uppercase tracking-wider">{label}</div>
-      <div className="text-lg font-semibold mt-1">{value}</div>
-      {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
-    </div>
   );
 }

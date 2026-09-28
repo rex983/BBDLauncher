@@ -19,19 +19,25 @@ import {
   computeState, formatDuration, msToHours, STATUS_LABEL,
   type PunchEventType, type TimePunch,
 } from "@/lib/timesheets/state";
-import { computeDayWorkedMs, OVERTIME_THRESHOLD_MS } from "@/lib/timesheets/weekly";
+import {
+  computeDayWorkedMs,
+  OVERTIME_THRESHOLD_MS,
+  type WeekTotals,
+} from "@/lib/timesheets/weekly";
 import { formatWeekOf, localDateInZone } from "@/lib/timesheets/tz";
 import { canEditTimeData } from "@/lib/auth/permissions";
 import {
+  emptyTimeOffByType,
   requestDays,
   TIME_OFF_TYPE_LABEL,
+  withTotal,
   type TimeOffType,
 } from "@/lib/timeoff/types";
+import { StatCard } from "@/components/ui/stat-card";
 import type {
   EmployeeDetailData,
   EmployeeDetailProfile,
   EmployeeOvertime,
-  OvertimeWeek,
   WindowTimeOffRow,
   YtdBreakdown,
 } from "@/lib/timesheets/detail";
@@ -57,7 +63,7 @@ const TIME_OFF_TYPES_ORDERED: TimeOffType[] = [
 ];
 
 function emptyYtd(): YtdBreakdown {
-  return { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0, total: 0 };
+  return withTotal(emptyTimeOffByType());
 }
 
 function fmtDays(d: number): string {
@@ -114,7 +120,7 @@ const PUNCH_COLUMNS: ExportColumn<TimePunch>[] = [
   { key: "id", label: "Punch ID", get: (p) => p.id },
 ];
 
-const OVERTIME_WEEK_COLUMNS: ExportColumn<OvertimeWeek>[] = [
+const OVERTIME_WEEK_COLUMNS: ExportColumn<WeekTotals>[] = [
   {
     key: "week_start",
     label: "Week starting (ET)",
@@ -188,14 +194,19 @@ export default function EmployeeDetailShell({
     initialData !== null || initialError !== null,
   );
 
-  const load = useCallback(async () => {
+  // YTD overtime ignores the days selector, so only fetch it on first load
+  // and after punch edits — not on every range change.
+  const hasOvertimeRef = useRef(initialData?.overtime != null);
+  const load = useCallback(async (refreshOvertime = false) => {
     setLoading(true);
     setError(null);
     const now = new Date();
     const from = new Date(now);
     from.setDate(from.getDate() - days);
     from.setHours(0, 0, 0, 0);
-    const url = `/api/management/timesheets/employee/${profileId}?from=${from.toISOString()}&to=${now.toISOString()}&overtime=1`;
+    const url = `/api/management/timesheets/employee/${profileId}?from=${from.toISOString()}&to=${now.toISOString()}${
+      refreshOvertime || !hasOvertimeRef.current ? "&overtime=1" : ""
+    }`;
     const res = await fetch(url);
     if (res.ok) {
       const data = await res.json();
@@ -205,7 +216,10 @@ export default function EmployeeDetailShell({
         setTimeOffWindow(data.time_off.window ?? []);
         setTimeOffYtd(data.time_off.ytd ?? emptyYtd());
       }
-      if (data.overtime) setOvertime(data.overtime);
+      if (data.overtime) {
+        setOvertime(data.overtime);
+        hasOvertimeRef.current = true;
+      }
     } else {
       const body = await res.json().catch(() => ({}));
       setError(typeof body.error === "string" ? body.error : "Failed to load");
@@ -268,14 +282,14 @@ export default function EmployeeDetailShell({
     }
     setDialogOpen(false);
     setEditingId(null);
-    load();
+    load(true);
   };
 
   const deletePunch = async (id: string) => {
     if (!confirm("Delete this punch?")) return;
     const res = await fetch(`/api/management/timesheets/punches/${id}`, { method: "DELETE" });
     if (!res.ok) { alert("Delete failed"); return; }
-    load();
+    load(true);
   };
 
   // Bucket punches by ET-local day (matches other timesheet math). Days
@@ -702,30 +716,6 @@ function fmtDayHeader(dayKey: string) {
   return date.toLocaleDateString([], {
     weekday: "short", month: "short", day: "numeric", year: "numeric",
   });
-}
-
-function StatCard({
-  label,
-  value,
-  sub,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-md border bg-card p-4 ${
-        highlight ? "border-destructive/60 bg-destructive/5" : ""
-      }`}
-    >
-      <div className="text-xs text-muted-foreground uppercase tracking-wider">{label}</div>
-      <div className="text-lg font-semibold mt-1">{value}</div>
-      {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
-    </div>
-  );
 }
 
 function DayStat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {

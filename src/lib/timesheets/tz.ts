@@ -6,21 +6,33 @@
 
 export const DEFAULT_ZONE = "America/New_York";
 
-// toLocaleDateString builds a fresh Intl.DateTimeFormat on every call, which
-// dominates when folding a year of punches. Cache one formatter per zone.
-const dateFormatters = new Map<string, Intl.DateTimeFormat>();
-function dateFormatter(zone: string): Intl.DateTimeFormat {
-  let f = dateFormatters.get(zone);
+// toLocale*String builds a fresh Intl.DateTimeFormat on every call, which
+// dominates when folding a year of punches. Cache formatters per zone.
+const formatters = new Map<string, Intl.DateTimeFormat>();
+function cachedFormatter(
+  key: string,
+  locale: string,
+  opts: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
+  let f = formatters.get(key);
   if (!f) {
-    f = new Intl.DateTimeFormat("en-CA", {
-      timeZone: zone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    dateFormatters.set(zone, f);
+    f = new Intl.DateTimeFormat(locale, opts);
+    formatters.set(key, f);
   }
   return f;
+}
+// "YYYY-MM-DD"
+function dateFormatter(zone: string): Intl.DateTimeFormat {
+  return cachedFormatter(`date:${zone}`, "en-CA", {
+    timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+  });
+}
+// "YYYY-MM-DD HH:mm:ss" (24h)
+function dateTimeFormatter(zone: string): Intl.DateTimeFormat {
+  return cachedFormatter(`datetime:${zone}`, "sv-SE", {
+    timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  });
 }
 
 // Returns the UTC Date corresponding to `HH:MM` on the ET-local calendar
@@ -44,7 +56,7 @@ export function scheduledTimeInZone(
   );
   // "sv-SE" locale formats a Date as "YYYY-MM-DD HH:mm:ss" — a stable ISO-ish
   // string we can re-parse as UTC to measure the zone offset.
-  const inZoneStr = naiveUtc.toLocaleString("sv-SE", { timeZone: zone });
+  const inZoneStr = dateTimeFormatter(zone).format(naiveUtc);
   const asIfLocalWereUtc = new Date(inZoneStr.replace(" ", "T") + "Z");
   const offsetMs = naiveUtc.getTime() - asIfLocalWereUtc.getTime();
   return new Date(naiveUtc.getTime() + offsetMs);
@@ -89,11 +101,9 @@ export function startOfWeekSundayInZone(
 // browser outside ET doesn't render the Sunday boundary as Saturday.
 export function formatWeekOf(iso: string, zone: string = DEFAULT_ZONE): string {
   const [y, m, d] = localDateInZone(new Date(iso), zone).split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  return cachedFormatter("weekOf", "default", {
+    month: "short", day: "numeric", timeZone: "UTC",
+  }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 
 function pad(n: number): string {

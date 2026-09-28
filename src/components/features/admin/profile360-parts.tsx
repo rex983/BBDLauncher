@@ -52,27 +52,7 @@ import {
   type AnalyticsPayload,
 } from "./profile360-helpers";
 
-export function StatCard({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-md border bg-card p-4">
-      <div className="text-xs text-muted-foreground uppercase tracking-wider">
-        {label}
-      </div>
-      <div className="text-lg font-semibold mt-1 truncate" title={value}>
-        {value}
-      </div>
-      {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
-    </div>
-  );
-}
+export { StatCard } from "@/components/ui/stat-card";
 
 export function MiniStat({ label, value }: { label: string; value: string }) {
   return (

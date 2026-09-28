@@ -7,6 +7,7 @@ import { computeDayWorkedMs } from "@/lib/timesheets/weekly";
 import { localDateInZone, startOfDayInZone } from "@/lib/timesheets/tz";
 import type { IncidentSeverity } from "@/lib/incidents/types";
 import type { YtdBreakdown } from "@/lib/timesheets/detail";
+import { emptyTimeOffByType, withTotal } from "@/lib/timeoff/types";
 
 export interface AnalyticsPayload {
   totals: {
@@ -177,5 +178,5 @@ export function aggregatePunches(punches: TimePunch[]): {
 }
 
 export function emptyYtd(): YtdBreakdown {
-  return { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0, total: 0 };
+  return withTotal(emptyTimeOffByType());
 }
