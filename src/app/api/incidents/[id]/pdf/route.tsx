@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import {
   canViewTimeData,
   isAdmin,
@@ -11,6 +11,7 @@ import {
   type IncidentPdfData,
 } from "@/lib/incidents/pdf";
 import { formatIncidentNumber } from "@/lib/incidents/types";
+import { isTargetInScope, type ScopedProfile } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -33,10 +34,8 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
   const { data: report, error } = await supabase
@@ -78,17 +77,11 @@ export async function GET(
         .from("profiles")
         .select("department, office, is_active")
         .eq("id", report.employee_profile_id)
-        .single();
+        .single<ScopedProfile>();
       if (!target) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
-      if (target.is_active === false) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-      if (scope.department && target.department !== scope.department) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-      if (scope.office && target.office !== scope.office) {
+      if (!isTargetInScope(scope, target)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }

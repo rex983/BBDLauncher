@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import {
   canEditTimeData,
   canViewTimeData,
@@ -18,10 +18,8 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const session = await auth();
-  if (!session?.user || !canViewTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canViewTimeData);
+  if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
   const admin = isAdmin(session.user.role);
@@ -135,10 +133,8 @@ export async function PATCH(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const session = await auth();
-  if (!session?.user || !canEditTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canEditTimeData);
+  if (session instanceof NextResponse) return session;
   const parsed = patchSchema.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -219,10 +215,8 @@ export async function DELETE(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const session = await auth();
-  if (!session?.user || !canEditTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canEditTimeData);
+  if (session instanceof NextResponse) return session;
   const supabase = createAdminClient();
   const admin = isAdmin(session.user.role);
 

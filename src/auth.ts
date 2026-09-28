@@ -5,6 +5,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptStrapiCookie } from "@/lib/auth/strapi-sso";
 import { rateLimit } from "@/lib/rate-limit";
 import type { Department, Office, UserRole } from "@/types/auth";
+import type { JWT } from "next-auth/jwt";
+
+// Hardcoded owner account — always admin, even before a profiles row exists.
+const OWNER_EMAIL = "rex@bigbuildingsdirect.com";
+
+// Copy the org claims (office / department / is_it) from a profiles row —
+// or from the token itself when normalizing legacy tokens — onto the JWT.
+function applyOrgClaims(token: JWT, row: Record<string, unknown>) {
+  token.office = (row.office as Office | null) ?? null;
+  token.department = (row.department as Department | null) ?? null;
+  token.is_it = (row.is_it as boolean | null) ?? false;
+}
 
 // Dev bypass ONLY in actual development, never via env var in production.
 // Belt-and-suspenders: also refuse when running under Vercel (preview or
@@ -82,7 +94,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         // Hardcoded admin account — requires ADMIN_PASSWORD env var
         if (
-          email === "rex@bigbuildingsdirect.com" &&
+          email === OWNER_EMAIL &&
           process.env.ADMIN_PASSWORD &&
           password === process.env.ADMIN_PASSWORD
         ) {
@@ -134,7 +146,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
 
       // Hardcoded admin account — always allowed
-      if (user.email === "rex@bigbuildingsdirect.com") return true;
+      if (user.email === OWNER_EMAIL) return true;
 
       // Dev bypass — skip DB check only in actual development AND only for
       // company-domain emails (matches authorize()).
@@ -161,7 +173,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (user?.email) {
         // Hardcoded admin account — admin role, but resolve profileId from DB
         // by email so audit/analytics rows link back to a real profile row.
-        if (user.email === "rex@bigbuildingsdirect.com") {
+        if (user.email === OWNER_EMAIL) {
           token.role = (token.role as UserRole) || "admin";
           try {
             const supabase = createAdminClient();
@@ -172,18 +184,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               .single();
             if (profile) {
               token.profileId = profile.id;
-              token.office = (profile.office as Office | null) ?? null;
-              token.department = (profile.department as Department | null) ?? null;
-              token.is_it = (profile.is_it as boolean | null) ?? false;
+              applyOrgClaims(token, profile);
               return token;
             }
           } catch {
             // fall through to legacy fallback
           }
           token.profileId = (token.profileId as string) || user.id || "admin-001";
-          token.office = (token.office as Office | null) ?? null;
-          token.department = (token.department as Department | null) ?? null;
-          token.is_it = (token.is_it as boolean | undefined) ?? false;
+          applyOrgClaims(token, token);
           return token;
         }
 
@@ -191,9 +199,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (isDev) {
           token.role = (token.role as UserRole) || "admin";
           token.profileId = (token.profileId as string) || user.id;
-          token.office = (token.office as Office | null) ?? null;
-          token.department = (token.department as Department | null) ?? null;
-          token.is_it = (token.is_it as boolean | undefined) ?? false;
+          applyOrgClaims(token, token);
           return token;
         }
 
@@ -207,9 +213,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (profile) {
           token.role = profile.role as UserRole;
           token.profileId = profile.id;
-          token.office = (profile.office as Office | null) ?? null;
-          token.department = (profile.department as Department | null) ?? null;
-          token.is_it = (profile.is_it as boolean | null) ?? false;
+          applyOrgClaims(token, profile);
           token.session_version = (profile.session_version as number | null) ?? 0;
         }
         return token;
@@ -219,7 +223,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // or a Google sub before we started resolving to the real profiles.id.
       const email = token.email as string | undefined;
       if (
-        email === "rex@bigbuildingsdirect.com" &&
+        email === OWNER_EMAIL &&
         (token.profileId === "admin-001" ||
           !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
             (token.profileId as string) ?? ""
@@ -234,9 +238,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             .single();
           if (profile) {
             token.profileId = profile.id;
-            token.office = (profile.office as Office | null) ?? null;
-            token.department = (profile.department as Department | null) ?? null;
-            token.is_it = (profile.is_it as boolean | null) ?? false;
+            applyOrgClaims(token, profile);
           }
         } catch {
           // ignore
@@ -278,9 +280,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const tokenVersion = (token.session_version as number | undefined) ?? 0;
           if (dbVersion !== tokenVersion) {
             token.role = current.role as UserRole;
-            token.office = (current.office as Office | null) ?? null;
-            token.department = (current.department as Department | null) ?? null;
-            token.is_it = (current.is_it as boolean | null) ?? false;
+            applyOrgClaims(token, current);
             token.session_version = dbVersion;
           }
         }

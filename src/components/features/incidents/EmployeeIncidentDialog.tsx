@@ -21,6 +21,7 @@ import {
   type IncidentCategory,
   type IncidentSeverity,
   type IncidentStatus,
+  INCIDENT_SEVERITY_VARIANT,
 } from "@/lib/incidents/types";
 import { AttachmentPreview } from "@/components/shared/AttachmentPreview";
 import { Download, ShieldCheck } from "lucide-react";
@@ -48,16 +49,6 @@ interface EmployeeReport {
   created_at: string;
   reporter_name: string | null;
 }
-
-const SEVERITY_VARIANT: Record<
-  IncidentSeverity,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  low: "secondary",
-  medium: "outline",
-  high: "default",
-  critical: "destructive",
-};
 
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -169,7 +160,7 @@ export function EmployeeIncidentDialog({
           </DialogTitle>
           {report && (
             <DialogDescription className="flex flex-wrap items-center gap-2 pt-1">
-              <Badge variant={SEVERITY_VARIANT[report.severity]}>
+              <Badge variant={INCIDENT_SEVERITY_VARIANT[report.severity]}>
                 {INCIDENT_SEVERITY_LABEL[report.severity]}
               </Badge>
               <Badge variant="outline">

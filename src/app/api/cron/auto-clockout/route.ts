@@ -6,7 +6,9 @@ import {
   startOfDayInZone,
   weekdayInZone,
 } from "@/lib/timesheets/tz";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { cronRoute } from "@/lib/cron";
+import { DEFAULT_END, DEFAULT_WORKDAYS } from "@/lib/timesheets/schedule";
 
 export const maxDuration = 60;
 
@@ -20,23 +22,8 @@ export const maxDuration = 60;
 // row in time_extensions; this cron reads it. If they dismiss or ignore,
 // we clock them out.
 
-function isAuthorised(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const header = req.headers.get("authorization");
-  if (header === `Bearer ${secret}`) return true;
-  if (req.headers.get("x-vercel-cron") === "1") return true;
-  return false;
-}
 
-const DEFAULT_WORKDAYS = new Set([1, 2, 3, 4, 5]);
-const DEFAULT_END = "18:00"; // ET
-
-async function handle(req: NextRequest) {
-  if (!isAuthorised(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+async function handle() {
   const supabase = createAdminClient();
   const now = new Date();
   const weekday = weekdayInZone(now);
@@ -140,9 +127,4 @@ async function handle(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest) {
-  return handle(req);
-}
-export async function POST(req: NextRequest) {
-  return handle(req);
-}
+export const { GET, POST } = cronRoute(handle);

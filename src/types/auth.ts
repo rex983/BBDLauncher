@@ -4,9 +4,11 @@
 // new roles created at runtime are app-access labels only.
 export type UserRole = string;
 
-export type Office = "Harbor" | "Marion" | "BST" | "RnD";
+import type { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
 
-export type Department = "SALES TEAM" | "BST" | "RnD";
+export type Office = (typeof OFFICES)[number];
+
+export type Department = (typeof DEPARTMENTS)[number];
 
 export interface UserProfile {
   id: string;

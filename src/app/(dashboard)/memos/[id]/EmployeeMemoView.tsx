@@ -13,7 +13,7 @@ import {
   MEMO_ACK_MODE_LABEL,
   MEMO_CATEGORY_LABEL,
   MEMO_PRIORITY_LABEL,
-  type MemoPriority,
+  MEMO_PRIORITY_VARIANT,
 } from "@/lib/memos/types";
 import { CheckCircle2, Printer, ShieldCheck } from "lucide-react";
 import type { EmployeeMemoPageData } from "./page";
@@ -25,15 +25,6 @@ function fmtDate(iso: string | null | undefined) {
     timeStyle: "short",
   });
 }
-
-const PRIORITY_VARIANT: Record<
-  MemoPriority,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  informational: "outline",
-  important: "default",
-  mandatory: "destructive",
-};
 
 export function EmployeeMemoView({
   data,
@@ -107,7 +98,7 @@ export function EmployeeMemoView({
         <h1 className="text-3xl font-bold tracking-tight">{memo.title}</h1>
       </div>
       <div className="flex flex-wrap items-center gap-2 print:hidden">
-        <Badge variant={PRIORITY_VARIANT[memo.priority]}>
+        <Badge variant={MEMO_PRIORITY_VARIANT[memo.priority]}>
           {MEMO_PRIORITY_LABEL[memo.priority]}
         </Badge>
         <Badge variant="outline">{MEMO_CATEGORY_LABEL[memo.category]}</Badge>

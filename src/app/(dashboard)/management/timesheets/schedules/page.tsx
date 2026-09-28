@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canViewTimeData, timeDataScope } from "@/lib/auth/permissions";
+import { scopeProfilesQuery } from "@/lib/auth/scope-check";
 import SchedulesShell from "./SchedulesShell";
 
 interface Profile {
@@ -37,15 +38,10 @@ export default async function SchedulesPage() {
 
   const supabase = createAdminClient();
 
-  let profileQuery = supabase
-    .from("profiles")
-    .select("id, email, name:full_name, office")
-    .eq("is_active", true)
-    .order("email");
-  if (scope.department) profileQuery = profileQuery.eq("department", scope.department);
-  if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
-
-  const { data: profiles } = await profileQuery;
+  const { data: profiles } = await scopeProfilesQuery(
+    supabase.from("profiles").select("id, email, name:full_name, office"),
+    scope,
+  ).order("email");
   const profileIds = (profiles || []).map((p) => p.id);
   const schedulesRes = profileIds.length
     ? await supabase

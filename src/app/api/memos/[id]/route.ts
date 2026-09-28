@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { logMemoEvent } from "@/lib/memos/audit";
 import { extractActorHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
@@ -12,10 +12,8 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
   const { data: recipient } = await supabase

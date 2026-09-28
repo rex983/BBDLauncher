@@ -1,3 +1,5 @@
+import type { BadgeVariant } from "@/lib/badge-variant";
+
 // Types + taxonomy for office memos. Same shape philosophy as
 // src/lib/incidents/types.ts — one place for the enums so zod schemas,
 // dropdowns, Slack notifier, and display strings all stay in sync.
@@ -11,6 +13,12 @@ export type MemoCategory =
   | "other";
 
 export type MemoPriority = "informational" | "important" | "mandatory";
+
+export const MEMO_PRIORITY_VARIANT: Record<MemoPriority, BadgeVariant> = {
+  informational: "outline",
+  important: "default",
+  mandatory: "destructive",
+};
 
 export type MemoAcknowledgementMode =
   | "informational"
@@ -108,15 +116,6 @@ export const MEMO_AUDIENCE_SCOPES: {
     hint: "Hand-picked list of employees.",
   },
 ];
-
-// Standard acknowledgement text for signed memos. Kept generic (unlike
-// incident reports which specifically reference disciplinary action).
-export const MEMO_ACKNOWLEDGEMENT_TEMPLATE = [
-  "MEMO ACKNOWLEDGEMENT",
-  "",
-  "I acknowledge that I have received and reviewed this memo. My signature",
-  "below confirms receipt and understanding of its contents.",
-].join("\n");
 
 // Display helper for the sequential ID column. Prefixed with `M-` (vs.
 // incident reports' `#`) so a Slack or email reference disambiguates at a

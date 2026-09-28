@@ -24,7 +24,7 @@ import {
   MEMO_CATEGORY_LABEL,
   MEMO_PRIORITY_LABEL,
   MEMO_STATUS_LABEL,
-  type MemoPriority,
+  MEMO_PRIORITY_VARIANT,
 } from "@/lib/memos/types";
 import { Archive, CheckCircle2, Eye, Pencil, Save, Send, Trash2, X } from "lucide-react";
 import type { ManagerMemoPageData } from "./page";
@@ -36,15 +36,6 @@ function fmtDate(iso: string | null | undefined) {
     timeStyle: "short",
   });
 }
-
-const PRIORITY_VARIANT: Record<
-  MemoPriority,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  informational: "outline",
-  important: "default",
-  mandatory: "destructive",
-};
 
 export function ManagerMemoView({
   data,
@@ -158,7 +149,7 @@ export function ManagerMemoView({
         <h1 className="text-3xl font-bold tracking-tight">{memo.title}</h1>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={PRIORITY_VARIANT[memo.priority]}>
+        <Badge variant={MEMO_PRIORITY_VARIANT[memo.priority]}>
           {MEMO_PRIORITY_LABEL[memo.priority]}
         </Badge>
         <Badge variant="outline">{MEMO_CATEGORY_LABEL[memo.category]}</Badge>

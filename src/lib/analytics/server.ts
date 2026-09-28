@@ -1,26 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sinceIsoForRange, type AnalyticsRange } from "@/lib/analytics/ranges";
 
-export type AnalyticsRange = "24h" | "7d" | "30d" | "90d" | "all";
-
-const RANGE_DAYS: Record<AnalyticsRange, number | null> = {
-  "24h": 1,
-  "7d": 7,
-  "30d": 30,
-  "90d": 90,
-  all: null,
-};
-
-export const ANALYTICS_RANGES: AnalyticsRange[] = [
-  "24h",
-  "7d",
-  "30d",
-  "90d",
-  "all",
-];
-
-export function isAnalyticsRange(value: unknown): value is AnalyticsRange {
-  return typeof value === "string" && (ANALYTICS_RANGES as string[]).includes(value);
-}
+export {
+  ANALYTICS_RANGES,
+  isAnalyticsRange,
+  type AnalyticsRange,
+} from "@/lib/analytics/ranges";
 
 export type AnalyticsDestStat = {
   id: string;
@@ -103,9 +88,7 @@ export async function getLauncherAnalytics(
   range: AnalyticsRange,
   scope: { office: string | null },
 ): Promise<AnalyticsData> {
-  const days = RANGE_DAYS[range];
-  const sinceIso =
-    days === null ? null : new Date(Date.now() - days * 86400_000).toISOString();
+  const sinceIso = sinceIsoForRange(range);
 
   const supabase = createAdminClient();
 

@@ -2,6 +2,7 @@ import { computeState, type TimePunch } from "./state";
 import {
   localDateInZone,
   scheduledTimeInZone,
+  startOfDayInZone,
   startOfWeekSundayInZone,
 } from "./tz";
 
@@ -14,7 +15,7 @@ export interface WeeklyHours {
   is_overtime: boolean;
 }
 
-export interface DayTotals {
+interface DayTotals {
   worked_ms: number;
   lunch_ms: number;
   break_ms: number;
@@ -25,7 +26,7 @@ export interface DayTotals {
 // with no matching clock_out on the same day would accumulate hours all
 // the way to `now` — which is how a single stranded shift turns into
 // 93h/week. For today, the cap is `now` (live totals still tick).
-export function computeDayTotals(
+function computeDayTotals(
   dayPunches: TimePunch[],
   dayKey: string,
   now: Date = new Date(),
@@ -181,4 +182,43 @@ export function summarizeWeeks(weeks: WeekTotals[]): WeeksSummary {
     if (w.overtime_ms > 0) out.overtime_weeks++;
   }
   return out;
+}
+
+// Bucketed totals across a punches window (/profile + the admin 360 view).
+// Each ET day folds independently so a stranded open shift can't leak into
+// later days.
+export function aggregatePunches(punches: TimePunch[], now: Date = new Date()): {
+  worked_ms: number;
+  lunch_ms: number;
+  break_ms: number;
+  days: number;
+} {
+  if (punches.length === 0) return { worked_ms: 0, lunch_ms: 0, break_ms: 0, days: 0 };
+  const startOfToday = startOfDayInZone(now);
+  const todayKey = localDateInZone(now);
+
+  const dayBuckets = new Map<string, TimePunch[]>();
+  for (const p of punches) {
+    const key = localDateInZone(new Date(p.occurred_at));
+    const list = dayBuckets.get(key) || [];
+    list.push(p);
+    dayBuckets.set(key, list);
+  }
+
+  let worked_ms = 0;
+  let lunch_ms = 0;
+  let break_ms = 0;
+  for (const [dayKey, list] of dayBuckets) {
+    worked_ms += computeDayWorkedMs(list, dayKey, now);
+    const capNow = dayKey === todayKey ? now : new Date(startOfToday);
+    if (dayKey !== todayKey) {
+      const [y, m, d] = dayKey.split("-").map(Number);
+      const dayEnd = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
+      capNow.setTime(dayEnd.getTime());
+    }
+    const s = computeState(list, capNow);
+    lunch_ms += s.lunch_ms;
+    break_ms += s.break_ms;
+  }
+  return { worked_ms, lunch_ms, break_ms, days: dayBuckets.size };
 }

@@ -7,10 +7,7 @@ import {
   startOfDayInZone,
   weekdayInZone,
 } from "./tz";
-
-const DEFAULT_START = "10:00";
-const DEFAULT_END = "18:00";
-const DEFAULT_WORKDAYS = new Set([1, 2, 3, 4, 5]); // Mon-Fri in ET
+import { DEFAULT_END, DEFAULT_START, DEFAULT_WORKDAYS } from "./schedule";
 
 export interface TodayScheduleData {
   scheduled: boolean;

@@ -2,22 +2,26 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { AppCard } from "./app-card";
 import { AppListRow } from "./app-list-row";
 import type { LauncherApp } from "@/types/app";
 
-interface SortableAppListRowProps {
+interface SortableAppItemProps {
   app: LauncherApp;
+  // Grid tile or list row — both take the same drag/favorite props.
+  as: typeof AppCard | typeof AppListRow;
   isFavorite?: boolean;
   onToggleFavorite?: (appId: string) => void;
   sortable?: boolean;
 }
 
-export function SortableAppListRow({
+export function SortableAppItem({
   app,
+  as: Item,
   isFavorite,
   onToggleFavorite,
   sortable = true,
-}: SortableAppListRowProps) {
+}: SortableAppItemProps) {
   const {
     attributes,
     listeners,
@@ -27,19 +31,14 @@ export function SortableAppListRow({
     isDragging,
   } = useSortable({ id: app.id, disabled: !sortable });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
   return (
-    <AppListRow
+    <Item
       ref={setNodeRef}
       app={app}
       isDragging={isDragging}
       dragHandleProps={sortable ? { ...attributes, ...listeners } : undefined}
       showDragHandle={sortable}
-      style={style}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
       isFavorite={isFavorite}
       onToggleFavorite={onToggleFavorite}
     />

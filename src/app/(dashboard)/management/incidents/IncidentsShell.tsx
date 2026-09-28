@@ -34,17 +34,8 @@ import {
   INCIDENT_STATUS_LABEL,
   type IncidentSeverity,
   type IncidentStatus,
+  INCIDENT_SEVERITY_VARIANT,
 } from "@/lib/incidents/types";
-
-const SEVERITY_VARIANT: Record<
-  IncidentSeverity,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  low: "secondary",
-  medium: "outline",
-  high: "default",
-  critical: "destructive",
-};
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -310,7 +301,7 @@ function IncidentRowTable({
               <Badge variant="outline">{INCIDENT_CATEGORY_LABEL[r.category]}</Badge>
             </TableCell>
             <TableCell>
-              <Badge variant={SEVERITY_VARIANT[r.severity]}>
+              <Badge variant={INCIDENT_SEVERITY_VARIANT[r.severity]}>
                 {INCIDENT_SEVERITY_LABEL[r.severity]}
               </Badge>
             </TableCell>

@@ -38,6 +38,7 @@ import {
   type MemoCategory,
   type MemoPriority,
   type MemoStatus,
+  MEMO_PRIORITY_VARIANT,
 } from "@/lib/memos/types";
 
 interface MemoSummary {
@@ -58,15 +59,6 @@ interface MemoSummary {
   created_at: string;
   stats: { delivered: number; read: number; acknowledged: number };
 }
-
-const PRIORITY_VARIANT: Record<
-  MemoPriority,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  informational: "outline",
-  important: "default",
-  mandatory: "destructive",
-};
 
 const ACTIVE_STATUSES: MemoStatus[] = ["draft", "published"];
 const ARCHIVE_STATUSES: MemoStatus[] = ["archived"];
@@ -326,7 +318,7 @@ function MemoRowTable({
               <Badge variant="outline">{MEMO_CATEGORY_LABEL[r.category]}</Badge>
             </TableCell>
             <TableCell>
-              <Badge variant={PRIORITY_VARIANT[r.priority]}>
+              <Badge variant={MEMO_PRIORITY_VARIANT[r.priority]}>
                 {MEMO_PRIORITY_LABEL[r.priority]}
               </Badge>
             </TableCell>

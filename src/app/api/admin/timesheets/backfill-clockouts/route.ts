@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { isAdmin } from "@/lib/auth/permissions";
 import type { PunchEventType } from "@/lib/timesheets/state";
 import {
@@ -18,10 +18,8 @@ import { NextResponse } from "next/server";
 // to /login by middleware for a stretch of time, so open shifts from
 // those days never got closed and now show as 90h+ weeks.
 export async function POST() {
-  const session = await auth();
-  if (!session?.user || !isAdmin(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(isAdmin);
+  if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
   const now = new Date();

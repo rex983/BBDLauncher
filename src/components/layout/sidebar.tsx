@@ -60,19 +60,24 @@ const adminItems = [
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
 ];
 
-// Keep the pending-count badge live via a Supabase realtime subscription
-// on `time_off_requests`. Any INSERT/UPDATE/DELETE triggers a re-fetch of
-// the count endpoint (which enforces scope + pending-only server-side, so
-// we can't replicate the filter in the channel itself). Beats the old
-// 60s poll on every open tab.
-function usePendingTimeOffCount(enabled: boolean): number {
+// Keep a pending-count badge live via a Supabase realtime subscription on
+// `table`. Any INSERT/UPDATE/DELETE triggers a re-fetch of `endpoint` (which
+// enforces scope + pending-only server-side, so the filter can't live in the
+// channel itself). Beats the old 60s poll on every open tab, and a manager
+// acting on one tab clears the badge on all the others.
+function usePendingCount(
+  enabled: boolean,
+  endpoint: string,
+  channelName: string,
+  table: string,
+): number {
   const [count, setCount] = useState(0);
   useEffect(() => {
     if (!enabled) { setCount(0); return; }
     let cancelled = false;
     const fetchCount = async () => {
       try {
-        const res = await fetch("/api/management/timeoff/pending-count", { cache: "no-store" });
+        const res = await fetch(endpoint, { cache: "no-store" });
         if (!res.ok || cancelled) return;
         const body = await res.json();
         setCount(typeof body?.count === "number" ? body.count : 0);
@@ -84,10 +89,10 @@ function usePendingTimeOffCount(enabled: boolean): number {
 
     const supabase = getBrowserClient();
     const channel = supabase
-      .channel("sidebar-pending-count")
+      .channel(channelName)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "time_off_requests" },
+        { event: "*", schema: "public", table },
         () => { fetchCount(); },
       )
       .subscribe();
@@ -96,46 +101,7 @@ function usePendingTimeOffCount(enabled: boolean): number {
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [enabled]);
-  return count;
-}
-
-// Same pattern for incident reports — the sidebar badge counts anything
-// awaiting either the manager's or the employee's signature within the
-// viewer's scope. Realtime channel keys off `incident_reports` so a manager
-// signing on one tab clears the badge on all the others.
-function usePendingIncidentCount(enabled: boolean): number {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    if (!enabled) { setCount(0); return; }
-    let cancelled = false;
-    const fetchCount = async () => {
-      try {
-        const res = await fetch("/api/management/incidents/pending-count", { cache: "no-store" });
-        if (!res.ok || cancelled) return;
-        const body = await res.json();
-        setCount(typeof body?.count === "number" ? body.count : 0);
-      } catch {
-        // Ignore — badge is decorative.
-      }
-    };
-    fetchCount();
-
-    const supabase = getBrowserClient();
-    const channel = supabase
-      .channel("sidebar-pending-incidents")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "incident_reports" },
-        () => { fetchCount(); },
-      )
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
-    };
-  }, [enabled]);
+  }, [enabled, endpoint, channelName, table]);
   return count;
 }
 
@@ -158,8 +124,19 @@ export function Sidebar() {
     canAccessManagementPath(effectiveRole, item.href)
   );
   const preview = { viewAs, viewAsOffice };
-  const pendingCount = usePendingTimeOffCount(showManagementNav);
-  const pendingIncidents = usePendingIncidentCount(showManagementNav);
+  const pendingCount = usePendingCount(
+    showManagementNav,
+    "/api/management/timeoff/pending-count",
+    "sidebar-pending-count",
+    "time_off_requests",
+  );
+  // Incidents awaiting either the manager's or the employee's signature.
+  const pendingIncidents = usePendingCount(
+    showManagementNav,
+    "/api/management/incidents/pending-count",
+    "sidebar-pending-incidents",
+    "incident_reports",
+  );
 
   return (
     <aside className="w-64 border-r bg-background min-h-[calc(100vh-4rem)] print:hidden">

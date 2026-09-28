@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { canViewTimeData, isAdmin } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -22,10 +22,8 @@ export async function GET(
   const [authorId, ...rest] = path;
   const objectPath = [authorId, ...rest].join("/");
 
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
   const admin = isAdmin(session.user.role);

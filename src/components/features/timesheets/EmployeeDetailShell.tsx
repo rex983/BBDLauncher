@@ -17,7 +17,7 @@ import {
 import { Plus, Pencil, Trash2, LogIn, LogOut, Utensils, Coffee, Wand2 } from "lucide-react";
 import {
   computeState, formatDuration, msToHours, STATUS_LABEL,
-  type PunchEventType, type TimePunch,
+  PUNCH_EVENT_LABEL, PUNCH_EVENT_TYPES, type PunchEventType, type TimePunch,
 } from "@/lib/timesheets/state";
 import {
   computeDayWorkedMs,
@@ -27,11 +27,11 @@ import {
 import { formatWeekOf, localDateInZone } from "@/lib/timesheets/tz";
 import { canEditTimeData } from "@/lib/auth/permissions";
 import {
-  emptyTimeOffByType,
+  emptyTimeOffTotals,
+  formatDays,
   requestDays,
+  TIME_OFF_DISPLAY_ORDER,
   TIME_OFF_TYPE_LABEL,
-  withTotal,
-  type TimeOffType,
 } from "@/lib/timeoff/types";
 import { StatCard } from "@/components/ui/stat-card";
 import type {
@@ -44,32 +44,6 @@ import type {
 import { ExportMenu } from "@/components/ui/export-menu";
 import type { ExportColumn } from "@/lib/export/csv";
 import { FileIncidentDialog } from "@/components/features/incidents/FileIncidentDialog";
-
-const EVENT_TYPES: { value: PunchEventType; label: string }[] = [
-  { value: "clock_in",    label: "Clock in" },
-  { value: "clock_out",   label: "Clock out" },
-  { value: "lunch_start", label: "Lunch start" },
-  { value: "lunch_end",   label: "Lunch end" },
-  { value: "break_start", label: "Break start" },
-  { value: "break_end",   label: "Break end" },
-];
-
-const TIME_OFF_TYPES_ORDERED: TimeOffType[] = [
-  "sick",
-  "vacation",
-  "personal",
-  "parental",
-  "other",
-];
-
-function emptyYtd(): YtdBreakdown {
-  return withTotal(emptyTimeOffByType());
-}
-
-function fmtDays(d: number): string {
-  if (d === 0) return "0";
-  return (Math.round(d * 10) / 10).toString();
-}
 
 function fmtDateShort(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString([], {
@@ -167,7 +141,7 @@ export default function EmployeeDetailShell({
     initialData?.time_off.window ?? [],
   );
   const [timeOffYtd, setTimeOffYtd] = useState<YtdBreakdown>(
-    initialData?.time_off.ytd ?? emptyYtd(),
+    initialData?.time_off.ytd ?? emptyTimeOffTotals(),
   );
   const [overtime, setOvertime] = useState<EmployeeOvertime | null>(
     initialData?.overtime ?? null,
@@ -214,7 +188,7 @@ export default function EmployeeDetailShell({
       setPunches(data.punches);
       if (data.time_off) {
         setTimeOffWindow(data.time_off.window ?? []);
-        setTimeOffYtd(data.time_off.ytd ?? emptyYtd());
+        setTimeOffYtd(data.time_off.ytd ?? emptyTimeOffTotals());
       }
       if (data.overtime) {
         setOvertime(data.overtime);
@@ -377,7 +351,7 @@ export default function EmployeeDetailShell({
         <StatCard label={`Worked (last ${days}d)`} value={formatDuration(state.worked_ms)} />
         <StatCard label="Lunch" value={formatDuration(state.lunch_ms)} />
         <StatCard label="Breaks" value={formatDuration(state.break_ms)} />
-        <StatCard label="Time off (YTD)" value={`${fmtDays(timeOffYtd.total)} d`} />
+        <StatCard label="Time off (YTD)" value={`${formatDays(timeOffYtd.total)} d`} />
       </div>
 
       {overtime && (
@@ -465,13 +439,13 @@ export default function EmployeeDetailShell({
           </CardHeader>
           <CardContent className="px-4 py-3">
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-              {TIME_OFF_TYPES_ORDERED.map((t) => (
+              {TIME_OFF_DISPLAY_ORDER.map((t) => (
                 <div key={t} className="flex items-baseline gap-1.5">
                   <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
                     {TIME_OFF_TYPE_LABEL[t]}
                   </span>
                   <span className="tabular-nums font-medium">
-                    {fmtDays(timeOffYtd[t])} d
+                    {formatDays(timeOffYtd[t])} d
                   </span>
                 </div>
               ))}
@@ -480,7 +454,7 @@ export default function EmployeeDetailShell({
                   Total
                 </span>
                 <span className="tabular-nums font-semibold">
-                  {fmtDays(timeOffYtd.total)} d
+                  {formatDays(timeOffYtd.total)} d
                 </span>
               </div>
             </div>
@@ -514,7 +488,7 @@ export default function EmployeeDetailShell({
                     ? fmtDateShort(r.start_date)
                     : `${fmtDateShort(r.start_date)} – ${fmtDateShort(r.end_date)}`;
                 const durationLabel = r.full_day
-                  ? `${fmtDays(requestDays(r))} d`
+                  ? `${formatDays(requestDays(r))} d`
                   : `${r.hours}h`;
                 return (
                   <li
@@ -578,8 +552,8 @@ export default function EmployeeDetailShell({
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {EVENT_TYPES.map((e) => (
-                    <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
+                  {PUNCH_EVENT_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{PUNCH_EVENT_LABEL[t]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -641,7 +615,7 @@ export default function EmployeeDetailShell({
                       </div>
                       <div className="flex items-center gap-2">
                         <EventIcon type={p.event_type} />
-                        <span>{EVENT_LABEL[p.event_type]}</span>
+                        <span>{PUNCH_EVENT_LABEL[p.event_type]}</span>
                       </div>
                       <div className="text-xs">
                         {p.source === "auto" ? (
@@ -691,15 +665,6 @@ export default function EmployeeDetailShell({
     </div>
   );
 }
-
-const EVENT_LABEL: Record<PunchEventType, string> = {
-  clock_in:    "Clock in",
-  clock_out:   "Clock out",
-  lunch_start: "Lunch start",
-  lunch_end:   "Lunch end",
-  break_start: "Break start",
-  break_end:   "Break end",
-};
 
 function EventIcon({ type }: { type: PunchEventType }) {
   const cls = "h-3.5 w-3.5";

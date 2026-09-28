@@ -28,6 +28,7 @@ import { useRolePreview } from "@/components/features/launcher/role-preview-cont
 import { canEditTimeData } from "@/lib/auth/permissions";
 import { MarkDayOffDialog } from "@/components/features/timeoff/MarkDayOffDialog";
 import type { Department, Office } from "@/types/auth";
+import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
 
 interface Row {
   profile: {
@@ -47,8 +48,6 @@ interface Row {
 }
 
 const ALL = "__all__";
-const offices: Office[] = ["Harbor", "Marion", "BST", "RnD"];
-const departments: Department[] = ["SALES TEAM", "BST", "RnD"];
 
 const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   working: "default",
@@ -152,7 +151,7 @@ export default function TimesheetsShell({ initialRows }: { initialRows: Row[] })
               <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All</SelectItem>
-                {offices.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                {OFFICES.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
               </SelectContent>
             </Select>
           ) : (
@@ -166,7 +165,7 @@ export default function TimesheetsShell({ initialRows }: { initialRows: Row[] })
               <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All</SelectItem>
-                {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
               </SelectContent>
             </Select>
           ) : (

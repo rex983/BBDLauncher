@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { canEditTimeData, isAdmin } from "@/lib/auth/permissions";
 import { resolveMemoAudience } from "@/lib/memos/audience";
 import { NextRequest, NextResponse } from "next/server";
@@ -18,10 +18,8 @@ const previewSchema = z.object({
 // the author publishes. Enforces the same scope restrictions as the
 // create endpoint.
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canEditTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canEditTimeData);
+  if (session instanceof NextResponse) return session;
   const parsed = previewSchema.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });

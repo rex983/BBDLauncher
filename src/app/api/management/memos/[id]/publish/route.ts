@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { canEditTimeData, isAdmin } from "@/lib/auth/permissions";
 import { publishMemo } from "@/lib/memos/service";
 import { extractActorHeaders } from "@/lib/http";
@@ -18,10 +18,8 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const session = await auth();
-  if (!session?.user || !canEditTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canEditTimeData);
+  if (session instanceof NextResponse) return session;
   const parsed = publishSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });

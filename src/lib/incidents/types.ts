@@ -1,8 +1,17 @@
+import type { BadgeVariant } from "@/lib/badge-variant";
+
 // Types + taxonomy for HR incident reports. Same shape philosophy as
 // src/lib/timeoff/types.ts — one place for the enums so the zod validator,
 // the dropdowns, the Slack notifier, and the display all agree.
 
 export type IncidentSeverity = "low" | "medium" | "high" | "critical";
+
+export const INCIDENT_SEVERITY_VARIANT: Record<IncidentSeverity, BadgeVariant> = {
+  low: "secondary",
+  medium: "outline",
+  high: "default",
+  critical: "destructive",
+};
 
 export type IncidentCategory =
   | "attendance"

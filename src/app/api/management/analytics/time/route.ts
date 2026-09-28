@@ -1,4 +1,4 @@
-import { requireTimeDataAccess } from "@/lib/auth/scope-check";
+import { requireTimeDataAccess, scopeProfilesQuery } from "@/lib/auth/scope-check";
 import type { TimePunch } from "@/lib/timesheets/state";
 import {
   buildWeekStarts,
@@ -56,23 +56,11 @@ export async function GET(req: NextRequest) {
   const ytdFirstIdx = allWeekStarts.findIndex((d) => d >= ytdStart);
   const weekStartIsos = allWeekStarts.slice(rangeFirstIdx).map((d) => d.toISOString());
 
-  let profileQuery = supabase
-    .from("profiles")
-    .select("id, email, name:full_name, office, department, is_active")
-    .order("email");
-  if (!includeInactive) profileQuery = profileQuery.eq("is_active", true);
-  if (scope.department) {
-    profileQuery = profileQuery.eq("department", scope.department);
-  } else if (departmentFilter) {
-    profileQuery = profileQuery.eq("department", departmentFilter);
-  }
-  if (scope.office) {
-    profileQuery = profileQuery.eq("office", scope.office);
-  } else if (officeFilter) {
-    profileQuery = profileQuery.eq("office", officeFilter);
-  }
-
-  const { data: profiles, error: pErr } = await profileQuery;
+  const { data: profiles, error: pErr } = await scopeProfilesQuery(
+    supabase.from("profiles").select("id, email, name:full_name, office, department, is_active"),
+    scope,
+    { department: departmentFilter, office: officeFilter, includeInactive },
+  ).order("email");
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
 
   const profileIds = (profiles || []).map((p) => p.id);

@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 
@@ -80,10 +80,8 @@ function magicBytesMatch(bytes: Uint8Array, mime: string): boolean {
 // and the returned metadata is what the client tucks into the request's
 // `attachments` array when it POSTs to /api/timeoff.
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
   const profileId = session.user.profileId;
 
   const contentType = req.headers.get("content-type") || "";

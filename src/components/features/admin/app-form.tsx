@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import type { AppWithAccess, LauncherRole, LauncherSection, SsoType, AppStatus } from "@/types/app";
 import type { Office } from "@/types/auth";
+import { OFFICES } from "@/lib/org/constants";
 
 interface AppFormProps {
   app?: AppWithAccess | null;
@@ -178,7 +179,6 @@ export function AppForm({ app, onSaved }: AppFormProps) {
     );
   };
 
-  const allOffices: Office[] = ["Harbor", "Marion", "BST", "RnD"];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -297,7 +297,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
         <div className="space-y-2">
           <Label>Offices</Label>
           <div className="flex flex-wrap gap-3 rounded-md border px-3 py-2">
-            {allOffices.map((o) => (
+            {OFFICES.map((o) => (
               <label
                 key={o}
                 className="flex items-center gap-1.5 text-sm cursor-pointer select-none"

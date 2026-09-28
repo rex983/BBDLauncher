@@ -1,15 +1,13 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/notifications — return the current user's non-dismissed
 // notifications, newest first. Optional ?unread=1 restricts to unread only
 // so the bell dropdown can render a filtered view without a second call.
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const url = new URL(req.url);
   const unreadOnly = url.searchParams.get("unread") === "1";

@@ -7,8 +7,14 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { computeState, formatDuration, STATUS_LABEL, type TimePunch } from "@/lib/timesheets/state";
-import { computeDayWorkedMs } from "@/lib/timesheets/weekly";
+import { aggregatePunches } from "@/lib/timesheets/weekly";
 import { startOfDayInZone, localDateInZone } from "@/lib/timesheets/tz";
+import {
+  buildWeekView,
+  formatClockTime,
+  WEEKDAY_LABELS,
+  type WorkScheduleRow,
+} from "@/lib/timesheets/schedule";
 import { TimeOffPanel, type TimeOffRequest } from "@/components/features/timeoff/TimeOffPanel";
 import {
   IncidentPanel,
@@ -17,23 +23,12 @@ import {
 import { MemoPanel } from "@/components/features/memos/MemoPanel";
 import { listMemosForEmployee } from "@/lib/memos/queries";
 import {
+  formatDays,
   requestDays,
-  TIME_OFF_TYPES,
   TIME_OFF_TYPE_LABEL,
+  TIME_OFF_TYPES,
   type TimeOffType,
 } from "@/lib/timeoff/types";
-
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const DEFAULT_START = "10:00";
-const DEFAULT_END = "18:00";
-const DEFAULT_WORKDAYS = new Set([1, 2, 3, 4, 5]);
-
-type ScheduleRow = {
-  weekday: number;
-  start_time: string;
-  end_time: string;
-  timezone: string;
-};
 
 type LaunchRow = {
   created_at: string;
@@ -45,16 +40,6 @@ function fmtDate(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString([], {
     month: "short", day: "numeric", year: "numeric",
   });
-}
-
-function fmtTime(t: string) {
-  // HH:MM(:SS) -> h:mm AM/PM
-  const [hStr, mStr] = t.split(":");
-  const h = Number(hStr);
-  const m = Number(mStr);
-  const period = h >= 12 ? "PM" : "AM";
-  const displayH = h % 12 === 0 ? 12 : h % 12;
-  return `${displayH}:${String(m).padStart(2, "0")} ${period}`;
 }
 
 export default async function ProfilePage() {
@@ -134,7 +119,7 @@ export default async function ProfilePage() {
   ]);
 
   const profile = profileRes.data;
-  const schedules = (schedulesRes.data || []) as ScheduleRow[];
+  const schedules = (schedulesRes.data || []) as WorkScheduleRow[];
   const punches14 = (punches14Res.data || []) as TimePunch[];
   const timeoff = (timeoffRes.data || []) as TimeOffRequest[];
   const launches = (launchesRes.data || []) as LaunchRow[];
@@ -157,61 +142,20 @@ export default async function ProfilePage() {
     daysByType.set(r.type, (daysByType.get(r.type) || 0) + d);
     totalDaysOff += d;
   }
-  const fmtDays = (d: number) =>
-    d === 0 ? "0" : (Math.round(d * 10) / 10).toString();
 
-  // Full-week schedule with default-fallback: if the user has ANY override,
-  // treat missing weekdays as "not scheduled"; otherwise default to Mon-Fri 10-6.
-  const hasAnyOverride = schedules.length > 0;
-  const scheduleByWeekday = new Map(schedules.map((s) => [s.weekday, s]));
-  const weekView = [0, 1, 2, 3, 4, 5, 6].map((wd) => {
-    const override = scheduleByWeekday.get(wd);
-    if (override) {
-      return { weekday: wd, scheduled: true, start: override.start_time.slice(0, 5), end: override.end_time.slice(0, 5), tz: override.timezone };
-    }
-    if (hasAnyOverride) {
-      return { weekday: wd, scheduled: false, start: "", end: "", tz: "America/New_York" };
-    }
-    return {
-      weekday: wd,
-      scheduled: DEFAULT_WORKDAYS.has(wd),
-      start: DEFAULT_START,
-      end: DEFAULT_END,
-      tz: "America/New_York",
-    };
-  });
+  const weekView = buildWeekView(schedules);
 
   // Today's live state (a subset of the 14d punches).
   const todayPunches = punches14.filter((p) => new Date(p.occurred_at) >= startOfToday);
   const todayState = computeState(todayPunches, now);
 
-  // 14-day totals: bucket punches by ET-local day, fold each day
-  // independently with the day-end cap so stranded open shifts don't leak.
-  const dayBuckets = new Map<string, TimePunch[]>();
-  for (const p of punches14) {
-    const key = localDateInZone(new Date(p.occurred_at));
-    const list = dayBuckets.get(key) || [];
-    list.push(p);
-    dayBuckets.set(key, list);
-  }
-  let worked14 = 0;
-  let lunch14 = 0;
-  let break14 = 0;
-  const todayKey = localDateInZone(now);
-  for (const [dayKey, list] of dayBuckets) {
-    worked14 += computeDayWorkedMs(list, dayKey, now);
-    // Lunch/break spans use the same cap semantics.
-    const capNow = dayKey === todayKey ? now : new Date(startOfToday);
-    if (dayKey !== todayKey) {
-      const [y, m, d] = dayKey.split("-").map(Number);
-      const dayEnd = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
-      capNow.setTime(dayEnd.getTime());
-    }
-    const s = computeState(list, capNow);
-    lunch14 += s.lunch_ms;
-    break14 += s.break_ms;
-  }
-  const workedDays = dayBuckets.size;
+  // 14-day totals, folded per ET-local day.
+  const {
+    worked_ms: worked14,
+    lunch_ms: lunch14,
+    break_ms: break14,
+    days: workedDays,
+  } = aggregatePunches(punches14, now);
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -259,7 +203,7 @@ export default async function ProfilePage() {
                   <TableCell className="font-medium">{WEEKDAY_LABELS[d.weekday]}</TableCell>
                   <TableCell>
                     {d.scheduled
-                      ? `${fmtTime(d.start)} – ${fmtTime(d.end)}`
+                      ? `${formatClockTime(d.start)} – ${formatClockTime(d.end)}`
                       : <span className="text-muted-foreground">Off</span>}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
@@ -270,7 +214,7 @@ export default async function ProfilePage() {
             </TableBody>
           </Table>
           <p className="text-xs text-muted-foreground mt-3">
-            {hasAnyOverride
+            {schedules.length > 0
               ? "Your manager has set custom hours. Contact them to adjust."
               : "Using the default schedule (Mon–Fri, 10:00 AM – 6:00 PM ET). Your manager can customize this."}
           </p>
@@ -287,10 +231,10 @@ export default async function ProfilePage() {
               <Stat
                 key={t.value}
                 label={TIME_OFF_TYPE_LABEL[t.value]}
-                value={`${fmtDays(daysByType.get(t.value) || 0)} d`}
+                value={`${formatDays(daysByType.get(t.value) || 0)} d`}
               />
             ))}
-            <Stat label="Total" value={`${fmtDays(totalDaysOff)} d`} />
+            <Stat label="Total" value={`${formatDays(totalDaysOff)} d`} />
           </div>
           <p className="text-xs text-muted-foreground mt-3">
             Approved days only. Partial-day requests count as hours ÷ 8.

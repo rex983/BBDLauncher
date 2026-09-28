@@ -18,10 +18,13 @@ import {
 import { canEditTimeData } from "@/lib/auth/permissions";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { Pencil } from "lucide-react";
+import {
+  DEFAULT_END,
+  DEFAULT_START,
+  formatClockTime,
+  WEEKDAY_LABELS,
+} from "@/lib/timesheets/schedule";
 
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const DEFAULT_START = "10:00";
-const DEFAULT_END = "18:00";
 
 interface Profile {
   id: string;
@@ -35,15 +38,6 @@ interface Schedule {
   start_time: string;
   end_time: string;
   timezone: string;
-}
-
-function fmt(t: string) {
-  // HH:MM(:SS) → 12h
-  const [h, m] = t.split(":");
-  const H = Number(h);
-  const suffix = H >= 12 ? "PM" : "AM";
-  const twelve = ((H + 11) % 12) + 1;
-  return `${twelve}:${m} ${suffix}`;
 }
 
 export default function SchedulesShell({
@@ -144,7 +138,7 @@ export default function SchedulesShell({
         <TableHeader>
           <TableRow>
             <TableHead>Employee</TableHead>
-            {DAYS.map((d) => <TableHead key={d}>{d}</TableHead>)}
+            {WEEKDAY_LABELS.map((d) => <TableHead key={d}>{d}</TableHead>)}
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -155,12 +149,12 @@ export default function SchedulesShell({
                 {p.name || p.email}
                 {p.office && <Badge variant="outline" className="ml-2">{p.office}</Badge>}
               </TableCell>
-              {DAYS.map((_, w) => {
+              {WEEKDAY_LABELS.map((_, w) => {
                 const s = scheduleFor(p.id, w);
                 return (
                   <TableCell key={w} className="text-xs text-muted-foreground">
                     {s
-                      ? <span className="text-foreground">{fmt(s.start_time)}–{fmt(s.end_time)}</span>
+                      ? <span className="text-foreground">{formatClockTime(s.start_time)}–{formatClockTime(s.end_time)}</span>
                       : "—"}
                   </TableCell>
                 );
@@ -185,7 +179,7 @@ export default function SchedulesShell({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            {DAYS.map((label, w) => (
+            {WEEKDAY_LABELS.map((label, w) => (
               <div key={w} className="flex items-center gap-3">
                 <label className="flex items-center gap-2 w-20 text-sm">
                   <input

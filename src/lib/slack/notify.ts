@@ -39,6 +39,91 @@ function fmtDate(iso: string) {
   });
 }
 
+// ---------------------------------------------------------------------
+// Block Kit builders. Slack "attachments" are the legacy formatting layer
+// but still the easiest way to get a colored side-bar per message; Blocks
+// alone would need a context+section combo without the color.
+// ---------------------------------------------------------------------
+
+type Block = Record<string, unknown>;
+
+const mrkdwn = (text: string) => ({ type: "mrkdwn", text });
+
+// "*Label*\nvalue" — the standard labelled field.
+const field = (label: string, value: string | number) => `*${label}*\n${value}`;
+
+const headerSection = (...lines: string[]): Block => ({
+  type: "section",
+  text: mrkdwn(lines.join("\n")),
+});
+
+// Falsy entries are dropped so optional fields can be written inline.
+const fieldsSection = (...fields: (string | false)[]): Block => ({
+  type: "section",
+  fields: fields.filter((f): f is string => !!f).map(mrkdwn),
+});
+
+const linkButton = (text: string, url: string, primary = true): Block => ({
+  type: "actions",
+  elements: [
+    {
+      type: "button",
+      text: { type: "plain_text", text },
+      url,
+      ...(primary ? { style: "primary" } : {}),
+    },
+  ],
+});
+
+const contextNote = (text: string): Block => ({ type: "context", elements: [mrkdwn(text)] });
+
+const fileCount = (n: number) => `${n} file${n === 1 ? "" : "s"}`;
+
+const person = (name: string | null, email: string | null) =>
+  `${name || "Unknown"}\n\`${email || ""}\``;
+
+// Post one colored-attachment message to the webhook in `envVar`. No-op
+// when the webhook isn't configured.
+async function send(
+  envVar: string,
+  label: string,
+  text: string,
+  color: string,
+  blocks: Block[],
+): Promise<void> {
+  const url = process.env[envVar];
+  if (!url) return;
+  await postSlack(url, { text, attachments: [{ color, blocks }] }, label);
+}
+
+// Admin-only HARD-DELETE notifications. Fired from the purge endpoints —
+// once the row is gone this Slack message is the only surviving audit
+// trail, so it snapshots enough context to reconstruct what was deleted.
+const PURGED_COLOR = "#dc2626";
+
+function purgedBlocks(p: {
+  heading: string;
+  numberLabel: string;
+  title: string;
+  actorName: string;
+  fields: (string | false)[];
+  note: string;
+}): Block[] {
+  return [
+    headerSection(
+      `*${p.heading} PURGED (hard delete)*`,
+      `*${p.numberLabel}* — ${p.title}`,
+      `Actioned by *${p.actorName}*.`,
+    ),
+    fieldsSection(...p.fields),
+    contextNote(p.note),
+  ];
+}
+
+// =====================================================================
+// Time-off requests — SLACK_TIMEOFF_WEBHOOK_URL.
+// =====================================================================
+
 export interface TimeOffSubmittedPayload {
   employeeName: string;
   employeeEmail: string;
@@ -53,9 +138,6 @@ export interface TimeOffSubmittedPayload {
 }
 
 export async function notifyTimeOffSubmitted(p: TimeOffSubmittedPayload): Promise<void> {
-  const url = process.env.SLACK_TIMEOFF_WEBHOOK_URL;
-  if (!url) return; // No-op when the webhook isn't configured.
-
   const dateLine = p.startDate === p.endDate
     ? fmtDate(p.startDate)
     : `${fmtDate(p.startDate)} → ${fmtDate(p.endDate)}`;
@@ -65,74 +147,23 @@ export async function notifyTimeOffSubmitted(p: TimeOffSubmittedPayload): Promis
     ? `${TIME_OFF_TYPE_LABEL[p.type]} · ${p.subcategory}`
     : TIME_OFF_TYPE_LABEL[p.type];
 
-  // Slack "attachments" are the legacy formatting layer but still the
-  // easiest way to get a colored side-bar per type. Blocks would need a
-  // context+section combo without the color.
-  const body = {
-    text: `New time-off request from ${p.employeeName}`,
-    attachments: [
-      {
-        color: TYPE_COLOR[p.type],
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: [
-                `*New time-off request*`,
-                `*${p.employeeName}* \`${p.employeeEmail}\``,
-              ].join("\n"),
-            },
-          },
-          {
-            type: "section",
-            fields: [
-              { type: "mrkdwn", text: `*Type*\n${typeLine}` },
-              { type: "mrkdwn", text: `*Length*\n${length}` },
-              { type: "mrkdwn", text: `*Dates*\n${dateLine}` },
-              ...(p.attachmentCount > 0
-                ? [{ type: "mrkdwn", text: `*Attachments*\n${p.attachmentCount} file${p.attachmentCount === 1 ? "" : "s"}` }]
-                : []),
-            ],
-          },
-          ...(p.reason
-            ? [{
-                type: "section",
-                text: {
-                  type: "mrkdwn",
-                  text: `*Notes*\n>${p.reason.replace(/\n/g, "\n>")}`,
-                },
-              }]
-            : []),
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: { type: "plain_text", text: "Review in launcher" },
-                url: `${LAUNCHER_URL}/management/timeoff`,
-                style: "primary",
-              },
-            ],
-          },
-        ],
-      },
+  await send(
+    "SLACK_TIMEOFF_WEBHOOK_URL",
+    "time-off",
+    `New time-off request from ${p.employeeName}`,
+    TYPE_COLOR[p.type],
+    [
+      headerSection(`*New time-off request*`, `*${p.employeeName}* \`${p.employeeEmail}\``),
+      fieldsSection(
+        field("Type", typeLine),
+        field("Length", length),
+        field("Dates", dateLine),
+        p.attachmentCount > 0 && field("Attachments", fileCount(p.attachmentCount)),
+      ),
+      ...(p.reason ? [headerSection(field("Notes", `>${p.reason.replace(/\n/g, "\n>")}`))] : []),
+      linkButton("Review in launcher", `${LAUNCHER_URL}/management/timeoff`),
     ],
-  };
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("[slack] time-off webhook failed:", res.status, text);
-    }
-  } catch (err) {
-    console.error("[slack] time-off webhook error:", err);
-  }
+  );
 }
 
 // =====================================================================
@@ -161,54 +192,22 @@ export interface IncidentSubmittedPayload {
 }
 
 export async function notifyIncidentSubmitted(p: IncidentSubmittedPayload): Promise<void> {
-  const url = process.env.SLACK_INCIDENT_WEBHOOK_URL;
-  if (!url) return;
-
-  const body = {
-    text: `New incident report filed for ${p.employeeName}`,
-    attachments: [
-      {
-        color: INCIDENT_SEVERITY_COLOR[p.severity],
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: [
-                `*New incident report*`,
-                `*${p.title}*`,
-                `Filed by ${p.reporterName}`,
-              ].join("\n"),
-            },
-          },
-          {
-            type: "section",
-            fields: [
-              { type: "mrkdwn", text: `*Employee*\n${p.employeeName}\n\`${p.employeeEmail}\`` },
-              { type: "mrkdwn", text: `*Severity*\n${INCIDENT_SEVERITY_LABEL[p.severity]}` },
-              { type: "mrkdwn", text: `*Category*\n${INCIDENT_CATEGORY_LABEL[p.category]}` },
-              ...(p.attachmentCount > 0
-                ? [{ type: "mrkdwn", text: `*Attachments*\n${p.attachmentCount} file${p.attachmentCount === 1 ? "" : "s"}` }]
-                : []),
-            ],
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: { type: "plain_text", text: "Open in launcher" },
-                url: `${LAUNCHER_URL}/management/incidents/${p.incidentId}`,
-                style: "primary",
-              },
-            ],
-          },
-        ],
-      },
+  await send(
+    "SLACK_INCIDENT_WEBHOOK_URL",
+    "incident-submitted",
+    `New incident report filed for ${p.employeeName}`,
+    INCIDENT_SEVERITY_COLOR[p.severity],
+    [
+      headerSection(`*New incident report*`, `*${p.title}*`, `Filed by ${p.reporterName}`),
+      fieldsSection(
+        field("Employee", `${p.employeeName}\n\`${p.employeeEmail}\``),
+        field("Severity", INCIDENT_SEVERITY_LABEL[p.severity]),
+        field("Category", INCIDENT_CATEGORY_LABEL[p.category]),
+        p.attachmentCount > 0 && field("Attachments", fileCount(p.attachmentCount)),
+      ),
+      linkButton("Open in launcher", `${LAUNCHER_URL}/management/incidents/${p.incidentId}`),
     ],
-  };
-
-  await postSlack(url, body, "incident-submitted");
+  );
 }
 
 export interface IncidentCompletedPayload {
@@ -219,47 +218,26 @@ export interface IncidentCompletedPayload {
 }
 
 export async function notifyIncidentCompleted(p: IncidentCompletedPayload): Promise<void> {
-  const url = process.env.SLACK_INCIDENT_WEBHOOK_URL;
-  if (!url) return;
-
-  const body = {
-    text: `Incident report signed by ${p.employeeName}`,
-    attachments: [
-      {
-        color: INCIDENT_SEVERITY_COLOR[p.severity],
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: [
-                `*Incident report signed*`,
-                `*${p.title}*`,
-                `${p.employeeName} has acknowledged this report.`,
-              ].join("\n"),
-            },
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: { type: "plain_text", text: "View signed report" },
-                url: `${LAUNCHER_URL}/management/incidents/${p.incidentId}`,
-              },
-            ],
-          },
-        ],
-      },
+  await send(
+    "SLACK_INCIDENT_WEBHOOK_URL",
+    "incident-completed",
+    `Incident report signed by ${p.employeeName}`,
+    INCIDENT_SEVERITY_COLOR[p.severity],
+    [
+      headerSection(
+        `*Incident report signed*`,
+        `*${p.title}*`,
+        `${p.employeeName} has acknowledged this report.`,
+      ),
+      linkButton(
+        "View signed report",
+        `${LAUNCHER_URL}/management/incidents/${p.incidentId}`,
+        false,
+      ),
     ],
-  };
-
-  await postSlack(url, body, "incident-completed");
+  );
 }
 
-// Admin-only HARD-DELETE notification. Fired from the purge endpoint —
-// once the row is gone this Slack message is the only surviving audit
-// trail, so we snapshot enough context to reconstruct what was deleted.
 export interface IncidentPurgedPayload {
   numberLabel: string;
   title: string;
@@ -272,55 +250,25 @@ export interface IncidentPurgedPayload {
 }
 
 export async function notifyIncidentPurged(p: IncidentPurgedPayload): Promise<void> {
-  const url = process.env.SLACK_INCIDENT_WEBHOOK_URL;
-  if (!url) return;
-
-  const body = {
-    text: `Incident report ${p.numberLabel} purged by ${p.actorName}`,
-    attachments: [
-      {
-        color: "#dc2626",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: [
-                `*Incident report PURGED (hard delete)*`,
-                `*${p.numberLabel}* — ${p.title}`,
-                `Actioned by *${p.actorName}*.`,
-              ].join("\n"),
-            },
-          },
-          {
-            type: "section",
-            fields: [
-              {
-                type: "mrkdwn",
-                text: `*Employee*\n${p.employeeName || "Unknown"}\n\`${p.employeeEmail || ""}\``,
-              },
-              { type: "mrkdwn", text: `*Prior status*\n${p.priorStatus}` },
-              { type: "mrkdwn", text: `*Filed*\n${new Date(p.createdAt).toLocaleString()}` },
-              ...(p.attachmentCount > 0
-                ? [{ type: "mrkdwn", text: `*Attachments purged*\n${p.attachmentCount}` }]
-                : []),
-            ],
-          },
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: "This record has been permanently deleted. The row, its audit-event log, and all attachment files are gone.",
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  };
-
-  await postSlack(url, body, "incident-purged");
+  await send(
+    "SLACK_INCIDENT_WEBHOOK_URL",
+    "incident-purged",
+    `Incident report ${p.numberLabel} purged by ${p.actorName}`,
+    PURGED_COLOR,
+    purgedBlocks({
+      heading: "Incident report",
+      numberLabel: p.numberLabel,
+      title: p.title,
+      actorName: p.actorName,
+      fields: [
+        field("Employee", person(p.employeeName, p.employeeEmail)),
+        field("Prior status", p.priorStatus),
+        field("Filed", new Date(p.createdAt).toLocaleString()),
+        p.attachmentCount > 0 && field("Attachments purged", p.attachmentCount),
+      ],
+      note: "This record has been permanently deleted. The row, its audit-event log, and all attachment files are gone.",
+    }),
+  );
 }
 
 // =====================================================================
@@ -348,58 +296,27 @@ export interface MemoPublishedPayload {
 }
 
 export async function notifyMemoPublished(p: MemoPublishedPayload): Promise<void> {
-  const url = process.env.SLACK_MEMO_WEBHOOK_URL;
-  if (!url) return;
-
   const titleLine = p.numberLabel ? `${p.numberLabel} · ${p.title}` : p.title;
 
-  const body = {
-    text: `New memo from ${p.authorName}: ${p.title}`,
-    attachments: [
-      {
-        color: MEMO_PRIORITY_COLOR[p.priority],
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: [
-                `*New memo published*`,
-                `*${titleLine}*`,
-                `Author: ${p.authorName}`,
-              ].join("\n"),
-            },
-          },
-          {
-            type: "section",
-            fields: [
-              { type: "mrkdwn", text: `*Category*\n${MEMO_CATEGORY_LABEL[p.category]}` },
-              { type: "mrkdwn", text: `*Priority*\n${MEMO_PRIORITY_LABEL[p.priority]}` },
-              { type: "mrkdwn", text: `*Audience*\n${p.audienceLabel}` },
-              { type: "mrkdwn", text: `*Recipients*\n${p.recipientCount}` },
-              { type: "mrkdwn", text: `*Acknowledgement*\n${MEMO_ACK_MODE_LABEL[p.ackMode]}` },
-            ],
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: { type: "plain_text", text: "Open in launcher" },
-                url: `${LAUNCHER_URL}/management/memos`,
-                style: "primary",
-              },
-            ],
-          },
-        ],
-      },
+  await send(
+    "SLACK_MEMO_WEBHOOK_URL",
+    "memo-published",
+    `New memo from ${p.authorName}: ${p.title}`,
+    MEMO_PRIORITY_COLOR[p.priority],
+    [
+      headerSection(`*New memo published*`, `*${titleLine}*`, `Author: ${p.authorName}`),
+      fieldsSection(
+        field("Category", MEMO_CATEGORY_LABEL[p.category]),
+        field("Priority", MEMO_PRIORITY_LABEL[p.priority]),
+        field("Audience", p.audienceLabel),
+        field("Recipients", p.recipientCount),
+        field("Acknowledgement", MEMO_ACK_MODE_LABEL[p.ackMode]),
+      ),
+      linkButton("Open in launcher", `${LAUNCHER_URL}/management/memos`),
     ],
-  };
-
-  await postSlack(url, body, "memo-published");
+  );
 }
 
-// Admin hard-delete audit trail — mirrors notifyIncidentPurged.
 export interface MemoPurgedPayload {
   numberLabel: string;
   title: string;
@@ -413,59 +330,26 @@ export interface MemoPurgedPayload {
 }
 
 export async function notifyMemoPurged(p: MemoPurgedPayload): Promise<void> {
-  const url = process.env.SLACK_MEMO_WEBHOOK_URL;
-  if (!url) return;
-
-  const body = {
-    text: `Memo ${p.numberLabel} purged by ${p.actorName}`,
-    attachments: [
-      {
-        color: "#dc2626",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: [
-                `*Memo PURGED (hard delete)*`,
-                `*${p.numberLabel}* — ${p.title}`,
-                `Actioned by *${p.actorName}*.`,
-              ].join("\n"),
-            },
-          },
-          {
-            type: "section",
-            fields: [
-              {
-                type: "mrkdwn",
-                text: `*Author*\n${p.authorName || "Unknown"}\n\`${p.authorEmail || ""}\``,
-              },
-              { type: "mrkdwn", text: `*Prior status*\n${p.priorStatus}` },
-              {
-                type: "mrkdwn",
-                text: `*Recipients erased*\n${p.recipientCount}`,
-              },
-              { type: "mrkdwn", text: `*Created*\n${new Date(p.createdAt).toLocaleString()}` },
-              ...(p.attachmentCount > 0
-                ? [{ type: "mrkdwn", text: `*Attachments purged*\n${p.attachmentCount}` }]
-                : []),
-            ],
-          },
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: "This memo, its recipient roster, audit log, and attachment files are permanently gone.",
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  };
-
-  await postSlack(url, body, "memo-purged");
+  await send(
+    "SLACK_MEMO_WEBHOOK_URL",
+    "memo-purged",
+    `Memo ${p.numberLabel} purged by ${p.actorName}`,
+    PURGED_COLOR,
+    purgedBlocks({
+      heading: "Memo",
+      numberLabel: p.numberLabel,
+      title: p.title,
+      actorName: p.actorName,
+      fields: [
+        field("Author", person(p.authorName, p.authorEmail)),
+        field("Prior status", p.priorStatus),
+        field("Recipients erased", p.recipientCount),
+        field("Created", new Date(p.createdAt).toLocaleString()),
+        p.attachmentCount > 0 && field("Attachments purged", p.attachmentCount),
+      ],
+      note: "This memo, its recipient roster, audit log, and attachment files are permanently gone.",
+    }),
+  );
 }
 
 async function postSlack(url: string, body: unknown, label: string): Promise<void> {

@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { isAdmin } from "@/lib/auth/permissions";
+import { requireSession } from "@/lib/auth/require-session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { activateNewQuote } from "@/lib/quotes/refresh";
@@ -14,10 +14,8 @@ const createSchema = z.object({
 
 // List all quotes (newest first). Admin only.
 export async function GET() {
-  const session = await auth();
-  if (!session?.user || !isAdmin(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(isAdmin);
+  if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
   const { data, error } = await supabase
@@ -34,10 +32,8 @@ export async function GET() {
 
 // Create a manual quote. If activate=true, also mark it as the active quote.
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !isAdmin(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(isAdmin);
+  if (session instanceof NextResponse) return session;
 
   const body = await req.json();
   const parsed = createSchema.safeParse(body);

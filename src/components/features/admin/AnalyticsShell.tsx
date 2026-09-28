@@ -27,7 +27,8 @@ import { ExportMenu } from "@/components/ui/export-menu";
 import { SortHeader } from "@/components/ui/sort-header";
 import { useSortableRows } from "@/lib/hooks/use-sortable-rows";
 import type { ExportColumn } from "@/lib/export/csv";
-import type { AnalyticsData, AnalyticsRange } from "@/lib/analytics/server";
+import type { AnalyticsData } from "@/lib/analytics/server";
+import { ANALYTICS_RANGE_OPTIONS, type AnalyticsRange } from "@/lib/analytics/ranges";
 
 // Lazy-load the three heavy tabs so the initial /admin/analytics bundle
 // doesn't ship the calendar grid, aggregation table, or dialog with the
@@ -58,14 +59,6 @@ type DestStat = AnalyticsData["apps"][number];
 type UserStat = AnalyticsData["users"][number];
 type RecentEvent = AnalyticsData["recent"][number];
 type AnalyticsResponse = AnalyticsData;
-
-const RANGES: { value: AnalyticsRange; label: string }[] = [
-  { value: "24h", label: "Last 24 hours" },
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" },
-  { value: "90d", label: "Last 90 days" },
-  { value: "all", label: "All time" },
-];
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("en-US", {
@@ -269,7 +262,7 @@ export default function AnalyticsShell({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {RANGES.map((r) => (
+            {ANALYTICS_RANGE_OPTIONS.map((r) => (
               <SelectItem key={r.value} value={r.value}>
                 {r.label}
               </SelectItem>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { ANALYTICS_RANGE_OPTIONS, isAnalyticsRange } from "@/lib/analytics/ranges";
 import { use } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,14 +71,6 @@ type Response = {
   audit_log_truncated: boolean;
 };
 
-const RANGES = [
-  { value: "24h", label: "Last 24 hours" },
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" },
-  { value: "90d", label: "Last 90 days" },
-  { value: "all", label: "All time" },
-];
-
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("en-US", {
     month: "short",
@@ -116,8 +109,8 @@ export default function DestinationAnalyticsPage({
   const { kind, id } = use(params);
   const searchParams = useSearchParams();
   const initialRange = searchParams.get("range");
-  const [range, setRange] = useState(
-    initialRange && RANGES.some((r) => r.value === initialRange)
+  const [range, setRange] = useState<string>(
+    isAnalyticsRange(initialRange)
       ? initialRange
       : "30d"
   );
@@ -211,7 +204,7 @@ export default function DestinationAnalyticsPage({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {RANGES.map((r) => (
+              {ANALYTICS_RANGE_OPTIONS.map((r) => (
                 <SelectItem key={r.value} value={r.value}>
                   {r.label}
                 </SelectItem>

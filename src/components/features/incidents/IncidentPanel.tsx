@@ -21,6 +21,7 @@ import {
   type IncidentCategory,
   type IncidentSeverity,
   type IncidentStatus,
+  INCIDENT_SEVERITY_VARIANT,
 } from "@/lib/incidents/types";
 import { useSearchParams } from "next/navigation";
 import { EmployeeIncidentDialog } from "./EmployeeIncidentDialog";
@@ -38,16 +39,6 @@ export interface IncidentSummary {
   attachments: IncidentAttachment[] | null;
   created_at: string;
 }
-
-const SEVERITY_VARIANT: Record<
-  IncidentSeverity,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  low: "secondary",
-  medium: "outline",
-  high: "default",
-  critical: "destructive",
-};
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -159,7 +150,7 @@ export function IncidentPanel({
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={SEVERITY_VARIANT[r.severity]}>
+                      <Badge variant={INCIDENT_SEVERITY_VARIANT[r.severity]}>
                         {INCIDENT_SEVERITY_LABEL[r.severity]}
                       </Badge>
                     </TableCell>

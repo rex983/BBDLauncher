@@ -22,8 +22,14 @@ import { formatDuration, msToHours } from "@/lib/timesheets/state";
 import { formatWeekOf } from "@/lib/timesheets/tz";
 import { StatCard } from "@/components/ui/stat-card";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
-import { TIME_OFF_TYPE_LABEL, type TimeOffType } from "@/lib/timeoff/types";
+import {
+  formatDays,
+  TIME_OFF_DISPLAY_ORDER,
+  TIME_OFF_TYPE_LABEL,
+  type TimeOffType,
+} from "@/lib/timeoff/types";
 import type { Department, Office } from "@/types/auth";
+import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
 
 interface WeekTotal {
   week_start: string;
@@ -83,19 +89,6 @@ interface Response {
   summary: Summary;
 }
 
-const TIME_OFF_TYPES_ORDERED: TimeOffType[] = [
-  "sick",
-  "vacation",
-  "personal",
-  "parental",
-  "other",
-];
-
-function fmtDays(d: number): string {
-  if (d === 0) return "0";
-  return (Math.round(d * 10) / 10).toString();
-}
-
 const YTD_OVERTIME_COLUMNS: ExportColumn<Row>[] = [
   { key: "worked_hours_ytd", label: "Worked hours (YTD)", get: (r) => msToHours(r.ytd_worked_ms) },
   { key: "overtime_hours_ytd", label: "Overtime hours (YTD)", get: (r) => msToHours(r.ytd_overtime_ms) },
@@ -125,8 +118,6 @@ const RANGE_OPTIONS: { value: number; label: string }[] = [
   { value: 4, label: "Last 4 weeks" },
   { value: 12, label: "Last 12 weeks" },
 ];
-const OFFICES: Office[] = ["Harbor", "Marion", "BST", "RnD"];
-const DEPARTMENTS: Department[] = ["SALES TEAM", "BST", "RnD"];
 
 type SortKey =
   | "name" | "office" | "department" | "total" | "overtime" | "ytd_overtime"
@@ -324,13 +315,13 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
         />
         <StatCard
           label="Time off (YTD)"
-          value={loading || !data ? "…" : `${fmtDays(data.summary.time_off.total)} d`}
+          value={loading || !data ? "…" : `${formatDays(data.summary.time_off.total)} d`}
           sub={data ? "approved days across scope" : undefined}
         />
         <StatCard
           label="Sick days (YTD)"
-          value={loading || !data ? "…" : `${fmtDays(data.summary.time_off.sick)} d`}
-          sub={data ? `vs ${fmtDays(data.summary.time_off.vacation)} vac` : undefined}
+          value={loading || !data ? "…" : `${formatDays(data.summary.time_off.sick)} d`}
+          sub={data ? `vs ${formatDays(data.summary.time_off.vacation)} vac` : undefined}
         />
       </div>
 
@@ -341,11 +332,11 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {TIME_OFF_TYPES_ORDERED.map((t) => (
+              {TIME_OFF_DISPLAY_ORDER.map((t) => (
                 <StatCard
                   key={t}
                   label={TIME_OFF_TYPE_LABEL[t]}
-                  value={`${fmtDays(data.summary.time_off[t])} d`}
+                  value={`${formatDays(data.summary.time_off[t])} d`}
                 />
               ))}
             </div>
@@ -643,14 +634,14 @@ function EmployeeTimeStatsDialog({
                 Time off — YTD
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {TIME_OFF_TYPES_ORDERED.map((t) => (
+                {TIME_OFF_DISPLAY_ORDER.map((t) => (
                   <StatCard
                     key={t}
                     label={TIME_OFF_TYPE_LABEL[t]}
-                    value={`${fmtDays(row.time_off[t])} d`}
+                    value={`${formatDays(row.time_off[t])} d`}
                   />
                 ))}
-                <StatCard label="Total" value={`${fmtDays(row.time_off.total)} d`} />
+                <StatCard label="Total" value={`${formatDays(row.time_off.total)} d`} />
               </div>
             </div>
 

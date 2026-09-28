@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { refreshQuoteFromAi } from "@/lib/quotes/refresh";
 import { NextRequest, NextResponse } from "next/server";
+import { cronRoute } from "@/lib/cron";
 
 export const maxDuration = 60;
 
@@ -17,23 +18,7 @@ function ageInDays(iso: string, now: Date): number {
   return (now.getTime() - t) / (1000 * 60 * 60 * 24);
 }
 
-function isAuthorised(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  // Require CRON_SECRET to be set — never fall back to trusting the
-  // x-vercel-cron header on its own, since a missing secret would leave
-  // the route completely open in dev / misconfigured environments.
-  if (!secret) return false;
-  const header = req.headers.get("authorization");
-  if (header === `Bearer ${secret}`) return true;
-  if (req.headers.get("x-vercel-cron") === "1") return true;
-  return false;
-}
-
 async function handle(req: NextRequest) {
-  if (!isAuthorised(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const force = req.nextUrl.searchParams.get("force") === "1";
   const now = new Date();
 
@@ -68,10 +53,4 @@ async function handle(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
-  return handle(req);
-}
-
-export async function POST(req: NextRequest) {
-  return handle(req);
-}
+export const { GET, POST } = cronRoute(handle);

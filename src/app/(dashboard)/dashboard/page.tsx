@@ -23,6 +23,7 @@ import type { LauncherApp, LauncherSection } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
 import type { MotivationalQuote } from "@/types/quote";
 import type { Office } from "@/types/auth";
+import { OFFICES, VALID_OFFICES } from "@/lib/org/constants";
 import type { TimeOffStatus, TimeOffType } from "@/lib/timeoff/types";
 
 interface MyTimeOffRow {
@@ -36,7 +37,6 @@ interface MyTimeOffRow {
   status: TimeOffStatus;
 }
 
-const ALL_OFFICES: Office[] = ["Harbor", "Marion", "BST", "RnD"];
 
 export default async function DashboardPage({
   searchParams,
@@ -51,7 +51,7 @@ export default async function DashboardPage({
   const canEditDashboard = canManageContent(session.user.role);
   const userOffice = session.user.office;
   const viewAsOfficeValid =
-    isAdmin && viewAsOffice && (ALL_OFFICES as string[]).includes(viewAsOffice)
+    isAdmin && viewAsOffice && VALID_OFFICES.has(viewAsOffice)
       ? (viewAsOffice as Office)
       : null;
   const effectiveOffice = viewAsOfficeValid ?? userOffice;
@@ -165,7 +165,7 @@ export default async function DashboardPage({
             )}
             <Suspense>
               <ViewAsOffice
-                offices={ALL_OFFICES}
+                offices={OFFICES}
                 currentOffice={session.user.office}
               />
             </Suspense>

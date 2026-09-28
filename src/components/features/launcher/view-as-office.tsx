@@ -13,7 +13,7 @@ import type { Office } from "@/types/auth";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 
 interface ViewAsOfficeProps {
-  offices: Office[];
+  offices: readonly Office[];
   currentOffice: Office | null;
 }
 

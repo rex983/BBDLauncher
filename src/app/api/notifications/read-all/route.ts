@@ -1,15 +1,13 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { NextResponse } from "next/server";
 
 // POST /api/notifications/read-all — flip every unread, non-dismissed
 // notification for the current user to read. Powers the "Mark all read"
 // button in the bell dropdown.
 export async function POST() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
   const { error } = await supabase

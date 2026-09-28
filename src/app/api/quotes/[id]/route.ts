@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { isAdmin } from "@/lib/auth/permissions";
+import { requireSession } from "@/lib/auth/require-session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
@@ -14,10 +14,8 @@ export async function PATCH(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user || !isAdmin(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(isAdmin);
+  if (session instanceof NextResponse) return session;
 
   const { id } = await ctx.params;
   const body = await req.json();
@@ -48,10 +46,8 @@ export async function DELETE(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user || !isAdmin(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(isAdmin);
+  if (session instanceof NextResponse) return session;
 
   const { id } = await ctx.params;
   const supabase = createAdminClient();

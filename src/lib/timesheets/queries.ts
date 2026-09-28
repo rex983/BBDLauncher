@@ -4,6 +4,7 @@
 // API both use it and can't drift.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { scopeProfilesQuery } from "@/lib/auth/scope-check";
 import { computeState, type TimePunch, type LiveState } from "@/lib/timesheets/state";
 import { computeWeeklyHours } from "@/lib/timesheets/weekly";
 import { fetchPunchesPaged } from "@/lib/timesheets/punches";
@@ -50,18 +51,11 @@ export async function loadTimesheetsToday(
   const startOfDay = startOfDayInZone(now);
   const weekStart = startOfWeekSundayInZone(now);
 
-  const departmentTarget = scope.department ?? params.departmentOverride ?? null;
-  const officeTarget = scope.office ?? params.officeOverride ?? null;
-
-  let profileQuery = supabase
-    .from("profiles")
-    .select("id, email, name:full_name, role, office, department")
-    .eq("is_active", true)
-    .order("email");
-  if (departmentTarget) profileQuery = profileQuery.eq("department", departmentTarget);
-  if (officeTarget) profileQuery = profileQuery.eq("office", officeTarget);
-
-  const { data: profiles } = await profileQuery;
+  const { data: profiles } = await scopeProfilesQuery(
+    supabase.from("profiles").select("id, email, name:full_name, role, office, department"),
+    scope,
+    { department: params.departmentOverride, office: params.officeOverride },
+  ).order("email");
   const profileIds = (profiles || []).map((p) => p.id);
   if (profileIds.length === 0) return [];
 

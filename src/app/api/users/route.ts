@@ -1,15 +1,16 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
 
 const createSchema = z.object({
   email: z.string().email().transform((e) => e.toLowerCase()),
   name: z.string().optional(),
   role: z.string().min(1).default("sales_rep"),
-  office: z.enum(["Harbor", "Marion", "BST", "RnD"]).nullable().optional(),
-  department: z.enum(["SALES TEAM", "BST", "RnD"]).nullable().optional(),
+  office: z.enum(OFFICES).nullable().optional(),
+  department: z.enum(DEPARTMENTS).nullable().optional(),
   is_it: z.boolean().optional(),
 });
 
@@ -17,10 +18,8 @@ const USER_COLUMNS =
   "id, email, name:full_name, role, office, department, is_it, is_active, created_at, updated_at";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canManageContent(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canManageContent);
+  if (session instanceof NextResponse) return session;
 
   const viewerIsAdmin = isAdmin(session.user.role);
   // Managers only ever see active users. Admins default to active but can
@@ -43,10 +42,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canManageContent(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canManageContent);
+  if (session instanceof NextResponse) return session;
 
   const body = await req.json();
   const parsed = createSchema.safeParse(body);

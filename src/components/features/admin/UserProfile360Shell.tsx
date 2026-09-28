@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ANALYTICS_RANGE_OPTIONS } from "@/lib/analytics/ranges";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -30,6 +31,8 @@ import {
   type TimePunch,
 } from "@/lib/timesheets/state";
 import {
+  emptyTimeOffTotals,
+  formatDays,
   TIME_OFF_TYPE_LABEL,
   TIME_OFF_TYPES,
   type TimeOffType,
@@ -41,30 +44,27 @@ import type {
   YtdBreakdown,
 } from "@/lib/timesheets/detail";
 import {
-  aggregatePunches,
-  DEFAULT_END,
-  DEFAULT_START,
-  DEFAULT_WORKDAYS,
-  emptyYtd,
   fmtDate,
   fmtDateTime,
-  fmtDays,
   fmtRelative,
-  fmtTime,
-  RANGES,
   rangeToDays,
-  WEEKDAY_LABELS,
   type AnalyticsPayload,
 } from "./profile360-helpers";
+import { aggregatePunches } from "@/lib/timesheets/weekly";
+import {
+  buildWeekView,
+  formatClockTime,
+  WEEKDAY_LABELS,
+} from "@/lib/timesheets/schedule";
 import {
   AppsTab,
   AuditTab,
   IncidentsTab,
   MiniStat,
   PunchesTab,
-  StatCard,
   TimeOffTab,
 } from "./profile360-parts";
+import { StatCard } from "@/components/ui/stat-card";
 
 interface Profile {
   id: string;
@@ -119,10 +119,13 @@ export function UserProfile360Shell({
     timeData?.time_off.window ?? [],
   );
   const [timeOffYtd, setTimeOffYtd] = useState<YtdBreakdown>(
-    timeData?.time_off.ytd ?? emptyYtd(),
+    timeData?.time_off.ytd ?? emptyTimeOffTotals(),
   );
   const [timeLoading, setTimeLoading] = useState(false);
-  const [incidents, setIncidents] = useState<IncidentSummary[]>(initialIncidents);
+  // Incidents are hydrated server-side — this page doesn't poll. Filed or
+  // signed incidents show on a hard refresh; /management/incidents is the
+  // live queue.
+  const incidents = initialIncidents;
 
   useEffect(() => {
     let cancelled = false;
@@ -161,7 +164,7 @@ export function UserProfile360Shell({
       setPunches(data.punches);
       if (data.time_off) {
         setTimeOffWindow(data.time_off.window ?? []);
-        setTimeOffYtd(data.time_off.ytd ?? emptyYtd());
+        setTimeOffYtd(data.time_off.ytd ?? emptyTimeOffTotals());
       }
     }
     setTimeLoading(false);
@@ -178,11 +181,6 @@ export function UserProfile360Shell({
     if (next !== days) setDays(next);
   }, [range, days]);
 
-  // Incidents are hydrated server-side — this page doesn't poll. Filed or
-  // signed incidents will show on a hard refresh; the /management/incidents
-  // page is the live queue.
-  void setIncidents;
-
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
     if (params.get("range") !== range) {
@@ -195,30 +193,7 @@ export function UserProfile360Shell({
   const liveState = useMemo(() => computeState(punches), [punches]);
   const aggregate = useMemo(() => aggregatePunches(punches), [punches]);
 
-  const hasAnyOverride = workSchedule.length > 0;
-  const scheduleByWeekday = new Map(workSchedule.map((s) => [s.weekday, s]));
-  const weekView = [0, 1, 2, 3, 4, 5, 6].map((wd) => {
-    const override = scheduleByWeekday.get(wd);
-    if (override) {
-      return {
-        weekday: wd,
-        scheduled: true,
-        start: override.start_time.slice(0, 5),
-        end: override.end_time.slice(0, 5),
-        tz: override.timezone,
-      };
-    }
-    if (hasAnyOverride) {
-      return { weekday: wd, scheduled: false, start: "", end: "", tz: "America/New_York" };
-    }
-    return {
-      weekday: wd,
-      scheduled: DEFAULT_WORKDAYS.has(wd),
-      start: DEFAULT_START,
-      end: DEFAULT_END,
-      tz: "America/New_York",
-    };
-  });
+  const weekView = buildWeekView(workSchedule);
 
   const pendingIncidents = incidents.filter(
     (i) => i.status === "awaiting_manager_sig" || i.status === "awaiting_employee_sig",
@@ -280,7 +255,7 @@ export function UserProfile360Shell({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {RANGES.map((r) => (
+              {ANALYTICS_RANGE_OPTIONS.map((r) => (
                 <SelectItem key={r.value} value={r.value}>
                   {r.label}
                 </SelectItem>
@@ -313,7 +288,7 @@ export function UserProfile360Shell({
         />
         <StatCard
           label="Time off (YTD)"
-          value={timeDataError ? "—" : `${fmtDays(timeOffYtd.total)} d`}
+          value={timeDataError ? "—" : `${formatDays(timeOffYtd.total)} d`}
         />
         <StatCard
           label="Launcher events"
@@ -389,7 +364,7 @@ export function UserProfile360Shell({
                         </TableCell>
                         <TableCell>
                           {d.scheduled ? (
-                            `${fmtTime(d.start)} – ${fmtTime(d.end)}`
+                            `${formatClockTime(d.start)} – ${formatClockTime(d.end)}`
                           ) : (
                             <span className="text-muted-foreground">Off</span>
                           )}
@@ -415,12 +390,12 @@ export function UserProfile360Shell({
                       <MiniStat
                         key={t.value}
                         label={TIME_OFF_TYPE_LABEL[t.value]}
-                        value={`${fmtDays(timeOffYtd[t.value as TimeOffType] || 0)} d`}
+                        value={`${formatDays(timeOffYtd[t.value as TimeOffType] || 0)} d`}
                       />
                     ))}
                     <MiniStat
                       label="Total"
-                      value={`${fmtDays(timeOffYtd.total)} d`}
+                      value={`${formatDays(timeOffYtd.total)} d`}
                     />
                   </div>
                 )}

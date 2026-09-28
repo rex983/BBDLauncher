@@ -1,15 +1,13 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { NextResponse } from "next/server";
 
 // GET /api/incidents — list incident reports filed against the current user.
 // Drafts and awaiting-manager-sig reports are hidden — an employee shouldn't
 // see a report about themselves until the manager has actually signed it.
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
   const { data, error } = await supabase

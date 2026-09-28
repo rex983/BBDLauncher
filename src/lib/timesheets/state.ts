@@ -2,13 +2,25 @@
 // Sessions and totals are computed rather than stored; the event log is the
 // only source of truth.
 
-export type PunchEventType =
-  | "clock_in"
-  | "clock_out"
-  | "lunch_start"
-  | "lunch_end"
-  | "break_start"
-  | "break_end";
+export const PUNCH_EVENT_TYPES = [
+  "clock_in",
+  "clock_out",
+  "lunch_start",
+  "lunch_end",
+  "break_start",
+  "break_end",
+] as const;
+
+export type PunchEventType = (typeof PUNCH_EVENT_TYPES)[number];
+
+export const PUNCH_EVENT_LABEL: Record<PunchEventType, string> = {
+  clock_in: "Clock in",
+  clock_out: "Clock out",
+  lunch_start: "Lunch start",
+  lunch_end: "Lunch end",
+  break_start: "Break start",
+  break_end: "Break end",
+};
 
 export interface TimePunch {
   id: string;

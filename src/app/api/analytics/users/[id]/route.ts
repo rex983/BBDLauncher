@@ -2,14 +2,7 @@ import { auth } from "@/auth";
 import { analyticsScope } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
-
-const RANGE_DAYS: Record<string, number | null> = {
-  "24h": 1,
-  "7d": 7,
-  "30d": 30,
-  "90d": 90,
-  all: null,
-};
+import { sinceIsoForRange } from "@/lib/analytics/ranges";
 
 type AuditRow = {
   id: string;
@@ -37,9 +30,7 @@ export async function GET(
 
     const { id } = await params;
     const rangeParam = req.nextUrl.searchParams.get("range") ?? "30d";
-    const days = rangeParam in RANGE_DAYS ? RANGE_DAYS[rangeParam] : 30;
-    const sinceIso =
-      days === null ? null : new Date(Date.now() - days * 86400_000).toISOString();
+    const sinceIso = sinceIsoForRange(rangeParam);
 
     const supabase = createAdminClient();
 

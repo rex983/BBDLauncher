@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { canEditTimeData } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
@@ -27,10 +27,8 @@ const BLOCKED_EXT = new Set([
 // `office-memo-attachments` bucket keyed by the author's profile id:
 // `{authorProfileId}/{uuid}-{safeName}`.
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
   if (!canEditTimeData(session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

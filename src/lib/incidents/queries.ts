@@ -4,6 +4,7 @@
 // of a "Loading…" flash + client-side round-trip).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { scopeProfilesQuery } from "@/lib/auth/scope-check";
 import type {
   IncidentAttachment,
   IncidentCategory,
@@ -74,17 +75,11 @@ export async function listScopedIncidentSummaries(
 ): Promise<IncidentSummary[]> {
   const { supabase, scope, statuses = DEFAULT_STATUSES } = params;
 
-  const departmentTarget = scope.department ?? params.departmentOverride ?? null;
-  const officeTarget = scope.office ?? params.officeOverride ?? null;
-
-  let profileQuery = supabase
-    .from("profiles")
-    .select("id, email, name:full_name, office, department")
-    .eq("is_active", true);
-  if (departmentTarget) profileQuery = profileQuery.eq("department", departmentTarget);
-  if (officeTarget) profileQuery = profileQuery.eq("office", officeTarget);
-
-  const { data: profiles } = await profileQuery;
+  const { data: profiles } = await scopeProfilesQuery(
+    supabase.from("profiles").select("id, email, name:full_name, office, department"),
+    scope,
+    { department: params.departmentOverride, office: params.officeOverride },
+  );
   const profileIds = (profiles || []).map((p) => p.id);
   if (profileIds.length === 0) return [];
 

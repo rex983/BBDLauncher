@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { listMemosForEmployee } from "@/lib/memos/queries";
 import { NextResponse } from "next/server";
 
@@ -8,10 +8,8 @@ import { NextResponse } from "next/server";
 // author via /api/management/memos, never here). Single embedded-select
 // query — see src/lib/memos/queries.ts.
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
   const rows = await listMemosForEmployee({

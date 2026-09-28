@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -19,10 +19,8 @@ const createSchema = z.object({
 });
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
   const { data, error } = await supabase
@@ -37,10 +35,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canManageContent(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canManageContent);
+  if (session instanceof NextResponse) return session;
 
   const body = await req.json();
   const parsed = createSchema.safeParse(body);

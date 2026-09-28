@@ -1,6 +1,7 @@
 import {
   requireTimeDataAccess,
   requireTimeDataAccessWithProfile,
+  scopeProfilesQuery,
 } from "@/lib/auth/scope-check";
 import { VALID_DEPARTMENTS, VALID_OFFICES } from "@/lib/org/constants";
 import { NextRequest, NextResponse } from "next/server";
@@ -95,15 +96,11 @@ export async function GET(req: NextRequest) {
     if (!gate.ok) return gate.response;
     supabase = gate.supabase;
     scope = gate.scope;
-    let profileQuery = supabase
-      .from("profiles")
-      .select("id, email, name:full_name, office, department")
-      .eq("is_active", true);
-    if (scope.department) profileQuery = profileQuery.eq("department", scope.department);
-    else if (departmentFilter) profileQuery = profileQuery.eq("department", departmentFilter);
-    if (scope.office) profileQuery = profileQuery.eq("office", scope.office);
-    else if (officeFilter) profileQuery = profileQuery.eq("office", officeFilter);
-    const { data } = await profileQuery;
+    const { data } = await scopeProfilesQuery(
+      supabase.from("profiles").select("id, email, name:full_name, office, department"),
+      scope,
+      { department: departmentFilter, office: officeFilter },
+    );
     profiles = (data || []) as ProfileOut[];
   }
 

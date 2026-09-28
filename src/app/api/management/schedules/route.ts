@@ -1,4 +1,4 @@
-import { requireTimeDataAccess } from "@/lib/auth/scope-check";
+import { requireTimeDataAccess, scopeProfilesQuery } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -26,23 +26,11 @@ export async function GET(req: NextRequest) {
   const officeFilter = req.nextUrl.searchParams.get("office");
   const departmentFilter = req.nextUrl.searchParams.get("department");
 
-  let profileQuery = supabase
-    .from("profiles")
-    .select("id, email, name:full_name, office, department")
-    .eq("is_active", true)
-    .order("email");
-  if (scope.department) {
-    profileQuery = profileQuery.eq("department", scope.department);
-  } else if (departmentFilter) {
-    profileQuery = profileQuery.eq("department", departmentFilter);
-  }
-  if (scope.office) {
-    profileQuery = profileQuery.eq("office", scope.office);
-  } else if (officeFilter) {
-    profileQuery = profileQuery.eq("office", officeFilter);
-  }
-
-  const { data: profiles, error: pErr } = await profileQuery;
+  const { data: profiles, error: pErr } = await scopeProfilesQuery(
+    supabase.from("profiles").select("id, email, name:full_name, office, department"),
+    scope,
+    { department: departmentFilter, office: officeFilter },
+  ).order("email");
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
 
   const profileIds = (profiles || []).map((p) => p.id);

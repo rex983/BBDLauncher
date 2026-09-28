@@ -32,6 +32,7 @@ import {
   type IncidentCategory,
   type IncidentSeverity,
   type IncidentStatus,
+  INCIDENT_SEVERITY_VARIANT,
 } from "@/lib/incidents/types";
 import { isAdmin as isAdminRole } from "@/lib/auth/permissions";
 import {
@@ -108,16 +109,6 @@ interface FullReport extends ManagerIncidentSummary {
   reporter?: { name?: string | null } | null;
   events?: IncidentEvent[];
 }
-
-const SEVERITY_VARIANT: Record<
-  IncidentSeverity,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  low: "secondary",
-  medium: "outline",
-  high: "default",
-  critical: "destructive",
-};
 
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -449,7 +440,7 @@ export function ManagerIncidentDialog({
           </DialogTitle>
           {report && (
             <DialogDescription className="flex flex-wrap items-center gap-2 pt-1">
-              <Badge variant={SEVERITY_VARIANT[report.severity]}>
+              <Badge variant={INCIDENT_SEVERITY_VARIANT[report.severity]}>
                 {INCIDENT_SEVERITY_LABEL[report.severity]}
               </Badge>
               <Badge variant="outline">

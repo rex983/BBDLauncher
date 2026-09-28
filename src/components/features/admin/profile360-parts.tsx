@@ -25,8 +25,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { TimePunch } from "@/lib/timesheets/state";
+import { PUNCH_EVENT_LABEL, type TimePunch } from "@/lib/timesheets/state";
 import {
+  formatDays,
   requestDays,
   TIME_OFF_TYPE_LABEL,
   TIME_OFF_TYPES,
@@ -38,21 +39,18 @@ import {
   INCIDENT_SEVERITY_LABEL,
   INCIDENT_STATUS_LABEL,
   type IncidentStatus,
+  INCIDENT_SEVERITY_VARIANT,
 } from "@/lib/incidents/types";
 import type { IncidentSummary } from "@/components/features/incidents/IncidentPanel";
 import type { WindowTimeOffRow, YtdBreakdown } from "@/lib/timesheets/detail";
 import {
-  EVENT_LABEL,
-  SEVERITY_VARIANT,
   fmtDate,
   fmtDateTime,
-  fmtDays,
   fmtRelative,
   shortenAgent,
   type AnalyticsPayload,
 } from "./profile360-helpers";
 
-export { StatCard } from "@/components/ui/stat-card";
 
 export function MiniStat({ label, value }: { label: string; value: string }) {
   return (
@@ -122,7 +120,7 @@ export function PunchesTab({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{EVENT_LABEL[p.event_type]}</Badge>
+                    <Badge variant="outline">{PUNCH_EVENT_LABEL[p.event_type]}</Badge>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {p.source}
@@ -161,10 +159,10 @@ export function TimeOffTab({
               <MiniStat
                 key={t.value}
                 label={TIME_OFF_TYPE_LABEL[t.value]}
-                value={`${fmtDays(ytd[t.value as TimeOffType] || 0)} d`}
+                value={`${formatDays(ytd[t.value as TimeOffType] || 0)} d`}
               />
             ))}
-            <MiniStat label="Total" value={`${fmtDays(ytd.total)} d`} />
+            <MiniStat label="Total" value={`${formatDays(ytd.total)} d`} />
           </div>
         </CardContent>
       </Card>
@@ -209,7 +207,7 @@ export function TimeOffTab({
                     </TableCell>
                     <TableCell>
                       {r.full_day
-                        ? `${fmtDays(requestDays(r))} d`
+                        ? `${formatDays(requestDays(r))} d`
                         : `${r.hours}h`}
                     </TableCell>
                     <TableCell>
@@ -285,7 +283,7 @@ export function IncidentsTab({ incidents }: { incidents: IncidentSummary[] }) {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={SEVERITY_VARIANT[r.severity]}>
+                  <Badge variant={INCIDENT_SEVERITY_VARIANT[r.severity]}>
                     {INCIDENT_SEVERITY_LABEL[r.severity]}
                   </Badge>
                 </TableCell>

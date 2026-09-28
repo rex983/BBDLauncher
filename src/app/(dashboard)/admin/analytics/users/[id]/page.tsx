@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { isAnalyticsRange } from "@/lib/analytics/ranges";
 import { redirect } from "next/navigation";
 import { analyticsScope, canViewTimeData } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -9,8 +10,6 @@ import {
 } from "@/lib/timesheets/detail";
 import { UserProfile360Shell } from "@/components/features/admin/UserProfile360Shell";
 import type { IncidentSummary } from "@/components/features/incidents/IncidentPanel";
-
-const RANGES = new Set(["24h", "7d", "30d", "90d", "all"]);
 
 // Employee 360 view — merges the launcher analytics for one user with the
 // full manager timesheet detail (punches, schedule, time-off, incidents).
@@ -36,7 +35,7 @@ export default async function UserProfile360Page({
   const scope = analyticsScope(session.user.role, session.user.office ?? null);
   if (!scope.allowed) redirect("/dashboard");
 
-  const range = rawRange && RANGES.has(rawRange) ? rawRange : "30d";
+  const range = isAnalyticsRange(rawRange) ? rawRange : "30d";
 
   const supabase = createAdminClient();
 
@@ -65,10 +64,7 @@ export default async function UserProfile360Page({
       ? getEmployeeDetail(
           id,
           days,
-          session.user.profileId,
-          session.user.role ?? "",
-          session.user.department ?? null,
-          session.user.office ?? null,
+          session.user,
         )
       : Promise.resolve({ ok: false as const, status: 403, message: "No time-data role" }),
     hasTimeDataRole

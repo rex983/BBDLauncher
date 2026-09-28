@@ -18,14 +18,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { Department, Office, UserProfile, UserRole } from "@/types/auth";
+import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
 
 export interface LauncherRole {
   name: string;
   display_name: string;
 }
 
-const ALL_OFFICES: Office[] = ["Harbor", "Marion", "BST", "RnD"];
-const ALL_DEPARTMENTS: Department[] = ["SALES TEAM", "BST", "RnD"];
 
 interface FormState {
   email: string;
@@ -202,7 +201,7 @@ export function UserFormDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">No office</SelectItem>
-                {ALL_OFFICES.map((o) => (
+                {OFFICES.map((o) => (
                   <SelectItem key={o} value={o}>
                     {o}
                   </SelectItem>
@@ -224,7 +223,7 @@ export function UserFormDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">No department</SelectItem>
-                {ALL_DEPARTMENTS.map((d) => (
+                {DEPARTMENTS.map((d) => (
                   <SelectItem key={d} value={d}>
                     {d}
                   </SelectItem>

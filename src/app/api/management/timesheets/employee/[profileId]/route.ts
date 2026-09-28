@@ -1,35 +1,20 @@
 import { requireTimeDataAccessWithProfile } from "@/lib/auth/scope-check";
 import { startOfDayInZone } from "@/lib/timesheets/tz";
-import { loadEmployeeOvertime } from "@/lib/timesheets/detail";
 import {
-  emptyTimeOffByType,
-  requestDays,
-  withTotal,
-  type TimeOffType,
-} from "@/lib/timeoff/types";
+  EMPLOYEE_COLUMNS,
+  loadEmployeeWindow,
+  type EmployeeDetailProfile,
+} from "@/lib/timesheets/detail";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-
-interface EmployeeRow {
-  id: string;
-  email: string;
-  name: string | null;
-  role: string;
-  office: string | null;
-  department: string | null;
-  is_active: boolean;
-  created_at: string;
-}
-
-const EMPLOYEE_COLUMNS =
-  "id, email, name:full_name, role, office, department, is_active, created_at";
+import { PUNCH_EVENT_TYPES } from "@/lib/timesheets/state";
 
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ profileId: string }> },
 ) {
   const { profileId } = await ctx.params;
-  const gate = await requireTimeDataAccessWithProfile<EmployeeRow>(
+  const gate = await requireTimeDataAccessWithProfile<EmployeeDetailProfile>(
     profileId,
     "view",
     EMPLOYEE_COLUMNS,
@@ -39,91 +24,24 @@ export async function GET(
   const url = new URL(req.url);
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
-  const includeOvertime = url.searchParams.get("overtime") === "1";
 
   const now = new Date();
-  const todayStart = startOfDayInZone(now);
-  const defaultFrom = new Date(todayStart);
+  const defaultFrom = startOfDayInZone(now);
   defaultFrom.setDate(defaultFrom.getDate() - 7);
 
-  const startISO = from ? new Date(from).toISOString() : defaultFrom.toISOString();
-  const endISO = to ? new Date(to).toISOString() : now.toISOString();
-
-  // Time-off runs on ET-local YYYY-MM-DD dates, so bucket the window on
-  // those dates rather than the timestamp used for punches.
-  const startDate = new Date(startISO);
-  const endDate = new Date(endISO);
-  const isoDate = (d: Date) => d.toISOString().slice(0, 10);
-  const windowFromDate = isoDate(startDate);
-  const windowToDate = isoDate(endDate);
-  const yearStart = `${now.getFullYear()}-01-01`;
-
-  const [punchesRes, windowTimeOffRes, ytdTimeOffRes, overtimeRes] = await Promise.all([
-    gate.supabase
-      .from("time_punches")
-      .select("id, profile_id, event_type, occurred_at, source, note, edited_by")
-      .eq("profile_id", profileId)
-      .gte("occurred_at", startISO)
-      .lte("occurred_at", endISO)
-      .order("occurred_at", { ascending: true }),
-    // Time-off entries whose window overlaps the visible range. Managers
-    // want to see "who was out on these days", including entries entered
-    // by the employee (pending, approved) and by managers (approved).
-    gate.supabase
-      .from("time_off_requests")
-      .select("id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_at, decided_by")
-      .eq("profile_id", profileId)
-      .lte("start_date", windowToDate)
-      .gte("end_date", windowFromDate)
-      .in("status", ["approved", "pending"])
-      .order("start_date", { ascending: true }),
-    // YTD approved for the stat card total.
-    gate.supabase
-      .from("time_off_requests")
-      .select("type, start_date, end_date, full_day, hours")
-      .eq("profile_id", profileId)
-      .eq("status", "approved")
-      .gte("start_date", yearStart),
-    includeOvertime
-      ? loadEmployeeOvertime(gate.supabase, profileId, now)
-      : { data: null, error: null },
-  ]);
-
-  if (punchesRes.error) return NextResponse.json({ error: punchesRes.error.message }, { status: 500 });
-  if (windowTimeOffRes.error) return NextResponse.json({ error: windowTimeOffRes.error.message }, { status: 500 });
-  if (ytdTimeOffRes.error) return NextResponse.json({ error: ytdTimeOffRes.error.message }, { status: 500 });
-  if (overtimeRes.error) return NextResponse.json({ error: overtimeRes.error }, { status: 500 });
-
-  const ytdByType = emptyTimeOffByType();
-  for (const t of ytdTimeOffRes.data || []) {
-    const row = t as {
-      type: TimeOffType;
-      start_date: string;
-      end_date: string;
-      full_day: boolean;
-      hours: number | null;
-    };
-    ytdByType[row.type] += requestDays(row);
-  }
-
-  return NextResponse.json({
-    profile: gate.target,
-    punches: punchesRes.data || [],
-    range: { from: startISO, to: endISO },
-    time_off: {
-      window: windowTimeOffRes.data || [],
-      ytd: withTotal(ytdByType),
-    },
-    overtime: overtimeRes.data,
-  });
+  const res = await loadEmployeeWindow(
+    gate.supabase,
+    profileId,
+    from ? new Date(from).toISOString() : defaultFrom.toISOString(),
+    to ? new Date(to).toISOString() : now.toISOString(),
+    { includeOvertime: url.searchParams.get("overtime") === "1", now },
+  );
+  if (!res.ok) return NextResponse.json({ error: res.message }, { status: res.status });
+  return NextResponse.json({ profile: gate.target, ...res.data });
 }
 
 const punchSchema = z.object({
-  event_type: z.enum([
-    "clock_in", "clock_out",
-    "lunch_start", "lunch_end",
-    "break_start", "break_end",
-  ]),
+  event_type: z.enum(PUNCH_EVENT_TYPES),
   occurred_at: z.string().datetime(),
   note: z.string().optional(),
 });
@@ -133,7 +51,7 @@ export async function POST(
   ctx: { params: Promise<{ profileId: string }> },
 ) {
   const { profileId } = await ctx.params;
-  const gate = await requireTimeDataAccessWithProfile<EmployeeRow>(
+  const gate = await requireTimeDataAccessWithProfile<EmployeeDetailProfile>(
     profileId,
     "edit",
     EMPLOYEE_COLUMNS,

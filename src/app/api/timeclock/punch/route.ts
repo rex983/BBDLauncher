@@ -4,13 +4,10 @@ import { getMyStateToday } from "@/lib/timesheets/server";
 import type { LiveStatus, PunchEventType } from "@/lib/timesheets/state";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { PUNCH_EVENT_TYPES } from "@/lib/timesheets/state";
 
 const schema = z.object({
-  event_type: z.enum([
-    "clock_in", "clock_out",
-    "lunch_start", "lunch_end",
-    "break_start", "break_end",
-  ]),
+  event_type: z.enum(PUNCH_EVENT_TYPES),
   note: z.string().max(500).optional(),
 });
 

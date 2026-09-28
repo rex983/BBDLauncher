@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { isAdmin } from "@/lib/auth/permissions";
+import { requireSession } from "@/lib/auth/require-session";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { refreshQuoteFromAi } from "@/lib/quotes/refresh";
 import { NextResponse } from "next/server";
@@ -9,10 +9,8 @@ export const maxDuration = 30;
 // Admin-only manual "generate a new quote" trigger. Same code path the cron
 // uses, but source is tagged 'ai_manual' so we can distinguish in history.
 export async function POST() {
-  const session = await auth();
-  if (!session?.user || !isAdmin(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(isAdmin);
+  if (session instanceof NextResponse) return session;
 
   try {
     const quote = await refreshQuoteFromAi({

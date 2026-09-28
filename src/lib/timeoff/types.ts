@@ -33,8 +33,28 @@ export function emptyTimeOffByType(): TimeOffByType {
   return { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0 };
 }
 
-export function withTotal(t: TimeOffByType): TimeOffByType & { total: number } {
+export type TimeOffTotals = TimeOffByType & { total: number };
+
+export function withTotal(t: TimeOffByType): TimeOffTotals {
   return { ...t, total: TIME_OFF_TYPES.reduce((acc, { value }) => acc + t[value], 0) };
+}
+
+export function emptyTimeOffTotals(): TimeOffTotals {
+  return withTotal(emptyTimeOffByType());
+}
+
+// Stat-card order: sick first, since that's what managers scan for.
+export const TIME_OFF_DISPLAY_ORDER: TimeOffType[] = [
+  "sick",
+  "vacation",
+  "personal",
+  "parental",
+  "other",
+];
+
+// Day counts to one decimal ("2.5"), bare "0" for zero.
+export function formatDays(d: number): string {
+  return d === 0 ? "0" : (Math.round(d * 10) / 10).toString();
 }
 
 export const TIME_OFF_TYPE_LABEL: Record<TimeOffType, string> = Object.fromEntries(
@@ -130,12 +150,16 @@ export function countBusinessDays(startISO: string, endISO: string): number {
   return count;
 }
 
-export function requestDays(r: {
+// The columns requestDays needs, plus `type` for per-type folds.
+export interface TimeOffDaysRow {
+  type: TimeOffType;
   start_date: string;
   end_date: string;
   full_day: boolean;
   hours: number | null;
-}): number {
+}
+
+export function requestDays(r: Omit<TimeOffDaysRow, "type">): number {
   if (!r.full_day && r.hours) {
     return Math.round((r.hours / 8) * 10) / 10;
   }
@@ -153,7 +177,7 @@ export function todayISO(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export type BadgeVariant = "default" | "secondary" | "outline" | "destructive";
+import type { BadgeVariant } from "@/lib/badge-variant";
 
 // Shared status→Badge variant mapping so the same request looks identical
 // across the employee panel, manager queue, ledger dialog, and detail view.

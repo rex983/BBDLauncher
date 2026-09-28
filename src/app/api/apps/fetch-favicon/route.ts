@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent } from "@/lib/auth/permissions";
 import { rateLimit } from "@/lib/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
@@ -208,10 +208,8 @@ async function downloadIcon(
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canManageContent(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canManageContent);
+  if (session instanceof NextResponse) return session;
 
   // Outbound fetch per admin: this endpoint reaches arbitrary hosts, so cap
   // it hard to prevent using the launcher as a DNS scanner or HTTP probe.

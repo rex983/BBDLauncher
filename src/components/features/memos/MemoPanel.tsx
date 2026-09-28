@@ -21,6 +21,7 @@ import {
   type MemoAcknowledgementMode,
   type MemoCategory,
   type MemoPriority,
+  MEMO_PRIORITY_VARIANT,
 } from "@/lib/memos/types";
 
 export interface EmployeeMemoRow {
@@ -38,15 +39,6 @@ export interface EmployeeMemoRow {
   published_at: string | null;
   author_name: string | null;
 }
-
-const PRIORITY_VARIANT: Record<
-  MemoPriority,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  informational: "outline",
-  important: "default",
-  mandatory: "destructive",
-};
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -150,7 +142,7 @@ export function MemoPanel({
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={PRIORITY_VARIANT[r.priority]}>
+                      <Badge variant={MEMO_PRIORITY_VARIANT[r.priority]}>
                         {MEMO_PRIORITY_LABEL[r.priority]}
                       </Badge>
                     </TableCell>

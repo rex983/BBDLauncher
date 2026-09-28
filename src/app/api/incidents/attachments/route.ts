@@ -1,10 +1,11 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import {
   canEditTimeData,
   isAdmin,
   timeDataScope,
 } from "@/lib/auth/permissions";
+import { isTargetInScope, type ScopedProfile } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 
@@ -40,10 +41,8 @@ const BLOCKED_EXT = new Set([
 // download endpoint can enforce access with the same scope check the rest of
 // the time-data stack uses.
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
   if (!canEditTimeData(session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -94,15 +93,9 @@ export async function POST(req: NextRequest) {
       .from("profiles")
       .select("department, office, is_active")
       .eq("id", employeeProfileId)
-      .single();
+      .single<ScopedProfile>();
     if (!target) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (target.is_active === false) {
-      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-    }
-    if (scope.department && target.department !== scope.department) {
-      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-    }
-    if (scope.office && target.office !== scope.office) {
+    if (!isTargetInScope(scope, target)) {
       return NextResponse.json({ error: "Out of scope" }, { status: 403 });
     }
   }

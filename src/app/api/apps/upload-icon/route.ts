@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
@@ -27,10 +27,8 @@ const EXT_FROM_TYPE: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canManageContent(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canManageContent);
+  if (session instanceof NextResponse) return session;
 
   let file: File | null = null;
   try {

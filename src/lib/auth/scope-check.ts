@@ -12,12 +12,13 @@ import type { Session } from "next-auth";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Need = "view" | "edit";
+export type AllowedScope = TimeDataScope & { allowed: true };
 
 interface OkBase {
   ok: true;
   session: Session;
   supabase: SupabaseClient;
-  scope: TimeDataScope & { allowed: true };
+  scope: AllowedScope;
   viewerIsAdmin: boolean;
 }
 interface Fail {
@@ -25,8 +26,78 @@ interface Fail {
   response: NextResponse;
 }
 type OkWithTarget<T> = OkBase & { target: T };
-export type ScopeGate = OkBase | Fail;
-export type ScopeGateWithTarget<T> = OkWithTarget<T> | Fail;
+type ScopeGate = OkBase | Fail;
+type ScopeGateWithTarget<T> = OkWithTarget<T> | Fail;
+
+// Framework-free failure — server components render it, route handlers wrap
+// it in a NextResponse.
+export interface GateFailure {
+  ok: false;
+  status: number;
+  message: string;
+}
+
+// The (department, office, is_active) slice every scope decision reads.
+export interface ScopedProfile {
+  department: string | null;
+  office: string | null;
+  is_active: boolean;
+}
+
+type Viewer = Pick<Session["user"], "role" | "department" | "office">;
+
+// Steps 2–3 of the gate below, without the session lookup or a response
+// object, so server components can share the exact same rules.
+export function resolveTimeDataScope(
+  viewer: Viewer | undefined | null,
+  need: Need,
+): { ok: true; scope: AllowedScope; viewerIsAdmin: boolean } | GateFailure {
+  const permit = need === "edit" ? canEditTimeData : canViewTimeData;
+  if (!viewer || !permit(viewer.role)) {
+    return { ok: false, status: 403, message: "Unauthorized" };
+  }
+  const scope = timeDataScope(viewer.role, viewer.department, viewer.office);
+  if (!scope.allowed) return { ok: false, status: 403, message: "No scope" };
+  return { ok: true, scope, viewerIsAdmin: isAdmin(viewer.role) };
+}
+
+// Non-admin rule: target must be active and inside both scope axes. Admin
+// scopes have both axes null, but callers still skip this for admins so
+// they can reach inactive users.
+export function isTargetInScope(scope: AllowedScope, target: ScopedProfile): boolean {
+  if (target.is_active === false) return false;
+  if (scope.department && target.department !== scope.department) return false;
+  if (scope.office && target.office !== scope.office) return false;
+  return true;
+}
+
+interface EqBuilder {
+  eq(column: string, value: string | boolean): EqBuilder;
+}
+
+// Narrow a `profiles` query to everyone the scope can see. Admin overrides
+// only apply when the scope leaves that axis open. Takes and returns the
+// caller's builder so its select-column typing and ordering survive.
+// Q is left unconstrained on purpose: structurally checking a PostgREST
+// builder against an `eq` signature trips TS2589 on wide selects.
+export function scopeProfilesQuery<Q>(
+  query: Q,
+  scope: { department: string | null; office: string | null },
+  {
+    department,
+    office,
+    includeInactive = false,
+  }: { department?: string | null; office?: string | null; includeInactive?: boolean } = {},
+): Q {
+  // PostgREST filter methods return `this`, so the builder type is kept.
+  let q = query as unknown as EqBuilder;
+  if (!includeInactive) q = q.eq("is_active", true);
+  const dept = scope.department ?? department;
+  const off = scope.office ?? office;
+  if (dept) q = q.eq("department", dept);
+  if (off) q = q.eq("office", off);
+  return q as unknown as Q;
+}
 
 // Gate a request against the time-data authz stack in one call:
 //   1. session exists
@@ -50,11 +121,8 @@ export async function requireTimeDataAccess(
       .from("profiles")
       .select("department, office, is_active")
       .eq("id", targetProfileId)
-      .single();
-    if (!data) return outOfScope();
-    if (data.is_active === false) return outOfScope();
-    if (base.scope.department && data.department !== base.scope.department) return outOfScope();
-    if (base.scope.office && data.office !== base.scope.office) return outOfScope();
+      .single<ScopedProfile>();
+    if (!data || !isTargetInScope(base.scope, data)) return outOfScope();
   }
 
   return base;
@@ -64,9 +132,7 @@ export async function requireTimeDataAccess(
 // columns AND enforces scope on the returned row — one query, not two.
 // `selectColumns` must include `department`, `office`, and `is_active`.
 // Admins skip the scope+active checks but still get the target row.
-export async function requireTimeDataAccessWithProfile<
-  T extends { department: string | null; office: string | null; is_active: boolean },
->(
+export async function requireTimeDataAccessWithProfile<T extends ScopedProfile>(
   targetProfileId: string,
   need: Need,
   selectColumns: string,
@@ -79,60 +145,29 @@ export async function requireTimeDataAccessWithProfile<
     .select(selectColumns)
     .eq("id", targetProfileId)
     .single<T>();
-  if (!target) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "Not found" }, { status: 404 }),
-    };
-  }
-
-  if (!base.viewerIsAdmin) {
-    if (target.is_active === false) return outOfScope();
-    if (base.scope.department && target.department !== base.scope.department) {
-      return outOfScope();
-    }
-    if (base.scope.office && target.office !== base.scope.office) {
-      return outOfScope();
-    }
-  }
+  if (!target) return toFail({ ok: false, status: 404, message: "Not found" });
+  if (!base.viewerIsAdmin && !isTargetInScope(base.scope, target)) return outOfScope();
 
   return { ...base, target };
 }
 
 async function enterScope(need: Need): Promise<ScopeGate> {
   const session = await auth();
-  const permit = need === "edit" ? canEditTimeData : canViewTimeData;
-  if (!session?.user || !permit(session.user.role)) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "Unauthorized" }, { status: 403 }),
-    };
-  }
-
-  const scope = timeDataScope(
-    session.user.role,
-    session.user.department,
-    session.user.office,
-  );
-  if (!scope.allowed) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "No scope" }, { status: 403 }),
-    };
-  }
-
+  const resolved = resolveTimeDataScope(session?.user, need);
+  if (!resolved.ok) return toFail(resolved);
   return {
     ok: true,
-    session,
+    session: session!,
     supabase: createAdminClient(),
-    scope,
-    viewerIsAdmin: isAdmin(session.user.role),
+    scope: resolved.scope,
+    viewerIsAdmin: resolved.viewerIsAdmin,
   };
 }
 
+function toFail({ status, message }: GateFailure): Fail {
+  return { ok: false, response: NextResponse.json({ error: message }, { status }) };
+}
+
 function outOfScope(): Fail {
-  return {
-    ok: false,
-    response: NextResponse.json({ error: "Out of scope" }, { status: 403 }),
-  };
+  return toFail({ ok: false, status: 403, message: "Out of scope" });
 }

@@ -33,10 +33,7 @@ export default async function EmployeeDetailPage({
       const result = await getEmployeeDetail(
         profileId,
         days,
-        session.user.profileId,
-        session.user.role ?? "",
-        session.user.department ?? null,
-        session.user.office ?? null,
+        session.user,
         { includeOvertime: true },
       );
       if (result.ok) {

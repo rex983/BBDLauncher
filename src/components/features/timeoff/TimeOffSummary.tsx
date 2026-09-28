@@ -364,7 +364,3 @@ function TotalCard({ label, value, sub }: { label: string; value: number; sub?: 
     </div>
   );
 }
-
-export function abbrevType(t: TimeOffType) {
-  return TIME_OFF_TYPE_LABEL[t];
-}

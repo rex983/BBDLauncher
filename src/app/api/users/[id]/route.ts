@@ -1,14 +1,15 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
 
 const updateSchema = z.object({
   name: z.string().nullable().optional(),
   role: z.string().min(1).optional(),
-  office: z.enum(["Harbor", "Marion", "BST", "RnD"]).nullable().optional(),
-  department: z.enum(["SALES TEAM", "BST", "RnD"]).nullable().optional(),
+  office: z.enum(OFFICES).nullable().optional(),
+  department: z.enum(DEPARTMENTS).nullable().optional(),
   is_it: z.boolean().optional(),
   is_active: z.boolean().optional(),
 });
@@ -20,10 +21,8 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user || !canManageContent(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canManageContent);
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
   const body = await req.json();
@@ -134,10 +133,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user || !canManageContent(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canManageContent);
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 

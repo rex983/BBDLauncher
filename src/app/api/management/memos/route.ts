@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import {
   canEditTimeData,
   canViewTimeData,
@@ -49,10 +49,8 @@ const createSchema = z.object({
 //                        office/department (so they know what their team
 //                        has been asked to acknowledge)
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canViewTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canViewTimeData);
+  if (session instanceof NextResponse) return session;
 
   const url = new URL(req.url);
   const statusParam = url.searchParams.get("status");
@@ -75,10 +73,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || !canEditTimeData(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const session = await requireSession(canEditTimeData);
+  if (session instanceof NextResponse) return session;
   const parsed = createSchema.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });

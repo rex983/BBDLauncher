@@ -1,14 +1,16 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  canViewTimeData,
-  isAdmin,
-  timeDataScope,
-} from "@/lib/auth/permissions";
+  isTargetInScope,
+  resolveTimeDataScope,
+  type GateFailure,
+} from "@/lib/auth/scope-check";
 import { startOfDayInZone } from "@/lib/timesheets/tz";
 import {
   emptyTimeOffByType,
   requestDays,
   withTotal,
+  type TimeOffDaysRow,
+  type TimeOffTotals,
   type TimeOffType,
   type TimeOffStatus,
 } from "@/lib/timeoff/types";
@@ -22,16 +24,12 @@ import {
   type WeekTotals,
 } from "@/lib/timesheets/weekly";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Department, Office, UserRole } from "@/types/auth";
+import type { Session } from "next-auth";
 
 // Server-side hydration for /management/timesheets/[profileId]. The GET
 // handler at /api/management/timesheets/employee/[profileId] returns the
-// same shape — this helper lets the page render the first payload without
-// a client-side fetch. Days-selector changes still re-fetch the route.
-//
-// Kept in sync with that route: any query change here should mirror the
-// route (or vice-versa) so client-side reloads and the initial SSR paint
-// stay consistent.
+// same shape via the shared loadEmployeeWindow — this helper lets the page
+// render the first payload without a client-side fetch.
 
 export interface EmployeeDetailProfile {
   id: string;
@@ -59,7 +57,7 @@ export interface WindowTimeOffRow {
   decided_by: string | null;
 }
 
-export type YtdBreakdown = Record<TimeOffType, number> & { total: number };
+export type YtdBreakdown = TimeOffTotals;
 
 // YTD weekly hours for one employee. Independent of the days-selector —
 // overtime is a per-week (Sun–Sat, ET) figure, so a 7-day window would
@@ -110,21 +108,10 @@ export async function loadEmployeeOvertime(
 
 export type EmployeeDetailResult =
   | { ok: true; data: EmployeeDetailData }
-  | { ok: false; status: number; message: string };
+  | GateFailure;
 
-const EMPLOYEE_COLUMNS =
+export const EMPLOYEE_COLUMNS =
   "id, email, name:full_name, role, office, department, is_active, created_at";
-
-interface EmployeeScopeRow {
-  id: string;
-  email: string;
-  name: string | null;
-  role: string;
-  office: string | null;
-  department: string | null;
-  is_active: boolean;
-  created_at: string;
-}
 
 // Normalizes the days-selector to a supported range. Anything unexpected
 // falls back to 7 so a bad ?days= query string doesn't hard-fail the page.
@@ -134,73 +121,21 @@ export function coerceDays(raw: string | undefined | null): number {
   return 7;
 }
 
-// Replicates the auth + scope + query logic from the GET route. Returns a
-// plain data payload (or an error status + message) rather than a
-// NextResponse so it's usable from server components.
-export async function getEmployeeDetail(
+// Punches + time-off (+ optional YTD overtime) for one employee over
+// [startISO, endISO]. Shared by getEmployeeDetail (SSR) and the GET route
+// (client refresh) so both paint identical payloads. Caller has already
+// enforced scope.
+export async function loadEmployeeWindow(
+  supabase: SupabaseClient,
   profileId: string,
-  days: number,
-  viewerProfileId: string,
-  viewerRole: string,
-  viewerDepartment: string | null,
-  viewerOffice: string | null,
-  // YTD overtime reads a year of punches; only the timesheet page shows it.
-  { includeOvertime = false }: { includeOvertime?: boolean } = {},
-): Promise<EmployeeDetailResult> {
-  void viewerProfileId; // reserved for future audit logging; scope keys off role/dept/office
-
-  if (!canViewTimeData(viewerRole as UserRole)) {
-    return { ok: false, status: 403, message: "Unauthorized" };
-  }
-
-  const scope = timeDataScope(
-    viewerRole as UserRole,
-    viewerDepartment as Department | null,
-    viewerOffice as Office | null,
-  );
-  if (!scope.allowed) {
-    return { ok: false, status: 403, message: "No scope" };
-  }
-
-  const supabase = createAdminClient();
-
-  const { data: target, error: targetErr } = await supabase
-    .from("profiles")
-    .select(EMPLOYEE_COLUMNS)
-    .eq("id", profileId)
-    .single<EmployeeScopeRow>();
-  if (targetErr || !target) {
-    return { ok: false, status: 404, message: "Not found" };
-  }
-
-  const viewerIsAdmin = isAdmin(viewerRole as UserRole);
-  if (!viewerIsAdmin) {
-    if (target.is_active === false) {
-      return { ok: false, status: 403, message: "Out of scope" };
-    }
-    if (scope.department && target.department !== scope.department) {
-      return { ok: false, status: 403, message: "Out of scope" };
-    }
-    if (scope.office && target.office !== scope.office) {
-      return { ok: false, status: 403, message: "Out of scope" };
-    }
-  }
-
-  // Mirror the client's window math: from = start-of-ET-day, `days` days back
-  // through `now`. The GET route uses the same default when the query params
-  // are absent — but here we're the source of truth, so compute explicitly.
-  const now = new Date();
-  const todayStart = startOfDayInZone(now);
-  const from = new Date(todayStart);
-  from.setDate(from.getDate() - days);
-  const startISO = from.toISOString();
-  const endISO = now.toISOString();
-
-  const startDate = new Date(startISO);
-  const endDate = new Date(endISO);
-  const isoDate = (d: Date) => d.toISOString().slice(0, 10);
-  const windowFromDate = isoDate(startDate);
-  const windowToDate = isoDate(endDate);
+  startISO: string,
+  endISO: string,
+  { includeOvertime, now = new Date() }: { includeOvertime: boolean; now?: Date },
+): Promise<{ ok: true; data: Omit<EmployeeDetailData, "profile"> } | GateFailure> {
+  // Time-off runs on YYYY-MM-DD dates, so bucket the window on those dates
+  // rather than the timestamps used for punches.
+  const windowFromDate = startISO.slice(0, 10);
+  const windowToDate = endISO.slice(0, 10);
   const yearStart = `${now.getFullYear()}-01-01`;
 
   const [punchesRes, windowTimeOffRes, ytdTimeOffRes, overtimeRes] = await Promise.all([
@@ -211,6 +146,8 @@ export async function getEmployeeDetail(
       .gte("occurred_at", startISO)
       .lte("occurred_at", endISO)
       .order("occurred_at", { ascending: true }),
+    // Time-off entries whose window overlaps the visible range — pending
+    // and approved, whether entered by the employee or a manager.
     supabase
       .from("time_off_requests")
       .select("id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_at, decided_by")
@@ -219,6 +156,7 @@ export async function getEmployeeDetail(
       .gte("end_date", windowFromDate)
       .in("status", ["approved", "pending"])
       .order("start_date", { ascending: true }),
+    // YTD approved for the stat card total.
     supabase
       .from("time_off_requests")
       .select("type, start_date, end_date, full_day, hours")
@@ -230,35 +168,21 @@ export async function getEmployeeDetail(
       : { data: null, error: null },
   ]);
 
-  if (punchesRes.error) {
-    return { ok: false, status: 500, message: punchesRes.error.message };
-  }
-  if (windowTimeOffRes.error) {
-    return { ok: false, status: 500, message: windowTimeOffRes.error.message };
-  }
-  if (ytdTimeOffRes.error) {
-    return { ok: false, status: 500, message: ytdTimeOffRes.error.message };
-  }
-  if (overtimeRes.error) {
-    return { ok: false, status: 500, message: overtimeRes.error };
-  }
+  const error =
+    punchesRes.error?.message ??
+    windowTimeOffRes.error?.message ??
+    ytdTimeOffRes.error?.message ??
+    overtimeRes.error;
+  if (error) return { ok: false, status: 500, message: error };
 
   const ytdByType = emptyTimeOffByType();
-  for (const t of ytdTimeOffRes.data || []) {
-    const row = t as {
-      type: TimeOffType;
-      start_date: string;
-      end_date: string;
-      full_day: boolean;
-      hours: number | null;
-    };
+  for (const row of (ytdTimeOffRes.data || []) as TimeOffDaysRow[]) {
     ytdByType[row.type] += requestDays(row);
   }
 
   return {
     ok: true,
     data: {
-      profile: target,
       punches: (punchesRes.data || []) as TimePunch[],
       range: { from: startISO, to: endISO },
       time_off: {
@@ -268,4 +192,42 @@ export async function getEmployeeDetail(
       overtime: overtimeRes.data,
     },
   };
+}
+
+// Server-component entry: same auth + scope rules as the GET route, but
+// returns a plain payload (or status + message) instead of a NextResponse.
+export async function getEmployeeDetail(
+  profileId: string,
+  days: number,
+  viewer: Pick<Session["user"], "role" | "department" | "office">,
+  // YTD overtime reads a year of punches; only the timesheet page shows it.
+  { includeOvertime = false }: { includeOvertime?: boolean } = {},
+): Promise<EmployeeDetailResult> {
+  const access = resolveTimeDataScope(viewer, "view");
+  if (!access.ok) return access;
+
+  const supabase = createAdminClient();
+  const { data: target, error: targetErr } = await supabase
+    .from("profiles")
+    .select(EMPLOYEE_COLUMNS)
+    .eq("id", profileId)
+    .single<EmployeeDetailProfile>();
+  if (targetErr || !target) {
+    return { ok: false, status: 404, message: "Not found" };
+  }
+  if (!access.viewerIsAdmin && !isTargetInScope(access.scope, target)) {
+    return { ok: false, status: 403, message: "Out of scope" };
+  }
+
+  // Window = start of the ET day `days` days back, through now.
+  const now = new Date();
+  const from = startOfDayInZone(now);
+  from.setDate(from.getDate() - days);
+
+  const res = await loadEmployeeWindow(supabase, profileId, from.toISOString(), now.toISOString(), {
+    includeOvertime,
+    now,
+  });
+  if (!res.ok) return res;
+  return { ok: true, data: { profile: target, ...res.data } };
 }

@@ -1,7 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { PunchEventType } from "@/lib/timesheets/state";
 import { localDateInZone, scheduledTimeInZone } from "@/lib/timesheets/tz";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { cronRoute } from "@/lib/cron";
 
 export const maxDuration = 60;
 
@@ -21,21 +22,7 @@ export const maxDuration = 60;
 // until their app-side session runs out. Fresh launches require signing
 // back into the launcher, then clocking in.
 
-function isAuthorised(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const header = req.headers.get("authorization");
-  if (header === `Bearer ${secret}`) return true;
-  // Vercel's scheduled invocations set this header instead of the Bearer.
-  if (req.headers.get("x-vercel-cron") === "1") return true;
-  return false;
-}
-
-async function handle(req: NextRequest) {
-  if (!isAuthorised(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+async function handle() {
   const supabase = createAdminClient();
   const now = new Date();
   const cutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
@@ -116,9 +103,4 @@ async function handle(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest) {
-  return handle(req);
-}
-export async function POST(req: NextRequest) {
-  return handle(req);
-}
+export const { GET, POST } = cronRoute(handle);

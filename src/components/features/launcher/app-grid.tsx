@@ -5,9 +5,8 @@ import {
   rectSortingStrategy,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { SortableAppCard } from "./sortable-app-card";
+import { SortableAppItem } from "./sortable-app-item";
 import { AppCard } from "./app-card";
-import { SortableAppListRow } from "./sortable-app-list-row";
 import { AppListRow } from "./app-list-row";
 import type { LauncherApp } from "@/types/app";
 
@@ -46,25 +45,16 @@ export function AppGrid({
         strategy={isList ? verticalListSortingStrategy : rectSortingStrategy}
       >
         <div className={listWrap}>
-          {apps.map((app) =>
-            isList ? (
-              <SortableAppListRow
-                key={app.id}
-                app={app}
-                isFavorite={favorites.includes(app.id)}
-                onToggleFavorite={onToggleFavorite}
-                sortable={sortable}
-              />
-            ) : (
-              <SortableAppCard
-                key={app.id}
-                app={app}
-                isFavorite={favorites.includes(app.id)}
-                onToggleFavorite={onToggleFavorite}
-                sortable={sortable}
-              />
-            ),
-          )}
+          {apps.map((app) => (
+            <SortableAppItem
+              key={app.id}
+              as={isList ? AppListRow : AppCard}
+              app={app}
+              isFavorite={favorites.includes(app.id)}
+              onToggleFavorite={onToggleFavorite}
+              sortable={sortable}
+            />
+          ))}
         </div>
       </SortableContext>
     );

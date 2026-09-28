@@ -1,13 +1,14 @@
-import { requireTimeDataAccess } from "@/lib/auth/scope-check";
+import {
+  isTargetInScope,
+  requireTimeDataAccess,
+  type ScopedProfile,
+} from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { PUNCH_EVENT_TYPES } from "@/lib/timesheets/state";
 
 const patchSchema = z.object({
-  event_type: z.enum([
-    "clock_in", "clock_out",
-    "lunch_start", "lunch_end",
-    "break_start", "break_end",
-  ]).optional(),
+  event_type: z.enum(PUNCH_EVENT_TYPES).optional(),
   occurred_at: z.string().datetime().optional(),
   note: z.string().nullable().optional(),
 });
@@ -33,14 +34,8 @@ async function loadPunchWithScope(id: string) {
       .from("profiles")
       .select("department, office, is_active")
       .eq("id", punch.profile_id)
-      .maybeSingle();
-    if (!prof || prof.is_active === false) {
-      return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
-    }
-    if (gate.scope.department && prof.department !== gate.scope.department) {
-      return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
-    }
-    if (gate.scope.office && prof.office !== gate.scope.office) {
+      .maybeSingle<ScopedProfile>();
+    if (!prof || !isTargetInScope(gate.scope, prof)) {
       return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
     }
   }

@@ -1,9 +1,10 @@
-import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent } from "@/lib/auth/permissions";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { OFFICES } from "@/lib/org/constants";
 
 const linkUpdateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -11,7 +12,7 @@ const linkUpdateSchema = z.object({
   url: z.string().url().optional(),
   icon_url: z.string().nullable().optional(),
   display_order: z.number().optional(),
-  office: z.enum(["Harbor", "Marion", "BST", "RnD"]).nullable().optional(),
+  office: z.enum(OFFICES).nullable().optional(),
 });
 
 export async function PUT(
@@ -19,10 +20,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user || !canManageContent(session.user.role)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    const session = await requireSession(canManageContent);
+    if (session instanceof NextResponse) return session;
 
     const { id } = await params;
     const body = await req.json();
@@ -62,10 +61,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user || !canManageContent(session.user.role)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    const session = await requireSession(canManageContent);
+    if (session instanceof NextResponse) return session;
 
     const { id } = await params;
     const supabase = createAdminClient();
