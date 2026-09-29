@@ -1,5 +1,6 @@
 "use client";
 
+import { ACCESS_OFFICE_LABEL } from "@/lib/launcher/access";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,7 +54,7 @@ export default function AdminAppsPage() {
         a.description,
         a.sso_type,
         a.status,
-        ...(a.offices || []),
+        ...(a.access_offices || []),
         ...(a.roles || []),
       ]
         .filter(Boolean)
@@ -68,7 +69,7 @@ export default function AdminAppsPage() {
     const dir = sortDir === "asc" ? 1 : -1;
     const value = (a: AppWithAccess): string => {
       if (sortKey === "roles") return (a.roles || []).slice().sort().join(",");
-      if (sortKey === "offices") return (a.offices || []).slice().sort().join(",");
+      if (sortKey === "offices") return (a.access_offices ?? ["all"]).slice().sort().join(",");
       const v = a[sortKey];
       return v == null ? "" : String(v);
     };
@@ -224,16 +225,21 @@ export default function AdminAppsPage() {
                 </Badge>
               </TableCell>
               <TableCell>
-                {app.offices && app.offices.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {app.offices.map((o) => (
-                      <Badge key={o} variant="outline">
-                        {o}
-                      </Badge>
-                    ))}
-                  </div>
+                {/* Offices anyone can open it from (the grid is on the edit form). */}
+                {app.access_offices ? (
+                  app.access_offices.length ? (
+                    <div className="flex flex-wrap gap-1">
+                      {app.access_offices.map((o) => (
+                        <Badge key={o} variant="outline">
+                          {ACCESS_OFFICE_LABEL[o]}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">No one</span>
+                  )
                 ) : (
-                  <span className="text-xs text-muted-foreground">Everyone</span>
+                  <span className="text-xs text-muted-foreground">All offices</span>
                 )}
               </TableCell>
               <TableCell>

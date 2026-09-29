@@ -28,6 +28,8 @@ export const LAUNCHER_TAGS = {
 interface RoleAccessRow {
   role_name: string;
   app_id: string;
+  /** null = every office (migration 034). */
+  office: string | null;
 }
 
 export const getCachedApps = unstable_cache(
@@ -47,10 +49,13 @@ export const getCachedApps = unstable_cache(
 export const getCachedRoleAppAccess = unstable_cache(
   async (): Promise<RoleAccessRow[]> => {
     const supabase = createAdminClient();
-    const { data } = await supabase
-      .from("launcher_role_app_access")
-      .select("role_name, app_id");
-    return (data || []) as RoleAccessRow[];
+    // select("*") so this works before and after migration 034 (office column).
+    const { data } = await supabase.from("launcher_role_app_access").select("*");
+    return ((data || []) as Array<RoleAccessRow & { office?: string | null }>).map((r) => ({
+      role_name: r.role_name,
+      app_id: r.app_id,
+      office: r.office ?? null,
+    }));
   },
   ["launcher-role-app-access"],
   { tags: [LAUNCHER_TAGS.roleAccess], revalidate: REVALIDATE_SECONDS },

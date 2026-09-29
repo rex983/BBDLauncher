@@ -5,6 +5,7 @@ import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OFFICES } from "@/lib/org/constants";
+import { ACCESS_OFFICES, rowsFromCells } from "@/lib/launcher/access";
 
 const httpUrl = z
   .string()
@@ -25,6 +26,11 @@ const appUpdateSchema = z.object({
   section_id: z.string().uuid().nullable().optional(),
   offices: z.array(z.enum(OFFICES)).optional(),
   roles: z.array(z.string()).optional(),
+  /** Office × role grid cells that can open the app. Replaces roles + offices. */
+  access: z
+    .array(z.object({ role: z.string().min(1), office: z.enum(ACCESS_OFFICES) }))
+    .max(500)
+    .optional(),
   sso_config: z
     .object({
       sp_entity_id: z.string().optional(),
@@ -77,7 +83,9 @@ export async function PUT(
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { roles, sso_config, ...appData } = parsed.data;
+  const { roles, access, sso_config, ...appData } = parsed.data;
+  // The grid holds office limits now; the app's own office list stays empty.
+  if (access) appData.offices = [];
   const supabase = createAdminClient();
 
   const { data: app, error } = await supabase
@@ -91,13 +99,16 @@ export async function PUT(
     return NextResponse.json({ error: error?.message || "Failed to update" }, { status: 500 });
   }
 
-  // Update role access
-  if (roles !== undefined) {
-    await supabase.from("launcher_role_app_access").delete().eq("app_id", id);
-    if (roles.length) {
-      await supabase.from("launcher_role_app_access").insert(
-        roles.map((role_name: string) => ({ role_name, app_id: id }))
-      );
+  // Update access: the grid if sent, otherwise the older role list (every office).
+  if (access !== undefined || roles !== undefined) {
+    const rows = access
+      ? rowsFromCells(id, access)
+      : (roles || []).map((role_name: string) => ({ role_name, app_id: id, office: null }));
+    const { error: delError } = await supabase.from("launcher_role_app_access").delete().eq("app_id", id);
+    if (delError) return NextResponse.json({ error: delError.message }, { status: 500 });
+    if (rows.length) {
+      const { error: insError } = await supabase.from("launcher_role_app_access").insert(rows);
+      if (insError) return NextResponse.json({ error: insError.message }, { status: 500 });
     }
   }
 

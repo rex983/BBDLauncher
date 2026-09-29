@@ -4,6 +4,7 @@ import { SectionedAppGrid } from "@/components/features/launcher/sectioned-app-g
 import { ImportantLinks } from "@/components/features/launcher/important-links";
 import { ViewAsRole } from "@/components/features/launcher/view-as-role";
 import { ViewAsOffice } from "@/components/features/launcher/view-as-office";
+import { allowedAppIds } from "@/lib/launcher/access";
 import { QuoteBanner } from "@/components/features/launcher/quote-banner";
 import { TimeClockShell } from "@/components/features/timeclock/TimeClockShell";
 import { canManageContent, isAdmin as isAdminRole } from "@/lib/auth/permissions";
@@ -121,15 +122,16 @@ export default async function DashboardPage({
       }
     }
 
-    const roleAppIds = new Set(
-      accessRows.filter((r) => r.role_name === effectiveRole).map((r) => r.app_id),
-    );
+    // Office × role grid (migration 034). Admins skip the office part unless
+    // they've pinned a view-as office.
+    const roleAppIds = allowedAppIds(accessRows, effectiveRole, effectiveOffice, bypassOffice);
     const roleFilteredApps = allApps
       .filter((a) => roleAppIds.has(a.id))
       .sort((a, b) => a.display_order - b.display_order);
 
-    // Office gate: NULL/empty = visible to all. Admins normally see everything,
-    // unless they've pinned a view-as office (then we treat them like that user).
+    // Links keep their single-office filter. Apps: the old per-app office list
+    // still applies as a second gate (the grid already encodes it; saving an
+    // app's grid clears it), so old and new code agree whatever ships first.
     const linkOfficeMatches = (office: string | null) =>
       bypassOffice || !office || office === effectiveOffice;
     const appOfficesMatch = (offices: string[] | null) =>

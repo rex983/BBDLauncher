@@ -54,6 +54,11 @@ export interface SsoConfig {
 }
 
 export interface AppWithAccess extends LauncherApp {
+  /** Roles with any access (for counts and badges). */
   roles: string[];
+  /** Office × role grid cells that can open the app (migration 034). */
+  access: import("@/lib/launcher/access").AccessCell[];
+  /** Offices with any access; null = every office. */
+  access_offices: import("@/lib/launcher/access").AccessOffice[] | null;
   sso_config?: SsoConfig | null;
 }

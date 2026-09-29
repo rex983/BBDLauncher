@@ -5,6 +5,7 @@ import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OFFICES } from "@/lib/org/constants";
+import { ACCESS_OFFICES, cellsFromRows, officesWithAccess, rowsFromCells } from "@/lib/launcher/access";
 
 const httpUrl = z
   .string()
@@ -25,6 +26,11 @@ const appSchema = z.object({
   section_id: z.string().uuid().nullable().optional(),
   offices: z.array(z.enum(OFFICES)).optional(),
   roles: z.array(z.string()).optional(),
+  /** Office × role grid cells that can open the app. Replaces roles + offices. */
+  access: z
+    .array(z.object({ role: z.string().min(1), office: z.enum(ACCESS_OFFICES) }))
+    .max(500)
+    .optional(),
   sso_config: z
     .object({
       sp_entity_id: z.string().optional(),
@@ -86,18 +92,20 @@ export async function GET(req: NextRequest) {
         ])
       : [{ data: [] as { app_id: string; role_name: string }[] }, { data: [] as { app_id: string }[] }];
 
-    const rolesByAppId = new Map<string, string[]>();
-    for (const a of accessRes.data || []) {
-      const list = rolesByAppId.get(a.app_id);
-      if (list) list.push(a.role_name);
-      else rolesByAppId.set(a.app_id, [a.role_name]);
+    const rowsByAppId = new Map<string, Array<{ role_name: string; office: string | null }>>();
+    for (const a of (accessRes.data || []) as Array<{ app_id: string; role_name: string; office?: string | null }>) {
+      const list = rowsByAppId.get(a.app_id) ?? [];
+      list.push({ role_name: a.role_name, office: a.office ?? null });
+      rowsByAppId.set(a.app_id, list);
     }
     const ssoByAppId = new Map<string, unknown>();
     for (const c of ssoRes.data || []) ssoByAppId.set(c.app_id, c);
 
     const appsWithAccess = (apps || []).map((app) => ({
       ...app,
-      roles: rolesByAppId.get(app.id) || [],
+      roles: [...new Set((rowsByAppId.get(app.id) || []).map((r) => r.role_name))],
+      access: cellsFromRows(rowsByAppId.get(app.id) || []),
+      access_offices: officesWithAccess(rowsByAppId.get(app.id) || []),
       sso_config: ssoByAppId.get(app.id) || null,
     }));
 
@@ -122,7 +130,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { roles, sso_config, ...appData } = parsed.data;
+    const { roles, access, sso_config, ...appData } = parsed.data;
+    // The grid holds office limits now; the app's own office list stays empty.
+    if (access) appData.offices = [];
     const supabase = createAdminClient();
 
     const { data: app, error } = await supabase
@@ -135,11 +145,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error?.message || "Failed to create app" }, { status: 500 });
     }
 
-    // Set role access
-    if (roles?.length) {
-      const { error: roleError } = await supabase.from("launcher_role_app_access").insert(
-        roles.map((role_name) => ({ role_name, app_id: app.id }))
-      );
+    // Set access: the grid if sent, otherwise the older role list (every office).
+    const accessRows = access
+      ? rowsFromCells(app.id, access)
+      : (roles || []).map((role_name) => ({ role_name, app_id: app.id, office: null }));
+    if (accessRows.length) {
+      const { error: roleError } = await supabase.from("launcher_role_app_access").insert(accessRows);
       if (roleError) console.error("Role access insert error:", roleError.message);
     }
 

@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSamlAssertion, generateAutoSubmitForm } from "@/lib/saml/idp";
 import { generateSsoToken } from "@/lib/sso/jwt-issuer";
+import { rowsAllow } from "@/lib/launcher/access";
 import { isClockedIn } from "@/lib/timesheets/server";
 import { rateLimit } from "@/lib/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
@@ -55,15 +56,19 @@ export async function GET(
     }
   }
 
-  // Check role access
-  const { data: access } = await supabase
+  // Office × role grid (migration 034): the user's role must be allowed from
+  // their office. Admins still need an admin row but aren't limited by office.
+  const { data: accessRows } = await supabase
     .from("launcher_role_app_access")
-    .select("app_id")
+    .select("*")
     .eq("app_id", appId)
-    .eq("role_name", session.user.role)
-    .single();
+    .eq("role_name", session.user.role);
+  const rows = ((accessRows || []) as Array<{ role_name: string; app_id: string; office?: string | null }>).map((r) => ({
+    ...r,
+    office: r.office ?? null,
+  }));
 
-  if (!access) {
+  if (!rowsAllow(rows, session.user.role, session.user.office, session.user.role === "admin")) {
     return NextResponse.json(
       { error: "You do not have access to this application" },
       { status: 403 }
@@ -82,8 +87,8 @@ export async function GET(
     return NextResponse.json({ error: "Application not found" }, { status: 404 });
   }
 
-  // Office gate: admins bypass; otherwise app's offices (if any) must include
-  // the user's office. Empty offices array = visible to everyone.
+  // Legacy office gate: the grid already encodes each app's office list (migration
+  // 034) and saving an app's grid clears it; kept so old and new code always agree.
   const appOffices: string[] = Array.isArray(app.offices) ? app.offices : [];
   if (
     appOffices.length > 0 &&

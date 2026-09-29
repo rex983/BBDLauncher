@@ -14,8 +14,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { AppWithAccess, LauncherRole, LauncherSection, SsoType, AppStatus } from "@/types/app";
-import type { Office } from "@/types/auth";
-import { OFFICES } from "@/lib/org/constants";
+import type { AccessCell } from "@/lib/launcher/access";
+import { AppAccessGrid } from "@/components/features/admin/app-access-grid";
 
 interface AppFormProps {
   app?: AppWithAccess | null;
@@ -35,9 +35,8 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [status, setStatus] = useState<AppStatus>(app?.status || "active");
   const [displayOrder, setDisplayOrder] = useState(app?.display_order || 0);
   const [openInNewTab, setOpenInNewTab] = useState(app?.open_in_new_tab ?? true);
-  const [selectedRoles, setSelectedRoles] = useState<string[]>(app?.roles || []);
+  const [accessCells, setAccessCells] = useState<AccessCell[]>(app?.access || []);
   const [sectionId, setSectionId] = useState<string>(app?.section_id || "none");
-  const [selectedOffices, setSelectedOffices] = useState<Office[]>(app?.offices || []);
   const [roles, setRoles] = useState<LauncherRole[]>([]);
   const [sections, setSections] = useState<LauncherSection[]>([]);
   const [saving, setSaving] = useState(false);
@@ -82,8 +81,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       display_order: displayOrder,
       open_in_new_tab: openInNewTab,
       section_id: sectionId === "none" ? null : sectionId,
-      offices: selectedOffices,
-      roles: selectedRoles,
+      access: accessCells,
       sso_config:
         ssoType === "saml"
           ? { sp_entity_id: spEntityId, acs_url: acsUrl, slo_url: sloUrl }
@@ -164,21 +162,6 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
-
-  const toggleRole = (roleName: string) => {
-    setSelectedRoles((prev) =>
-      prev.includes(roleName)
-        ? prev.filter((r) => r !== roleName)
-        : [...prev, roleName]
-    );
-  };
-
-  const toggleOffice = (o: Office) => {
-    setSelectedOffices((prev) =>
-      prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o]
-    );
-  };
-
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -293,29 +276,6 @@ export function AppForm({ app, onSaved }: AppFormProps) {
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Offices</Label>
-          <div className="flex flex-wrap gap-3 rounded-md border px-3 py-2">
-            {OFFICES.map((o) => (
-              <label
-                key={o}
-                className="flex items-center gap-1.5 text-sm cursor-pointer select-none"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedOffices.includes(o)}
-                  onChange={() => toggleOffice(o)}
-                  className="h-4 w-4"
-                />
-                {o}
-              </label>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Check offices that should see this app. Leave all unchecked to show
-            it to everyone (admins always see all).
-          </p>
         </div>
       </div>
 
@@ -445,40 +405,8 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       )}
 
       <div className="space-y-2">
-        <Label>Role Access</Label>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              setSelectedRoles(
-                selectedRoles.length === roles.length
-                  ? []
-                  : roles.map((r) => r.name)
-              )
-            }
-            className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-              selectedRoles.length === roles.length && roles.length > 0
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-background border-border hover:bg-accent"
-            }`}
-          >
-            All
-          </button>
-          {roles.map((role) => (
-            <button
-              key={role.name}
-              type="button"
-              onClick={() => toggleRole(role.name)}
-              className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                selectedRoles.includes(role.name)
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background border-border hover:bg-accent"
-              }`}
-            >
-              {role.display_name}
-            </button>
-          ))}
-        </div>
+        <Label>Who can open it</Label>
+        <AppAccessGrid roles={roles} cells={accessCells} onChange={setAccessCells} />
       </div>
 
       <div className="flex justify-end gap-2">
