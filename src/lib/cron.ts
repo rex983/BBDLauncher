@@ -1,14 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-// Require CRON_SECRET to be set — never fall back to trusting the
-// x-vercel-cron header on its own, since a missing secret would leave the
-// route completely open in dev / misconfigured environments. Vercel's
-// scheduled invocations send that header instead of the Bearer.
+// Only the Bearer CRON_SECRET is trusted. Vercel's scheduled invocations
+// send it automatically when the env var is set, and the GitHub
+// auto-clockout workflow sends it explicitly. The x-vercel-cron header is
+// NOT accepted — any client can set it. A missing secret rejects everything.
 function isCronAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;
-  if (req.headers.get("authorization") === `Bearer ${secret}`) return true;
-  return req.headers.get("x-vercel-cron") === "1";
+  return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
 // Wrap a cron handler with the auth check. Use as
