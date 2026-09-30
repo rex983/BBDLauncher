@@ -152,9 +152,9 @@ export default function AdminRolesPage() {
         <div>
           <h1 className="text-2xl font-bold">Roles</h1>
           <p className="text-muted-foreground">
-            Custom roles tag which apps users see. Admin and manager retain
-            their hardcoded launcher permissions; new roles are app-access
-            labels only.
+            Custom roles tag which apps users see. Admin, senior manager and
+            junior manager keep their built-in launcher permissions; new roles
+            are app-access labels only.
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -262,7 +262,7 @@ export default function AdminRolesPage() {
                   {role.is_admin ? (
                     <Badge>admin</Badge>
                   ) : MANAGER_TIER_ROLES.has(role.name) ? (
-                    <Badge variant="secondary">manager</Badge>
+                    <Badge variant="secondary">manager tier</Badge>
                   ) : (
                     <Badge variant="outline">app-access</Badge>
                   )}

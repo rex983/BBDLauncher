@@ -26,11 +26,9 @@ export function isAdmin(role: UserRole | undefined | null): boolean {
 
 // Roles that get manager-tier privileges (canManageContent + office-scoped
 // analytics + MANAGER_ADMIN_PATHS access). Kept as a set so it's easy to
-// extend when the org chart adds a new manager rank. The legacy 'manager'
-// role stays for backwards compatibility with profiles that haven't been
-// migrated to the new senior/junior split.
+// extend when the org chart adds a new manager rank. (The old plain 'manager'
+// role was retired in migration 035 — senior_manager replaced it.)
 export const MANAGER_TIER_ROLES = new Set<UserRole>([
-  "manager",
   "senior_manager",
   "junior_manager",
 ]);
@@ -77,8 +75,8 @@ export function canViewTimeData(role: UserRole | undefined | null): boolean {
 }
 
 // Time-data scope layers department + office for manager-tier users.
-// Admins see everyone (both null). A manager-tier user (senior_manager,
-// junior_manager, or legacy manager) is constrained to employees in
+// Admins see everyone (both null). A manager-tier user (senior_manager or
+// junior_manager) is constrained to employees in
 // BOTH their department AND their office — so a SALES TEAM manager
 // stationed in Harbor doesn't see Marion's SALES TEAM roster. Managers
 // missing either assignment get no access; assign both in /admin/users.

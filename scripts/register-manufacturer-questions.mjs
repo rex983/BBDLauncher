@@ -128,7 +128,7 @@ if (existingSso) {
 }
 
 // 4. Grant access to all roles that should see it.
-const ROLES = ["admin", "manager", "sales_rep"];
+const ROLES = ["admin", "senior_manager", "sales_rep"];
 for (const role of ROLES) {
   const { error } = await supa
     .from("launcher_role_app_access")

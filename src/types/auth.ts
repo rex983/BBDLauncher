@@ -1,6 +1,6 @@
 // Roles are stored as text and are admin-managed via /admin/roles, so this
-// is a string at the type level. The hardcoded permission tiers ("admin",
-// "manager") in src/lib/auth/permissions.ts still gate admin UI access —
+// is a string at the type level. The hardcoded permission tiers ("admin" and
+// the manager tier: senior_manager / junior_manager) in src/lib/auth/permissions.ts still gate admin UI access —
 // new roles created at runtime are app-access labels only.
 export type UserRole = string;
 
