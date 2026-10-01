@@ -11,6 +11,7 @@ import {
   canAccessAdminPath,
   canAccessManagementPath,
   canManageContent,
+  canRunOffboarding,
   canViewTimeData,
   isAdmin as isAdminRole,
 } from "@/lib/auth/permissions";
@@ -34,6 +35,7 @@ import {
   CalendarCheck,
   AlertTriangle,
   Megaphone,
+  UserMinus,
 } from "lucide-react";
 
 const navItems = [
@@ -123,6 +125,12 @@ export function Sidebar() {
   const visibleManagementItems = managementItems.filter((item) =>
     canAccessManagementPath(effectiveRole, item.href)
   );
+  // While previewing another role, hide IT-only nav too (the preview is
+  // about what that role sees, and is_it isn't part of the role).
+  const showOffboarding = canRunOffboarding(
+    effectiveRole,
+    isViewingAsOtherRole ? false : session?.user?.is_it,
+  );
   const preview = { viewAs, viewAsOffice };
   const pendingCount = usePendingCount(
     showManagementNav,
@@ -187,6 +195,26 @@ export function Sidebar() {
                 )}
               </Link>
             ))}
+          </>
+        )}
+
+        {showOffboarding && (
+          <>
+            <div className="mt-6 mb-2 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              IT
+            </div>
+            <Link
+              href="/offboarding"
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                pathname.startsWith("/offboarding")
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <UserMinus className="h-4 w-4" />
+              Offboarding
+            </Link>
           </>
         )}
 
