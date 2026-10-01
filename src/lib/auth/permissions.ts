@@ -76,9 +76,8 @@ export function canViewTimeData(role: UserRole | undefined | null): boolean {
 // Time-data scope layers department + office for manager-tier users.
 // Admins see everyone (both null). A manager-tier user (senior_manager or
 // junior_manager) is constrained to employees in
-// BOTH their department AND their office — so a SALES TEAM manager
-// stationed in Harbor doesn't see Marion's SALES TEAM roster. Managers
-// missing either assignment get no access; assign both in /admin/users.
+// BOTH their department AND their office. Managers missing either
+// assignment get no access; assign both in /admin/users.
 export type TimeDataScope =
   | { allowed: false }
   | {

@@ -14,7 +14,6 @@ export const ACCESS_OFFICES = [...OFFICES, "none"] as const;
 export type AccessOffice = (typeof ACCESS_OFFICES)[number];
 export const ACCESS_OFFICE_LABEL: Record<AccessOffice, string> = {
   Harbor: "Harbor",
-  Marion: "Marion",
   BST: "BST",
   RnD: "R&D",
   none: "No office",
