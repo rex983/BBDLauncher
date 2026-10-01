@@ -2,7 +2,7 @@
 // validates or renders these values should import from here — otherwise
 // adding a new office means updating N inline copies and missing one is a
 // silent bug.
-export const OFFICES = ["Harbor", "BST", "RnD"] as const;
+export const OFFICES = ["Sales", "BST", "RnD"] as const;
 export const DEPARTMENTS = ["SALES TEAM", "BST", "RnD"] as const;
 
 export const VALID_OFFICES: ReadonlySet<string> = new Set(OFFICES);

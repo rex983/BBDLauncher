@@ -42,7 +42,9 @@ export const getCachedApps = unstable_cache(
       .order("display_order", { ascending: true });
     return (data || []) as LauncherApp[];
   },
-  ["launcher-apps"],
+  // Key suffix bumped when stored office values are renamed (migration 039)
+  // so a fresh deploy never serves rows cached under the old names.
+  ["launcher-apps-v2"],
   { tags: [LAUNCHER_TAGS.apps], revalidate: REVALIDATE_SECONDS },
 );
 
@@ -57,7 +59,7 @@ export const getCachedRoleAppAccess = unstable_cache(
       office: r.office ?? null,
     }));
   },
-  ["launcher-role-app-access"],
+  ["launcher-role-app-access-v2"],
   { tags: [LAUNCHER_TAGS.roleAccess], revalidate: REVALIDATE_SECONDS },
 );
 

@@ -2,7 +2,7 @@
 //
 // Each launcher_role_app_access row is (role, app, office):
 //   office null     → that role can open the app from every office
-//   office "Harbor" → only from that office
+//   office "Sales"  → only from that office
 //   office "none"   → only people with no office set
 // Admins are still gated by role (they need an admin row) but ignore office.
 // Pure — shared by the dashboard, /api/launch and the admin app form.
@@ -13,7 +13,7 @@ import { OFFICES } from "@/lib/org/constants";
 export const ACCESS_OFFICES = [...OFFICES, "none"] as const;
 export type AccessOffice = (typeof ACCESS_OFFICES)[number];
 export const ACCESS_OFFICE_LABEL: Record<AccessOffice, string> = {
-  Harbor: "Harbor",
+  Sales: "Sales",
   BST: "BST",
   RnD: "R&D",
   none: "No office",
