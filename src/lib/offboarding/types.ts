@@ -156,6 +156,8 @@ export const EVENT_LABEL: Record<string, string> = {
   task_note: "Updated note",
   task_added: "Added task",
   task_deleted: "Deleted task",
+  task_edited: "Edited task",
+  case_synced: "Matched the checklist",
   launcher_deactivated: "Deactivated launcher account",
   data_exported: "Backed up launcher records",
   export_downloaded: "Downloaded backup",

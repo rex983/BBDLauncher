@@ -19,6 +19,7 @@ import type {
   OffboardingSection,
   OffboardingTask,
   PersonRef,
+  AutoAction,
 } from "./types";
 
 export const EXPORT_BUCKET = "offboarding-exports";
@@ -133,13 +134,82 @@ const SSO_APP_INSTRUCTIONS =
 const OWN_LOGIN_INSTRUCTIONS = (url: string) =>
   `Has its own login — the launcher can't revoke it. Disable or remove the user directly in the app (${url}) and reassign records they own.`;
 
+type PersonForApps = { id: string; role: string; office: string | null };
+
+// Launcher apps the person could open: their office × role grid plus apps
+// granted to them by name.
+async function appsForPerson(person: PersonForApps) {
+  const [apps, accessRows, userAccessRows] = await Promise.all([
+    getCachedApps(),
+    getCachedRoleAppAccess(),
+    getCachedUserAccess(),
+  ]);
+  const appIds = allowedAppIds(accessRows, person.role, person.office, isAdmin(person.role));
+  const namedAppIds = personalGrants(userAccessRows, person.id).apps;
+  return apps.filter((a) => appIds.has(a.id) || namedAppIds.has(a.id));
+}
+
+/** A case task as the checklist would create it, in checklist order. */
+export interface ExpectedTask {
+  item_id: string;
+  app_id: string | null;
+  section: string;
+  title: string;
+  system: string | null;
+  instructions: string | null;
+  requires_note: boolean;
+  auto_action: AutoAction | null;
+}
+
+// The active checklist turned into case tasks, section by section. A
+// "revoke_apps" item becomes one task per launcher app the person can open.
+function expectedTasks(
+  template: { sections: OffboardingSection[]; items: ChecklistItem[] },
+  personApps: Awaited<ReturnType<typeof appsForPerson>>,
+): ExpectedTask[] {
+  const out: ExpectedTask[] = [];
+  for (const section of template.sections) {
+    for (const item of template.items) {
+      if (item.section_id !== section.id || !item.is_active) continue;
+      if (item.auto_action === "revoke_apps") {
+        for (const a of personApps) {
+          out.push({
+            item_id: item.id,
+            app_id: a.id,
+            section: section.name,
+            title: `Revoke access: ${a.name}`,
+            system: a.name,
+            instructions:
+              a.sso_type === "none" || a.sso_type === "direct_link"
+                ? OWN_LOGIN_INSTRUCTIONS(a.url)
+                : SSO_APP_INSTRUCTIONS,
+            requires_note: false,
+            auto_action: null,
+          });
+        }
+        continue;
+      }
+      out.push({
+        item_id: item.id,
+        app_id: null,
+        section: section.name,
+        title: item.title,
+        system: item.system,
+        instructions: item.instructions,
+        requires_note: item.requires_note,
+        auto_action: item.auto_action,
+      });
+    }
+  }
+  return out;
+}
+
 export type OpenCaseResult =
   | { ok: true; caseId: string }
   | { ok: false; status: number; error: string };
 
-// Opens a case and snapshots the active checklist template, section by
-// section. A "revoke_apps" item becomes one task per launcher app the person
-// could open. Template edits after this point never touch an open case.
+// Opens a case and snapshots the active checklist. Template edits after this
+// point only reach an open case through syncCaseToChecklist.
 export async function openCase(params: {
   session: Session;
   profileId: string;
@@ -185,52 +255,15 @@ export async function openCase(params: {
   }
   const caseId = created.id as string;
 
-  const [template, apps, accessRows, userAccessRows] = await Promise.all([
-    getTemplate(),
-    getCachedApps(),
-    getCachedRoleAppAccess(),
-    getCachedUserAccess(),
-  ]);
-  const appIds = allowedAppIds(accessRows, person.role, person.office, isAdmin(person.role));
-  const namedAppIds = personalGrants(userAccessRows, person.id).apps;
-  const personApps = apps.filter((a) => appIds.has(a.id) || namedAppIds.has(a.id));
-
-  const rows: Array<Record<string, unknown>> = [];
-  const push = (r: Record<string, unknown>) =>
-    rows.push({ case_id: caseId, requires_note: false, ...r, display_order: rows.length * 10 });
-  for (const section of template.sections) {
-    for (const item of template.items) {
-      if (item.section_id !== section.id || !item.is_active) continue;
-      if (item.auto_action === "revoke_apps") {
-        for (const a of personApps) {
-          push({
-            item_id: item.id,
-            app_id: a.id,
-            section: section.name,
-            title: `Revoke access: ${a.name}`,
-            system: a.name,
-            instructions:
-              a.sso_type === "none" || a.sso_type === "direct_link"
-                ? OWN_LOGIN_INSTRUCTIONS(a.url)
-                : SSO_APP_INSTRUCTIONS,
-          });
-        }
-        continue;
-      }
-      push({
-        item_id: item.id,
-        section: section.name,
-        title: item.title,
-        system: item.system,
-        instructions: item.instructions,
-        requires_note: item.requires_note,
-        auto_action: item.auto_action,
-      });
-    }
-  }
+  const [template, personApps] = await Promise.all([getTemplate(), appsForPerson(person)]);
+  const rows = expectedTasks(template, personApps).map((r, i) => ({
+    ...r,
+    case_id: caseId,
+    display_order: i * 10,
+  }));
 
   if (rows.length) {
-    // Rows don't all set the same columns; let missing ones take their defaults.
+    // defaultToNull:false — any column a row leaves out takes its table default.
     const { error: tasksError } = await supabase
       .from("offboarding_tasks")
       .insert(rows, { defaultToNull: false });
@@ -242,4 +275,80 @@ export async function openCase(params: {
   }
 
   return { ok: true, caseId };
+}
+
+export type SyncResult =
+  | { ok: true; updated: number; added: number; removed: string[]; kept: number }
+  | { ok: false; status: number; error: string };
+
+// Makes an open case match the checklist exactly: same sections, order,
+// wording and tasks. Existing tasks are matched by checklist item (then
+// built-in action, then title) and keep their status, note and who did them.
+// Checklist tasks the case is missing are added. Pending tasks the checklist
+// no longer has are removed; finished ones are kept at the end as record.
+export async function syncCaseToChecklist(caseId: string): Promise<SyncResult> {
+  const supabase = createAdminClient();
+  const { data: c } = await supabase
+    .from("offboarding_cases")
+    .select("id, profile_id, employee_role, employee_office, status")
+    .eq("id", caseId)
+    .maybeSingle();
+  if (!c) return { ok: false, status: 404, error: "Not found" };
+  if (c.status !== "open") return { ok: false, status: 409, error: "Reopen the case first." };
+
+  const [template, tasksRes] = await Promise.all([
+    getTemplate(),
+    supabase.from("offboarding_tasks").select(TASK_COLUMNS).eq("case_id", caseId).order("display_order"),
+  ]);
+  const personApps = c.profile_id
+    ? await appsForPerson({ id: c.profile_id, role: c.employee_role ?? "", office: c.employee_office })
+    : [];
+  const expected = expectedTasks(template, personApps);
+  const tasks = (tasksRes.data || []) as OffboardingTask[];
+
+  const unused = new Set(tasks.map((t) => t.id));
+  const take = (pred: (t: OffboardingTask) => boolean) => {
+    const t = tasks.find((x) => unused.has(x.id) && pred(x));
+    if (t) unused.delete(t.id);
+    return t;
+  };
+  const norm = (v: string) => v.trim().toLowerCase();
+
+  const updates: Array<{ id: string; values: Record<string, unknown> }> = [];
+  const inserts: Array<Record<string, unknown>> = [];
+  expected.forEach((e, i) => {
+    const match = e.app_id
+      ? take((t) => t.app_id === e.app_id)
+      : take((t) => t.item_id === e.item_id && !t.app_id) ??
+        (e.auto_action ? take((t) => t.auto_action === e.auto_action) : undefined) ??
+        take((t) => !t.app_id && norm(t.title) === norm(e.title));
+    const values = { ...e, display_order: i * 10 };
+    if (match) updates.push({ id: match.id, values });
+    else inserts.push({ ...values, case_id: caseId });
+  });
+
+  const leftovers = tasks.filter((t) => unused.has(t.id));
+  const toRemove = leftovers.filter((t) => t.status === "pending");
+  const toKeep = leftovers.filter((t) => t.status !== "pending");
+  toKeep.forEach((t, i) => updates.push({ id: t.id, values: { display_order: (expected.length + i) * 10 } }));
+
+  const results = await Promise.all([
+    ...updates.map((u) => supabase.from("offboarding_tasks").update(u.values).eq("id", u.id)),
+    inserts.length
+      ? supabase.from("offboarding_tasks").insert(inserts, { defaultToNull: false })
+      : Promise.resolve({ error: null }),
+    toRemove.length
+      ? supabase.from("offboarding_tasks").delete().in("id", toRemove.map((t) => t.id))
+      : Promise.resolve({ error: null }),
+  ]);
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { ok: false, status: 500, error: failed.error.message };
+
+  return {
+    ok: true,
+    updated: updates.length - toKeep.length,
+    added: inserts.length,
+    removed: toRemove.map((t) => t.title),
+    kept: toKeep.length,
+  };
 }

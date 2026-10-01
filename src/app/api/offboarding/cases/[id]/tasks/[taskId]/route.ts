@@ -4,12 +4,23 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logOffboardingEvent } from "@/lib/offboarding/audit";
 import { requireOpenCase } from "@/lib/offboarding/guard";
 import { requireOffboarder } from "@/lib/offboarding/service";
+import { checklistItemFor } from "@/lib/offboarding/checklist-link";
+import { isAdmin } from "@/lib/auth/permissions";
 import { TASK_STATUSES } from "@/lib/offboarding/types";
 
 const updateSchema = z.object({
   status: z.enum(TASK_STATUSES).optional(),
   note: z.string().max(4000).nullable().optional(),
+  // Wording — admins only.
+  title: z.string().trim().min(1).max(200).optional(),
+  system: z.string().trim().max(100).nullable().optional(),
+  instructions: z.string().max(2000).nullable().optional(),
+  requires_note: z.boolean().optional(),
+  /** Also apply the wording to the checklist so future cases match. */
+  apply_to_checklist: z.boolean().optional(),
 });
+
+const WORDING = ["title", "system", "instructions", "requires_note"] as const;
 
 export async function PATCH(
   req: NextRequest,
@@ -30,7 +41,7 @@ export async function PATCH(
   const supabase = createAdminClient();
   const { data: task } = await supabase
     .from("offboarding_tasks")
-    .select("id, title, status, note, requires_note, auto_action")
+    .select("id, item_id, app_id, title, system, instructions, status, note, requires_note, auto_action")
     .eq("id", taskId)
     .eq("case_id", id)
     .maybeSingle();
@@ -38,6 +49,26 @@ export async function PATCH(
 
   const updates: Record<string, unknown> = {};
   const events: Array<{ type: string; details?: Record<string, unknown> }> = [];
+
+  const wording: Record<string, unknown> = {};
+  for (const field of WORDING) {
+    let value = parsed.data[field];
+    if (value === undefined) continue;
+    if (typeof value === "string") value = value.trim();
+    if (field === "system" || field === "instructions") value = value || null;
+    if (value !== task[field]) wording[field] = value;
+  }
+  if (Object.keys(wording).length) {
+    if (!isAdmin(session.user.role)) {
+      return NextResponse.json({ error: "Only admins can edit a task's wording." }, { status: 403 });
+    }
+    Object.assign(updates, wording);
+    events.push({
+      type: "task_edited",
+      details: { changes: Object.keys(wording), from: task.title, to_checklist: !!parsed.data.apply_to_checklist },
+    });
+  }
+  const requiresNote = (wording.requires_note as boolean | undefined) ?? task.requires_note;
 
   const note = parsed.data.note !== undefined ? parsed.data.note?.trim() || null : task.note;
   if (note !== task.note) {
@@ -54,7 +85,7 @@ export async function PATCH(
       );
     }
     // Backup / rotation tasks must say WHERE the data went or WHAT changed.
-    if (status !== "pending" && task.requires_note && !note) {
+    if (status !== "pending" && requiresNote && !note) {
       return NextResponse.json(
         { error: "This task needs a note (e.g. where the backup was saved) before it can be closed." },
         { status: 400 },
@@ -71,6 +102,18 @@ export async function PATCH(
   const { error } = await supabase.from("offboarding_tasks").update(updates).eq("id", taskId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  if (parsed.data.apply_to_checklist && Object.keys(wording).length) {
+    const itemId = await checklistItemFor(task);
+    if (itemId) {
+      const { error: itemError } = await supabase
+        .from("offboarding_checklist_items")
+        .update(wording)
+        .eq("id", itemId);
+      if (itemError) return NextResponse.json({ error: itemError.message }, { status: 500 });
+      if (!task.item_id) await supabase.from("offboarding_tasks").update({ item_id: itemId }).eq("id", taskId);
+    }
+  }
+
   for (const e of events) {
     await logOffboardingEvent({
       caseId: id,
@@ -85,8 +128,9 @@ export async function PATCH(
   return NextResponse.json({ ok: true });
 }
 
-// Remove a task from this case. The log keeps a "Deleted task" row with its
-// title, so the record still shows it existed.
+// Remove a task from this case (and, with ?from_checklist=1, from the
+// checklist too). The log keeps a "Deleted task" row with its title, so the
+// record still shows it existed.
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; taskId: string }> },
@@ -101,21 +145,28 @@ export async function DELETE(
   const supabase = createAdminClient();
   const { data: task } = await supabase
     .from("offboarding_tasks")
-    .select("id, title, section, status")
+    .select("id, item_id, app_id, auto_action, title, section, status")
     .eq("id", taskId)
     .eq("case_id", id)
     .maybeSingle();
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  const fromChecklist = req.nextUrl.searchParams.get("from_checklist") === "1";
+  const itemId = fromChecklist ? await checklistItemFor(task) : null;
+
   const { error } = await supabase.from("offboarding_tasks").delete().eq("id", taskId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (itemId) {
+    const { error: itemError } = await supabase.from("offboarding_checklist_items").delete().eq("id", itemId);
+    if (itemError) return NextResponse.json({ error: itemError.message }, { status: 500 });
+  }
 
   await logOffboardingEvent({
     caseId: id,
     eventType: "task_deleted",
     session,
     req,
-    details: { task: task.title, section: task.section, status: task.status },
+    details: { task: task.title, section: task.section, status: task.status, from_checklist: !!itemId },
   });
   return NextResponse.json({ ok: true });
 }

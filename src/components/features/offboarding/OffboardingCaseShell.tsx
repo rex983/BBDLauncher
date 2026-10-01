@@ -24,6 +24,8 @@ import {
   Check,
   Download,
   HardDriveDownload,
+  ListRestart,
+  Pencil,
   Plus,
   Printer,
   RotateCcw,
@@ -67,11 +69,12 @@ async function send(url: string, method: string, body?: unknown): Promise<string
   return typeof b.error === "string" ? b.error : "Something went wrong";
 }
 
-export function OffboardingCaseShell({ initial }: { initial: CaseDetail }) {
+export function OffboardingCaseShell({ initial, isAdmin }: { initial: CaseDetail; isAdmin: boolean }) {
   const [detail, setDetail] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
   // Section the "Add task" dialog is adding to.
   const [addTo, setAddTo] = useState<string | null>(null);
+  const [editing, setEditing] = useState<OffboardingTask | null>(null);
   const c = detail.case;
   const isOpen = c.status === "open";
   const base = `/api/offboarding/cases/${c.id}`;
@@ -117,6 +120,17 @@ export function OffboardingCaseShell({ initial }: { initial: CaseDetail }) {
     run("case", () => send(base, "PATCH", { status }));
   };
 
+  const matchChecklist = () => {
+    if (
+      !confirm(
+        "Make this case match the checklist? Sections, order and wording are updated, missing checklist tasks are added, and pending tasks the checklist doesn't have are removed. Finished tasks are kept.",
+      )
+    ) {
+      return;
+    }
+    run("case", () => send(`${base}/sync`, "POST"));
+  };
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -134,6 +148,12 @@ export function OffboardingCaseShell({ initial }: { initial: CaseDetail }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2 print:hidden">
+          {isAdmin && isOpen && (
+            <Button variant="outline" onClick={matchChecklist} disabled={!!busy}>
+              <ListRestart className="mr-2 h-4 w-4" />
+              Match checklist
+            </Button>
+          )}
           <Button variant="outline" onClick={() => window.print()}>
             <Printer className="mr-2 h-4 w-4" />
             Print record
@@ -199,9 +219,16 @@ export function OffboardingCaseShell({ initial }: { initial: CaseDetail }) {
                   busy={busy === t.id}
                   who={who}
                   onPatch={(body) => run(t.id, () => send(`${base}/tasks/${t.id}`, "PATCH", body))}
+                  onEdit={isAdmin ? () => setEditing(t) : undefined}
                   onDelete={() => {
                     if (!confirm(`Remove "${t.title}" from this case? The log keeps a record of it.`)) return;
-                    run(t.id, () => send(`${base}/tasks/${t.id}`, "DELETE"));
+                    // Per-app tasks aren't on the checklist; everything else can go from both.
+                    const fromChecklist =
+                      !t.app_id &&
+                      confirm(`Also remove "${t.title}" from the checklist, so future offboardings don't get it?`);
+                    run(t.id, () =>
+                      send(`${base}/tasks/${t.id}${fromChecklist ? "?from_checklist=1" : ""}`, "DELETE"),
+                    );
                   }}
                   onAction={() => {
                     if (
@@ -315,6 +342,19 @@ export function OffboardingCaseShell({ initial }: { initial: CaseDetail }) {
           return err;
         }}
       />
+
+      {editing && (
+        <EditTaskDialog
+          key={editing.id}
+          task={editing}
+          onClose={() => setEditing(null)}
+          onSave={async (body) => {
+            const err = await send(`${base}/tasks/${editing.id}`, "PATCH", body);
+            if (!err) await reload();
+            return err;
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -353,7 +393,14 @@ function EventExtra({
   else if (type === "task_note" && details.note) text = `“${details.note as string}”`;
   else if (type === "launcher_deactivated" && details.clocked_out) text = "(also clocked them out)";
   else if (type === "data_exported" || type === "export_downloaded") text = (details.file as string) ?? null;
-  else if (type === "case_updated" && Array.isArray(details.changes)) {
+  else if (type === "task_edited" && Array.isArray(details.changes)) {
+    text = `${(details.changes as string[]).join(", ").replace("_", " ")}${details.to_checklist ? " · also on the checklist" : ""}`;
+  } else if (type === "task_deleted" && details.from_checklist) text = "also removed from the checklist";
+  else if (type === "task_added" && details.added_to_checklist) text = "also added to the checklist";
+  else if (type === "case_synced") {
+    const removed = Array.isArray(details.removed) ? details.removed.length : 0;
+    text = `${details.added ?? 0} added, ${removed} removed`;
+  } else if (type === "case_updated" && Array.isArray(details.changes)) {
     text = (details.changes as Array<{ field: string }>).map((ch) => ch.field.replace("_", " ")).join(", ");
   }
   if (!text) return null;
@@ -366,6 +413,7 @@ function TaskRow({
   busy,
   who,
   onPatch,
+  onEdit,
   onDelete,
   onAction,
 }: {
@@ -374,6 +422,8 @@ function TaskRow({
   busy: boolean;
   who: (id: string | null) => string;
   onPatch: (body: { status?: TaskStatus; note?: string | null }) => void;
+  /** Admins only. */
+  onEdit?: () => void;
   onDelete: () => void;
   onAction: () => void;
 }) {
@@ -456,6 +506,11 @@ function TaskRow({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 md:justify-end print:hidden">
+        {caseOpen && onEdit && (
+          <Button size="sm" variant="ghost" onClick={onEdit} title="Edit wording">
+            <Pencil className="h-4 w-4" />
+          </Button>
+        )}
         {caseOpen && !editingNote && (
           <Button size="sm" variant="ghost" onClick={openNoteEditor} title="Add or edit note">
             <StickyNote className="h-4 w-4" />
@@ -515,14 +570,17 @@ function AddTaskDialog({
     system: string | null;
     instructions: string | null;
     requires_note: boolean;
+    add_to_checklist: boolean;
   }) => Promise<string | null>;
 }) {
   const [draft, setDraft] = useState<ItemDraft>(EMPTY_DRAFT);
+  const [toChecklist, setToChecklist] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const close = () => {
     setDraft(EMPTY_DRAFT);
+    setToChecklist(true);
     setError(null);
     onClose();
   };
@@ -537,6 +595,7 @@ function AddTaskDialog({
       system: draft.system || null,
       instructions: draft.instructions || null,
       requires_note: draft.requiresNote,
+      add_to_checklist: toChecklist,
     });
     setSaving(false);
     if (err) {
@@ -554,13 +613,87 @@ function AddTaskDialog({
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <ItemFields draft={draft} onChange={setDraft} />
-          <p className="text-xs text-muted-foreground">
-            Only this case gets the task. To add it for everyone, edit the checklist.
-          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={toChecklist} onChange={(e) => setToChecklist(e.target.checked)} />
+            Also add to the checklist, so every offboarding gets it
+          </label>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="flex justify-end">
             <Button type="submit" disabled={saving || !draft.title.trim()}>
               {saving ? "Adding…" : "Add task"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Admin: reword a task. By default the change also goes to the checklist so
+// future offboardings read the same.
+function EditTaskDialog({
+  task,
+  onClose,
+  onSave,
+}: {
+  task: OffboardingTask;
+  onClose: () => void;
+  onSave: (body: {
+    title: string;
+    system: string | null;
+    instructions: string | null;
+    requires_note: boolean;
+    apply_to_checklist: boolean;
+  }) => Promise<string | null>;
+}) {
+  const [draft, setDraft] = useState<ItemDraft>({
+    title: task.title,
+    system: task.system ?? "",
+    instructions: task.instructions ?? "",
+    requiresNote: task.requires_note,
+  });
+  // Per-app tasks are generated, not checklist items.
+  const linkable = !task.app_id;
+  const [toChecklist, setToChecklist] = useState(linkable);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    const err = await onSave({
+      title: draft.title,
+      system: draft.system || null,
+      instructions: draft.instructions || null,
+      requires_note: draft.requiresNote,
+      apply_to_checklist: linkable && toChecklist,
+    });
+    setSaving(false);
+    if (err) {
+      setError(err);
+      return;
+    }
+    onClose();
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit task</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <ItemFields draft={draft} onChange={setDraft} />
+          {linkable && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={toChecklist} onChange={(e) => setToChecklist(e.target.checked)} />
+              Also update the checklist, so every offboarding reads the same
+            </label>
+          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="flex justify-end">
+            <Button type="submit" disabled={saving || !draft.title.trim()}>
+              {saving ? "Saving…" : "Save"}
             </Button>
           </div>
         </form>
