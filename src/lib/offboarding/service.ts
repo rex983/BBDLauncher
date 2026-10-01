@@ -240,7 +240,12 @@ export async function openCase(params: {
     },
   ].map((r) => ({ case_id: caseId, ...r }));
 
-  const { error: tasksError } = await supabase.from("offboarding_tasks").insert(rows);
+  // Rows don't all set the same columns (only template rows carry
+  // requires_note / assigned_to); defaultToNull:false lets each missing column
+  // take its table default instead of NULL.
+  const { error: tasksError } = await supabase
+    .from("offboarding_tasks")
+    .insert(rows, { defaultToNull: false });
   if (tasksError) {
     // Don't leave a half-built case behind.
     await supabase.from("offboarding_cases").delete().eq("id", caseId);
