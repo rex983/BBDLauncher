@@ -85,7 +85,7 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail | null> 
   if (!row) return null;
   const c = row as OffboardingCase;
 
-  const [tasksRes, eventsRes, exportsRes, accountRes] = await Promise.all([
+  const [tasksRes, eventsRes, exportsRes, accountRes, sectionsRes] = await Promise.all([
     supabase.from("offboarding_tasks").select(TASK_COLUMNS).eq("case_id", caseId).order("display_order"),
     supabase
       .from("offboarding_events")
@@ -96,9 +96,15 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail | null> 
     c.profile_id
       ? supabase.from("profiles").select("is_active").eq("id", c.profile_id).maybeSingle()
       : Promise.resolve({ data: null }),
+    supabase.from("offboarding_sections").select("name").order("display_order"),
   ]);
 
   const tasks = (tasksRes.data || []) as OffboardingTask[];
+  // The checklist's sections (so empty ones show and accept tasks), then any
+  // section only this case still has.
+  const sections = [
+    ...new Set([...(sectionsRes.data || []).map((s) => s.name as string), ...tasks.map((t) => t.section)]),
+  ];
   const events = (eventsRes.data || []) as OffboardingEvent[];
 
   const ids = new Set<string>();
@@ -118,6 +124,7 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail | null> 
 
   return {
     case: c,
+    sections,
     tasks,
     events,
     exports: (exportsRes.data || []).map((f) => ({
@@ -352,4 +359,72 @@ export async function syncCaseToChecklist(caseId: string): Promise<SyncResult> {
     removed: toRemove.map((t) => t.title),
     kept: toKeep.length,
   };
+}
+
+// Saves a drag on a case and mirrors it to the checklist so every
+// offboarding keeps the same layout: the case's tasks get their new section
+// and order, the checklist's sections take the case's section order, and
+// each checklist task linked to a case task moves to the same section and
+// position. Returns the tasks whose section changed (for the log).
+export async function saveCaseLayout(
+  caseId: string,
+  layout: { sections: string[]; tasks: Array<{ id: string; section: string }> },
+): Promise<{ ok: true; moved: Array<{ title: string; from: string; to: string }> } | { ok: false; error: string }> {
+  const supabase = createAdminClient();
+  const [tasksRes, template] = await Promise.all([
+    supabase.from("offboarding_tasks").select(TASK_COLUMNS).eq("case_id", caseId),
+    getTemplate(),
+  ]);
+  const byId = new Map(((tasksRes.data || []) as OffboardingTask[]).map((t) => [t.id, t]));
+  const ordered = layout.tasks.filter((t) => byId.has(t.id));
+  const moved = ordered
+    .filter((t) => byId.get(t.id)!.section !== t.section)
+    .map((t) => ({ title: byId.get(t.id)!.title, from: byId.get(t.id)!.section, to: t.section }));
+
+  // Case tasks.
+  const writes: Array<PromiseLike<{ error: { message: string } | null }>> = ordered.map((t, i) =>
+    supabase.from("offboarding_tasks").update({ section: t.section, display_order: i * 10 }).eq("id", t.id),
+  );
+
+  // Checklist sections: the case's order first, the rest after.
+  const sectionId = new Map(template.sections.map((s) => [s.name, s.id]));
+  const sectionOrder = [
+    ...layout.sections.filter((n) => sectionId.has(n)).map((n) => sectionId.get(n)!),
+    ...template.sections.map((s) => s.id).filter((id) => !layout.sections.some((n) => sectionId.get(n) === id)),
+  ];
+  sectionOrder.forEach((id, i) =>
+    writes.push(supabase.from("offboarding_sections").update({ display_order: i }).eq("id", id)),
+  );
+
+  // Checklist items linked to case tasks (by item, built-in action, then title).
+  const norm = (v: string) => v.trim().toLowerCase();
+  const linked: Array<{ itemId: string; section: string }> = [];
+  const used = new Set<string>();
+  for (const t of ordered) {
+    const task = byId.get(t.id)!;
+    if (task.app_id) continue;
+    const item =
+      template.items.find((i) => !used.has(i.id) && i.id === task.item_id) ??
+      (task.auto_action ? template.items.find((i) => !used.has(i.id) && i.auto_action === task.auto_action) : undefined) ??
+      template.items.find((i) => !used.has(i.id) && norm(i.title) === norm(task.title));
+    if (!item || !sectionId.has(t.section)) continue;
+    used.add(item.id);
+    linked.push({ itemId: item.id, section: t.section });
+  }
+  for (const name of new Set(linked.map((l) => l.section))) {
+    const sid = sectionId.get(name)!;
+    const first = linked.filter((l) => l.section === name).map((l) => l.itemId);
+    // Checklist-only items in this section keep their order, after the linked ones.
+    const rest = template.items.filter((i) => i.section_id === sid && !used.has(i.id)).map((i) => i.id);
+    [...first, ...rest].forEach((id, i) =>
+      writes.push(
+        supabase.from("offboarding_checklist_items").update({ section_id: sid, display_order: i }).eq("id", id),
+      ),
+    );
+  }
+
+  const results = await Promise.all(writes);
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { ok: false, error: failed.error.message };
+  return { ok: true, moved };
 }

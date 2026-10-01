@@ -1,6 +1,24 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +41,7 @@ import {
 import {
   Check,
   Download,
+  GripVertical,
   HardDriveDownload,
   Loader,
   ListRestart,
@@ -49,6 +68,7 @@ import {
 } from "@/lib/offboarding/types";
 import { fmtDay } from "./OffboardingListShell";
 import { EMPTY_DRAFT, ItemFields, type ItemDraft } from "./ItemFields";
+import { iid, isSection, moveAcrossSections, raw, sectionsAndTasksCollision, sid } from "./dnd";
 
 function fmtWhen(iso: string) {
   return new Date(iso).toLocaleString([], {
@@ -109,8 +129,79 @@ export function OffboardingCaseShell({ initial, isAdmin }: { initial: CaseDetail
   const done = detail.tasks.filter((t) => !isOpenTask(t.status)).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
   const tasksById = new Map(detail.tasks.map((t) => [t.id, t]));
-  // Sections in the order their first task appears (tasks come sorted).
-  const sections = [...new Set(detail.tasks.map((t) => t.section))];
+  const sections = detail.sections;
+  const [newSection, setNewSection] = useState("");
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // Saves a drag; the server mirrors it to the checklist.
+  const saveLayout = (nextSections: string[], nextTasks: OffboardingTask[]) =>
+    run("layout", () =>
+      send(`${base}/layout`, "PUT", {
+        sections: nextSections,
+        tasks: nextTasks.map((t) => ({ id: t.id, section: t.section })),
+      }),
+    );
+
+  const onDragOver = ({ active, over }: DragOverEvent) => {
+    if (!over || isSection(active.id)) return;
+    const next = moveAcrossSections(
+      detail.tasks,
+      active.id,
+      over.id,
+      (t) => t.section,
+      (t, section) => ({ ...t, section }),
+    );
+    if (next) setDetail((d) => ({ ...d, tasks: next }));
+  };
+
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (isSection(active.id)) {
+      if (!over || active.id === over.id) return;
+      const from = sections.indexOf(raw(active.id));
+      const to = sections.indexOf(raw(over.id));
+      if (from < 0 || to < 0) return;
+      const next = arrayMove(sections, from, to);
+      setDetail((d) => ({ ...d, sections: next }));
+      saveLayout(next, detail.tasks);
+      return;
+    }
+    let next = detail.tasks;
+    if (over && !isSection(over.id) && active.id !== over.id) {
+      const from = next.findIndex((t) => t.id === raw(active.id));
+      const to = next.findIndex((t) => t.id === raw(over.id));
+      if (from >= 0 && to >= 0) next = arrayMove(next, from, to);
+    }
+    setDetail((d) => ({ ...d, tasks: next }));
+    // Always save — onDragOver may already have changed the section.
+    saveLayout(sections, next);
+  };
+
+  const removeSection = (name: string) => {
+    if (
+      !confirm(
+        `Remove the "${name}" section? Its unfinished tasks are removed from this case, and the section is removed from the checklist so future offboardings don't get it. Finished tasks stay on this case.`,
+      )
+    ) {
+      return;
+    }
+    run("layout", () => send(`${base}/sections`, "DELETE", { name }));
+  };
+
+  const addSection = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newSection.trim();
+    if (!name) return;
+    if (sections.includes(name)) {
+      alert("There's already a section with that name.");
+      return;
+    }
+    setNewSection("");
+    run("layout", () => send("/api/offboarding/sections", "POST", { name }));
+  };
 
   const setCaseStatus = (status: "open" | "completed" | "cancelled") => {
     const prompts = {
@@ -200,63 +291,79 @@ export function OffboardingCaseShell({ initial, isAdmin }: { initial: CaseDetail
         {c.notes && <p className="mt-2 whitespace-pre-wrap text-foreground">{c.notes}</p>}
       </div>
 
-      {sections.map((section) => {
-        const tasks = detail.tasks.filter((t) => t.section === section);
-        return (
-          <Card key={section} className="break-inside-avoid gap-0 py-0">
-            <CardHeader className="border-b px-4 py-2.5">
-              <CardTitle className="flex items-center justify-between text-sm">
-                <span>{section}</span>
-                <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                  {tasks.filter((t) => !isOpenTask(t.status)).length}/{tasks.length}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="divide-y p-0">
-              {tasks.map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  caseOpen={isOpen}
-                  busy={busy === t.id}
-                  who={who}
-                  onPatch={(body) => run(t.id, () => send(`${base}/tasks/${t.id}`, "PATCH", body))}
-                  onEdit={isAdmin ? () => setEditing(t) : undefined}
-                  onDelete={() => {
-                    if (!confirm(`Remove "${t.title}" from this case? The log keeps a record of it.`)) return;
-                    // Per-app tasks aren't on the checklist; everything else can go from both.
-                    const fromChecklist =
-                      !t.app_id &&
-                      confirm(`Also remove "${t.title}" from the checklist, so future offboardings don't get it?`);
-                    run(t.id, () =>
-                      send(`${base}/tasks/${t.id}${fromChecklist ? "?from_checklist=1" : ""}`, "DELETE"),
-                    );
-                  }}
-                  onAction={() => {
-                    if (
-                      t.auto_action === "deactivate_launcher" &&
-                      !confirm(
-                        `Deactivate ${c.employee_name || c.employee_email}'s launcher account now? They'll be signed out everywhere immediately.`,
-                      )
-                    ) {
-                      return;
-                    }
-                    run(t.id, () => send(`${base}/actions`, "POST", { action: t.auto_action }));
-                  }}
-                />
-              ))}
-              {isOpen && (
-                <div className="px-2 py-1 print:hidden">
-                  <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setAddTo(section)}>
-                    <Plus className="mr-1 h-4 w-4" />
-                    Add task
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-      })}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={sectionsAndTasksCollision}
+        onDragOver={onDragOver}
+        onDragEnd={onDragEnd}
+      >
+        <SortableContext items={sections.map(sid)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-4">
+            {sections.map((section) => {
+              const tasks = detail.tasks.filter((t) => t.section === section);
+              return (
+                <CaseSection
+                  key={section}
+                  name={section}
+                  tasks={tasks}
+                  editable={isOpen}
+                  onRemove={() => removeSection(section)}
+                  onAdd={() => setAddTo(section)}
+                >
+                  {tasks.map((t) => (
+                    <SortableTask key={t.id} id={t.id} editable={isOpen}>
+                      <TaskRow
+                        task={t}
+                        caseOpen={isOpen}
+                        busy={busy === t.id}
+                        who={who}
+                        onPatch={(body) => run(t.id, () => send(`${base}/tasks/${t.id}`, "PATCH", body))}
+                        onEdit={isAdmin ? () => setEditing(t) : undefined}
+                        onDelete={() => {
+                          if (!confirm(`Remove "${t.title}" from this case? The log keeps a record of it.`)) return;
+                          // Per-app tasks aren't on the checklist; everything else can go from both.
+                          const fromChecklist =
+                            !t.app_id &&
+                            confirm(`Also remove "${t.title}" from the checklist, so future offboardings don't get it?`);
+                          run(t.id, () =>
+                            send(`${base}/tasks/${t.id}${fromChecklist ? "?from_checklist=1" : ""}`, "DELETE"),
+                          );
+                        }}
+                        onAction={() => {
+                          if (
+                            t.auto_action === "deactivate_launcher" &&
+                            !confirm(
+                              `Deactivate ${c.employee_name || c.employee_email}'s launcher account now? They'll be signed out everywhere immediately.`,
+                            )
+                          ) {
+                            return;
+                          }
+                          run(t.id, () => send(`${base}/actions`, "POST", { action: t.auto_action }));
+                        }}
+                      />
+                    </SortableTask>
+                  ))}
+                </CaseSection>
+              );
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
+
+      {isOpen && (
+        <form onSubmit={addSection} className="flex max-w-md gap-2 print:hidden">
+          <Input
+            placeholder="New section, e.g. Manufacturer portals"
+            value={newSection}
+            onChange={(e) => setNewSection(e.target.value)}
+            className="h-8"
+          />
+          <Button type="submit" size="sm" variant="outline" disabled={!newSection.trim() || !!busy}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add section
+          </Button>
+        </form>
+      )}
 
       <Card className="break-inside-avoid">
         <CardHeader className="pb-2">
@@ -361,6 +468,114 @@ export function OffboardingCaseShell({ initial, isAdmin }: { initial: CaseDetail
   );
 }
 
+// A section on the case page: drag by its grip, remove it, add tasks to it.
+function CaseSection({
+  name,
+  tasks,
+  editable,
+  onRemove,
+  onAdd,
+  children,
+}: {
+  name: string;
+  tasks: OffboardingTask[];
+  editable: boolean;
+  onRemove: () => void;
+  onAdd: () => void;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: sid(name),
+    disabled: !editable,
+  });
+  return (
+    <Card
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        "break-inside-avoid gap-0 py-0",
+        isDragging && "relative z-10 shadow-lg ring-2 ring-primary/30",
+        tasks.length === 0 && "print:hidden",
+      )}
+    >
+      <CardHeader className="border-b px-4 py-2.5">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          {editable && (
+            <button
+              {...attributes}
+              {...listeners}
+              type="button"
+              className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing print:hidden"
+              aria-label="Drag section"
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          )}
+          <span className="flex-1">{name}</span>
+          <span className="text-xs font-normal text-muted-foreground tabular-nums">
+            {tasks.filter((t) => !isOpenTask(t.status)).length}/{tasks.length}
+          </span>
+          {editable && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 print:hidden"
+              onClick={onRemove}
+              title="Remove section"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <SortableContext items={tasks.map((t) => iid(t.id))} strategy={verticalListSortingStrategy}>
+        <CardContent className="min-h-[2.25rem] divide-y p-0">
+          {children}
+          {tasks.length === 0 && (
+            <p className="px-4 py-2 text-sm text-muted-foreground">No tasks — drag one here or add one.</p>
+          )}
+        </CardContent>
+      </SortableContext>
+      {editable && (
+        <div className="border-t px-2 py-1 print:hidden">
+          <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={onAdd}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add task
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// A task row with a drag grip on the left.
+function SortableTask({ id, editable, children }: { id: string; editable: boolean; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: iid(id),
+    disabled: !editable,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn("flex items-start bg-card", isDragging && "relative z-10 shadow-md ring-2 ring-primary/30")}
+    >
+      {editable && (
+        <button
+          {...attributes}
+          {...listeners}
+          type="button"
+          className="mt-2 cursor-grab pl-2 text-muted-foreground hover:text-foreground active:cursor-grabbing print:hidden"
+          aria-label="Drag task"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      )}
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
 function Fact({ label, value, tone }: { label: string; value: string; tone?: "ok" | "warn" }) {
   return (
     <div className="rounded-md border bg-card p-3">
@@ -399,7 +614,11 @@ function EventExtra({
     text = `${(details.changes as string[]).join(", ").replace("_", " ")}${details.to_checklist ? " · also on the checklist" : ""}`;
   } else if (type === "task_deleted" && details.from_checklist) text = "also removed from the checklist";
   else if (type === "task_added" && details.added_to_checklist) text = "also added to the checklist";
-  else if (type === "case_synced") {
+  else if (type === "task_moved") text = `${details.from as string} → ${details.to as string}`;
+  else if (type === "section_removed") {
+    const removed = Array.isArray(details.removed) ? details.removed.length : 0;
+    text = `${details.section as string}${removed ? ` · ${removed} task${removed === 1 ? "" : "s"} removed` : ""}`;
+  } else if (type === "case_synced") {
     const removed = Array.isArray(details.removed) ? details.removed.length : 0;
     text = `${details.added ?? 0} added, ${removed} removed`;
   } else if (type === "case_updated" && Array.isArray(details.changes)) {

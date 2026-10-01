@@ -4,13 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   DndContext,
-  closestCenter,
-  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
 } from "@dnd-kit/core";
@@ -47,12 +44,7 @@ import {
   type OffboardingSection,
 } from "@/lib/offboarding/types";
 import { EMPTY_DRAFT, ItemFields, type ItemDraft } from "./ItemFields";
-
-// Drag ids are prefixed so sections and items can share one DndContext.
-const sid = (id: string) => `s:${id}`;
-const iid = (id: string) => `i:${id}`;
-const raw = (dragId: string | number) => String(dragId).slice(2);
-const isSection = (dragId: string | number) => String(dragId).startsWith("s:");
+import { iid, isSection, moveAcrossSections, raw, sectionsAndTasksCollision, sid } from "./dnd";
 
 async function send(url: string, method: string, body?: unknown): Promise<string | null> {
   const res = await fetch(url, {
@@ -64,26 +56,6 @@ async function send(url: string, method: string, body?: unknown): Promise<string
   const b = await res.json().catch(() => ({}));
   return typeof b.error === "string" ? b.error : "Something went wrong";
 }
-
-// Sections only collide with sections. Items prefer the item under the
-// pointer, then the section under it (so empty sections accept drops).
-const collision: CollisionDetection = (args) => {
-  if (isSection(args.active.id)) {
-    return closestCenter({
-      ...args,
-      droppableContainers: args.droppableContainers.filter((c) => isSection(c.id)),
-    });
-  }
-  const items = args.droppableContainers.filter((c) => !isSection(c.id));
-  const overItem = pointerWithin({ ...args, droppableContainers: items });
-  if (overItem.length) return overItem;
-  const overSection = pointerWithin({
-    ...args,
-    droppableContainers: args.droppableContainers.filter((c) => isSection(c.id)),
-  });
-  if (overSection.length) return overSection;
-  return closestCenter({ ...args, droppableContainers: items });
-};
 
 export function ChecklistTemplateShell({
   initialSections,
@@ -132,17 +104,14 @@ export function ChecklistTemplateShell({
   // list opens up under the pointer.
   const onDragOver = ({ active, over }: DragOverEvent) => {
     if (!over || isSection(active.id)) return;
-    const itemId = raw(active.id);
-    const target = isSection(over.id) ? raw(over.id) : items.find((i) => i.id === raw(over.id))?.section_id;
-    const current = items.find((i) => i.id === itemId);
-    if (!target || !current || current.section_id === target) return;
-    setItems((prev) => {
-      const moving = { ...current, section_id: target };
-      const rest = prev.filter((i) => i.id !== itemId);
-      const at = isSection(over.id) ? -1 : rest.findIndex((i) => i.id === raw(over.id));
-      if (at < 0) return [...rest, moving];
-      return [...rest.slice(0, at), moving, ...rest.slice(at)];
-    });
+    const next = moveAcrossSections(
+      items,
+      active.id,
+      over.id,
+      (i) => i.section_id,
+      (i, section) => ({ ...i, section_id: section }),
+    );
+    if (next) setItems(next);
   };
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
@@ -187,7 +156,7 @@ export function ChecklistTemplateShell({
         </p>
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={collision} onDragOver={onDragOver} onDragEnd={onDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={sectionsAndTasksCollision} onDragOver={onDragOver} onDragEnd={onDragEnd}>
         <SortableContext items={sections.map((s) => sid(s.id))} strategy={verticalListSortingStrategy}>
           <div className="space-y-4">
             {sections.map((section) => (

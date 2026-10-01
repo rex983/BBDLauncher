@@ -139,6 +139,8 @@ export interface CaseExport {
 
 export interface CaseDetail {
   case: OffboardingCase;
+  /** Section names in display order: the checklist's, then any only on this case. */
+  sections: string[];
   tasks: OffboardingTask[];
   events: OffboardingEvent[];
   exports: CaseExport[];
@@ -164,6 +166,8 @@ export const EVENT_LABEL: Record<string, string> = {
   task_deleted: "Deleted task",
   task_edited: "Edited task",
   case_synced: "Matched the checklist",
+  task_moved: "Moved task",
+  section_removed: "Removed section",
   launcher_deactivated: "Deactivated launcher account",
   data_exported: "Backed up launcher records",
   export_downloaded: "Downloaded backup",
