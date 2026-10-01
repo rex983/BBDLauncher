@@ -28,10 +28,13 @@ export const CASE_STATUS_VARIANT: Record<CaseStatus, BadgeVariant> = {
   cancelled: "outline",
 };
 
-export const TASK_STATUSES = ["pending", "done", "not_applicable"] as const;
+export const TASK_STATUSES = ["pending", "in_progress", "done", "not_applicable"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
+/** Still needs doing (not done or N/A). */
+export const isOpenTask = (status: TaskStatus) => status === "pending" || status === "in_progress";
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   pending: "Pending",
+  in_progress: "In progress",
   done: "Done",
   not_applicable: "N/A",
 };
@@ -110,6 +113,8 @@ export interface OffboardingTask {
   auto_action: AutoAction | null;
   display_order: number;
   status: TaskStatus;
+  started_by: string | null;
+  started_at: string | null;
   completed_by: string | null;
   completed_at: string | null;
   note: string | null;
@@ -152,6 +157,7 @@ export const EVENT_LABEL: Record<string, string> = {
   task_done: "Completed",
   task_not_applicable: "Marked N/A",
   task_reopened: "Reopened",
+  task_in_progress: "Started",
   task_assigned: "Assigned",
   task_note: "Updated note",
   task_added: "Added task",

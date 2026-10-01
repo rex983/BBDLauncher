@@ -27,7 +27,7 @@ export const EXPORT_BUCKET = "offboarding-exports";
 const CASE_COLUMNS =
   "id, profile_id, employee_name, employee_email, employee_role, employee_office, employee_department, last_day, reason, notes, status, opened_by, closed_by, closed_at, created_at";
 const TASK_COLUMNS =
-  "id, case_id, item_id, app_id, title, system, section, instructions, requires_note, auto_action, display_order, status, completed_by, completed_at, note";
+  "id, case_id, item_id, app_id, title, system, section, instructions, requires_note, auto_action, display_order, status, started_by, started_at, completed_by, completed_at, note";
 
 // Route-handler gate: 401/403 response, or the session.
 export async function requireOffboarder(): Promise<Session | NextResponse> {
@@ -65,7 +65,7 @@ export async function listCases(): Promise<CaseSummary[]> {
   for (const t of tasksRes.data || []) {
     const c = counts.get(t.case_id) ?? { total: 0, open: 0 };
     c.total += 1;
-    if (t.status === "pending") c.open += 1;
+    if (t.status === "pending" || t.status === "in_progress") c.open += 1;
     counts.set(t.case_id, c);
   }
   return ((casesRes.data || []) as OffboardingCase[]).map((c) => ({
@@ -104,6 +104,7 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail | null> 
   const ids = new Set<string>();
   for (const t of tasks) {
     if (t.completed_by) ids.add(t.completed_by);
+    if (t.started_by) ids.add(t.started_by);
   }
   // Older cases logged assignments; keep those log rows readable.
   for (const e of events) {

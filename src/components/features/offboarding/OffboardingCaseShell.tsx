@@ -24,6 +24,7 @@ import {
   Check,
   Download,
   HardDriveDownload,
+  Loader,
   ListRestart,
   Pencil,
   Plus,
@@ -40,6 +41,7 @@ import {
   EVENT_LABEL,
   OFFBOARDING_REASON_LABEL,
   TASK_STATUS_LABEL,
+  isOpenTask,
   type CaseDetail,
   type OffboardingTask,
   type PersonRef,
@@ -104,7 +106,7 @@ export function OffboardingCaseShell({ initial, isAdmin }: { initial: CaseDetail
   };
 
   const total = detail.tasks.length;
-  const done = detail.tasks.filter((t) => t.status !== "pending").length;
+  const done = detail.tasks.filter((t) => !isOpenTask(t.status)).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
   const tasksById = new Map(detail.tasks.map((t) => [t.id, t]));
   // Sections in the order their first task appears (tasks come sorted).
@@ -201,12 +203,12 @@ export function OffboardingCaseShell({ initial, isAdmin }: { initial: CaseDetail
       {sections.map((section) => {
         const tasks = detail.tasks.filter((t) => t.section === section);
         return (
-          <Card key={section} className="break-inside-avoid">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center justify-between text-base">
+          <Card key={section} className="break-inside-avoid gap-0 py-0">
+            <CardHeader className="border-b px-4 py-2.5">
+              <CardTitle className="flex items-center justify-between text-sm">
                 <span>{section}</span>
                 <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                  {tasks.filter((t) => t.status !== "pending").length}/{tasks.length}
+                  {tasks.filter((t) => !isOpenTask(t.status)).length}/{tasks.length}
                 </span>
               </CardTitle>
             </CardHeader>
@@ -244,8 +246,8 @@ export function OffboardingCaseShell({ initial, isAdmin }: { initial: CaseDetail
                 />
               ))}
               {isOpen && (
-                <div className="px-6 py-2 print:hidden">
-                  <Button size="sm" variant="ghost" onClick={() => setAddTo(section)}>
+                <div className="px-2 py-1 print:hidden">
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setAddTo(section)}>
                     <Plus className="mr-1 h-4 w-4" />
                     Add task
                   </Button>
@@ -429,7 +431,9 @@ function TaskRow({
 }) {
   const [editingNote, setEditingNote] = useState(false);
   const [note, setNote] = useState(task.note ?? "");
-  const pending = task.status === "pending";
+  // "open" = still to do (pending or in progress).
+  const pending = isOpenTask(task.status);
+  const started = task.status === "in_progress";
 
   const openNoteEditor = () => {
     setNote(task.note ?? "");
@@ -446,112 +450,138 @@ function TaskRow({
     else onPatch({ status });
   };
 
-  return (
-    <div className={cn("flex flex-col gap-2 px-6 py-4 md:flex-row md:items-start", !pending && "bg-muted/30")}>
-      <div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          {!pending && <Check className="h-4 w-4 text-emerald-600" />}
-          <span className={cn("font-medium", task.status === "not_applicable" && "line-through text-muted-foreground")}>
-            {task.title}
-          </span>
-          {task.system && <Badge variant="outline" className="text-[10px]">{task.system}</Badge>}
-          {task.requires_note && pending && (
-            <Badge variant="secondary" className="text-[10px]">note required</Badge>
-          )}
-        </div>
-        {task.instructions && (
-          <p className="mt-1 text-sm text-muted-foreground">{task.instructions}</p>
-        )}
-        {!pending && (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {TASK_STATUS_LABEL[task.status]} by {who(task.completed_by)}
-            {task.completed_at && ` · ${fmtWhen(task.completed_at)}`}
-          </p>
-        )}
-        {editingNote ? (
-          <div className="mt-2 space-y-2 print:hidden">
-            <Textarea
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={task.requires_note ? "Where was it saved / what changed?" : "Note"}
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  onPatch({ note: note || null });
-                  setEditingNote(false);
-                }}
-                disabled={busy}
-              >
-                Save note
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setEditingNote(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          task.note && (
-            <p className="mt-1 whitespace-pre-wrap rounded bg-muted px-2 py-1 text-sm">{task.note}</p>
-          )
-        )}
-      </div>
+  const doneBy = started
+    ? `Started by ${who(task.started_by)}${task.started_at ? ` · ${fmtWhen(task.started_at)}` : ""}`
+    : pending
+      ? null
+      : `${TASK_STATUS_LABEL[task.status]} by ${who(task.completed_by)}${task.completed_at ? ` · ${fmtWhen(task.completed_at)}` : ""}`;
 
-      <div className="flex flex-wrap items-center gap-2 md:justify-end print:hidden">
+  // One line per task on screen; instructions, who did it and notes show on
+  // hover and in the printed record.
+  return (
+    <div className={cn("px-4 py-1.5", !pending && "bg-muted/30", started && "bg-amber-50 dark:bg-amber-950/30")}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span title={doneBy ?? undefined} className="flex w-4 shrink-0 justify-center">
+          {!pending && <Check className="h-4 w-4 text-emerald-600" />}
+          {started && <Loader className="h-4 w-4 text-amber-600" />}
+        </span>
+        <span
+          title={task.instructions ?? undefined}
+          className={cn(
+            "min-w-0 flex-1 text-sm",
+            !pending && "text-muted-foreground",
+            task.status === "not_applicable" && "line-through",
+          )}
+        >
+          {task.title}
+          {started && (
+            <span className="ml-2 text-[10px] font-medium uppercase text-amber-600">in progress</span>
+          )}
+          {task.requires_note && pending && !task.note && (
+            <span className="ml-2 text-[10px] font-medium uppercase text-amber-600">note required</span>
+          )}
+        </span>
+        <div className="flex items-center gap-1 print:hidden">
         {caseOpen && onEdit && (
-          <Button size="sm" variant="ghost" onClick={onEdit} title="Edit wording">
-            <Pencil className="h-4 w-4" />
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit} title="Edit wording">
+            <Pencil className="h-3.5 w-3.5" />
           </Button>
         )}
         {caseOpen && !editingNote && (
-          <Button size="sm" variant="ghost" onClick={openNoteEditor} title="Add or edit note">
-            <StickyNote className="h-4 w-4" />
+          <Button
+            size="icon"
+            variant="ghost"
+            className={cn("h-7 w-7", task.note && "text-primary")}
+            onClick={openNoteEditor}
+            title={task.note ? `Note: ${task.note}` : "Add a note"}
+          >
+            <StickyNote className="h-3.5 w-3.5" />
           </Button>
         )}
         {caseOpen && pending && task.auto_action && (
-          <Button size="sm" onClick={onAction} disabled={busy}>
+          <Button size="sm" className="h-7 px-2 text-xs" onClick={onAction} disabled={busy}>
             {task.auto_action === "deactivate_launcher" ? (
-              <><ShieldOff className="mr-1 h-4 w-4" />Deactivate now</>
+              <><ShieldOff className="mr-1 h-3.5 w-3.5" />Deactivate now</>
             ) : (
-              <><Download className="mr-1 h-4 w-4" />Back up now</>
+              <><Download className="mr-1 h-3.5 w-3.5" />Back up now</>
             )}
           </Button>
         )}
+        {caseOpen && task.status === "pending" && !task.auto_action && (
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => onPatch({ status: "in_progress" })} disabled={busy}>
+            <Loader className="mr-1 h-3.5 w-3.5" />In progress
+          </Button>
+        )}
         {caseOpen && pending && !task.auto_action && (
-          <Button size="sm" onClick={() => complete("done")} disabled={busy}>
-            <Check className="mr-1 h-4 w-4" />Done
+          <Button size="sm" className="h-7 px-2 text-xs" onClick={() => complete("done")} disabled={busy}>
+            <Check className="mr-1 h-3.5 w-3.5" />Done
           </Button>
         )}
         {caseOpen && pending && (
-          <Button size="sm" variant="outline" onClick={() => complete("not_applicable")} disabled={busy}>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => complete("not_applicable")} disabled={busy}>
             N/A
+          </Button>
+        )}
+        {caseOpen && started && (
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => onPatch({ status: "pending" })} disabled={busy} title="Back to not started">
+            <RotateCcw className="mr-1 h-3.5 w-3.5" />Undo
           </Button>
         )}
         {caseOpen && !pending && (
           <>
             {task.auto_action === "export_launcher_data" && (
-              <Button size="sm" variant="outline" onClick={onAction} disabled={busy} title="Take another backup">
-                <Download className="h-4 w-4" />
+              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onAction} disabled={busy} title="Take another backup">
+                <Download className="h-3.5 w-3.5" />
               </Button>
             )}
-            <Button size="sm" variant="ghost" onClick={() => onPatch({ status: "pending" })} disabled={busy}>
-              <RotateCcw className="mr-1 h-4 w-4" />Undo
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => onPatch({ status: "pending" })} disabled={busy}>
+              <RotateCcw className="mr-1 h-3.5 w-3.5" />Undo
             </Button>
           </>
         )}
         {caseOpen && (
-          <Button size="sm" variant="ghost" onClick={onDelete} disabled={busy} title="Remove from this case">
-            <Trash2 className="h-4 w-4" />
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onDelete} disabled={busy} title="Remove from this case">
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         )}
+        </div>
+      </div>
+
+      {editingNote && (
+        <div className="mt-1.5 space-y-2 pl-6 print:hidden">
+          <Textarea
+            rows={2}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={task.requires_note ? "Where was it saved / what changed?" : "Note"}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => {
+                onPatch({ note: note || null });
+                setEditingNote(false);
+              }}
+              disabled={busy}
+            >
+              Save note
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingNote(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Printed record keeps the full detail. */}
+      <div className="hidden pl-6 text-xs text-muted-foreground print:block">
+        {task.system && <div>{task.system}</div>}
+        {task.instructions && <div>{task.instructions}</div>}
+        {doneBy && <div>{doneBy}</div>}
+        {task.note && <div className="text-foreground">Note: {task.note}</div>}
       </div>
     </div>
   );

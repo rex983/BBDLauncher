@@ -58,10 +58,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .from("offboarding_tasks")
         .select("id", { count: "exact", head: true })
         .eq("case_id", id)
-        .eq("status", "pending");
+        .in("status", ["pending", "in_progress"]);
       if ((count ?? 0) > 0) {
         return NextResponse.json(
-          { error: `${count} task(s) are still pending. Finish them or mark them N/A first.` },
+          { error: `${count} task(s) are still open. Finish them or mark them N/A first.` },
           { status: 400 },
         );
       }

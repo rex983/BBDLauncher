@@ -78,22 +78,31 @@ export async function PATCH(
 
   const status = parsed.data.status;
   if (status && status !== task.status) {
-    if (status === "done" && task.auto_action) {
+    if ((status === "done" || status === "in_progress") && task.auto_action) {
       return NextResponse.json(
         { error: "Use the action button on this task — it completes itself when it runs." },
         { status: 400 },
       );
     }
     // Backup / rotation tasks must say WHERE the data went or WHAT changed.
-    if (status !== "pending" && requiresNote && !note) {
+    if ((status === "done" || status === "not_applicable") && requiresNote && !note) {
       return NextResponse.json(
         { error: "This task needs a note (e.g. where the backup was saved) before it can be closed." },
         { status: 400 },
       );
     }
+    const now = new Date().toISOString();
+    const finished = status === "done" || status === "not_applicable";
     updates.status = status;
-    updates.completed_by = status === "pending" ? null : session.user.profileId;
-    updates.completed_at = status === "pending" ? null : new Date().toISOString();
+    updates.completed_by = finished ? session.user.profileId : null;
+    updates.completed_at = finished ? now : null;
+    if (status === "in_progress") {
+      updates.started_by = session.user.profileId;
+      updates.started_at = now;
+    } else if (status === "pending") {
+      updates.started_by = null;
+      updates.started_at = null;
+    }
     events.push({ type: status === "pending" ? "task_reopened" : `task_${status}` });
   }
 

@@ -278,7 +278,7 @@ function SectionCard({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn("rounded-lg border bg-card", isDragging && "z-10 shadow-lg ring-2 ring-primary/30")}
     >
-      <div className="flex items-center gap-2 border-b px-4 py-3">
+      <div className="flex items-center gap-2 border-b px-4 py-2">
         <button
           {...attributes}
           {...listeners}
@@ -316,7 +316,7 @@ function SectionCard({
           </form>
         ) : (
           <>
-            <span className="flex-1 font-semibold">{section.name}</span>
+            <span className="flex-1 text-sm font-semibold">{section.name}</span>
             <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span>
             <Button size="icon" variant="ghost" onClick={() => setRenaming(true)} title="Rename section">
               <Pencil className="h-4 w-4" />
@@ -329,7 +329,7 @@ function SectionCard({
       </div>
 
       <SortableContext items={items.map((i) => iid(i.id))} strategy={verticalListSortingStrategy}>
-        <div className="min-h-[3rem] divide-y">
+        <div className="min-h-[2.5rem] divide-y">
           {items.map((item) => (
             <ItemRow
               key={item.id}
@@ -340,13 +340,13 @@ function SectionCard({
             />
           ))}
           {items.length === 0 && (
-            <p className="px-4 py-3 text-sm text-muted-foreground">No tasks — drag one here or add one.</p>
+            <p className="px-4 py-2 text-sm text-muted-foreground">No tasks — drag one here or add one.</p>
           )}
         </div>
       </SortableContext>
 
-      <div className="border-t px-4 py-2">
-        <Button size="sm" variant="ghost" onClick={onAdd}>
+      <div className="border-t px-2 py-1">
+        <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={onAdd}>
           <Plus className="mr-1 h-4 w-4" />
           Add task
         </Button>
@@ -374,7 +374,7 @@ function ItemRow({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "flex items-start gap-3 bg-card px-4 py-3",
+        "flex items-center gap-3 bg-card px-4 py-1.5",
         !item.is_active && "opacity-50",
         isDragging && "relative z-10 shadow-md ring-2 ring-primary/30",
       )}
@@ -383,31 +383,30 @@ function ItemRow({
         {...attributes}
         {...listeners}
         type="button"
-        className="mt-0.5 cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
         aria-label="Drag task"
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium">{item.title}</span>
-          {item.system && <Badge variant="outline" className="text-[10px]">{item.system}</Badge>}
-          {item.auto_action && (
-            <Badge variant="secondary" className="text-[10px]">{TEMPLATE_AUTO_LABEL[item.auto_action]}</Badge>
-          )}
-          {item.requires_note && <Badge variant="secondary" className="text-[10px]">note required</Badge>}
-        </div>
-        {item.instructions && <p className="mt-1 text-sm text-muted-foreground">{item.instructions}</p>}
+      {/* Instructions show on hover; the edit dialog has everything. */}
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2" title={item.instructions ?? undefined}>
+        <span className="text-sm">{item.title}</span>
+        {item.auto_action && (
+          <Badge variant="secondary" className="text-[10px]">{TEMPLATE_AUTO_LABEL[item.auto_action]}</Badge>
+        )}
+        {item.requires_note && (
+          <span className="text-[10px] font-medium uppercase text-amber-600">note required</span>
+        )}
       </div>
       <div className="flex items-center gap-1">
-        <Button size="sm" variant="ghost" onClick={onToggle}>
+        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onToggle}>
           {item.is_active ? "Disable" : "Enable"}
         </Button>
-        <Button size="icon" variant="ghost" onClick={onEdit} title="Edit">
-          <Pencil className="h-4 w-4" />
+        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit} title="Edit">
+          <Pencil className="h-3.5 w-3.5" />
         </Button>
-        <Button size="icon" variant="ghost" onClick={onRemove} title="Delete">
-          <Trash2 className="h-4 w-4" />
+        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onRemove} title="Delete">
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>
