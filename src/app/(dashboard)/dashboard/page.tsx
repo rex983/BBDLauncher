@@ -8,8 +8,7 @@ import { allowedAppIds } from "@/lib/launcher/access";
 import { QuoteBanner } from "@/components/features/launcher/quote-banner";
 import { TimeClockShell } from "@/components/features/timeclock/TimeClockShell";
 import { canManageContent, isAdmin as isAdminRole } from "@/lib/auth/permissions";
-import { getMyStateToday, getMyScheduleToday } from "@/lib/timesheets/server";
-import { localDateInZone } from "@/lib/timesheets/tz";
+import { getMyScheduleToday } from "@/lib/timesheets/server";
 import {
   getCachedApps,
   getCachedRoleAppAccess,
@@ -25,18 +24,6 @@ import type { ImportantLink } from "@/types/link";
 import type { MotivationalQuote } from "@/types/quote";
 import type { Office } from "@/types/auth";
 import { OFFICES, VALID_OFFICES } from "@/lib/org/constants";
-import type { TimeOffStatus, TimeOffType } from "@/lib/timeoff/types";
-
-interface MyTimeOffRow {
-  id: string;
-  type: TimeOffType;
-  subcategory: string | null;
-  start_date: string;
-  end_date: string;
-  full_day: boolean;
-  hours: number | null;
-  status: TimeOffStatus;
-}
 
 
 export default async function DashboardPage({
@@ -66,29 +53,11 @@ export default async function DashboardPage({
   let roles: { name: string; display_name: string }[] = [];
   let quote: MotivationalQuote | null = null;
   let effectiveRole = session.user.role;
-  // TimeClockShell needs an initial state, schedule, and upcoming
-  // time-off list so it doesn't flash a blank while three /api/timeclock/*
-  // fetches resolve on every dashboard load.
-  const profileId = session.user.profileId;
-  const [timeclockRes, scheduleRes, upcomingTimeOffRes] = await Promise.all([
-    getMyStateToday(profileId).catch(() => null),
-    getMyScheduleToday(profileId).catch(() => null),
-    (async () => {
-      const supabase = createAdminClient();
-      const today = localDateInZone(new Date());
-      const { data } = await supabase
-        .from("time_off_requests")
-        .select("id, type, subcategory, start_date, end_date, full_day, hours, status")
-        .eq("profile_id", profileId)
-        .gte("end_date", today)
-        .in("status", ["pending", "approved"])
-        .order("start_date", { ascending: true });
-      return (data || []) as MyTimeOffRow[];
-    })().catch(() => [] as MyTimeOffRow[]),
-  ]);
-  const initialState = timeclockRes?.state ?? null;
-  const initialSchedule = scheduleRes ?? null;
-  const initialUpcomingTimeOff = upcomingTimeOffRes ?? [];
+  // Server-fetch today's schedule so TimeClockShell's "Scheduled until"
+  // label paints on the first frame. Live clock state comes from
+  // <ClockGate> in the layout.
+  // Started now, awaited below, so it overlaps the cached launcher reads.
+  const schedulePromise = getMyScheduleToday(session.user.profileId).catch(() => null);
   try {
     // Everything below is cached (see src/lib/launcher/cache.ts). On a
     // cache hit this whole block is zero Supabase round-trips.
@@ -149,6 +118,8 @@ export default async function DashboardPage({
     console.error("Dashboard data fetch error:", err);
   }
 
+  const initialSchedule = await schedulePromise;
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -182,11 +153,7 @@ export default async function DashboardPage({
       )}
       {/* Preview banner is rendered globally in (dashboard)/layout.tsx so
           it stays visible on every route while a preview is active. */}
-      <TimeClockShell
-        initialState={initialState}
-        initialSchedule={initialSchedule}
-        initialUpcomingTimeOff={initialUpcomingTimeOff}
-      >
+      <TimeClockShell initialSchedule={initialSchedule}>
         <SectionedAppGrid apps={apps} sections={sections} isAdmin={canEditDashboard} />
         {links.length > 0 && (
           <>

@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { LiveState } from "@/lib/timesheets/state";
+import { useTimeClock } from "./ClockGate";
 
 interface ScheduleData {
   scheduled: boolean;
@@ -30,7 +30,7 @@ function fmtTime(iso: string): string {
 // The shadcn Dialog overlay already blurs + dims the entire viewport, so
 // there's no need for extra chrome here.
 export function ShiftEndPrompt() {
-  const [state, setState] = useState<LiveState | null>(null);
+  const { state } = useTimeClock();
   const [schedule, setSchedule] = useState<ScheduleData | null>(null);
   const [promptOpen, setPromptOpen] = useState(false);
   const [phase, setPhase] = useState<"ask" | "pick" | "custom">("ask");
@@ -38,26 +38,22 @@ export function ShiftEndPrompt() {
   const [busy, setBusy] = useState(false);
   const promptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async () => {
-    const [meRes, schedRes] = await Promise.all([
-      fetch("/api/timeclock/me", { cache: "no-store" }),
-      fetch("/api/timeclock/schedule", { cache: "no-store" }),
-    ]);
-    if (meRes.ok) {
-      const data = await meRes.json();
-      setState(data.state ?? null);
-    }
-    if (schedRes.ok) setSchedule(await schedRes.json());
+  const isClockedOut = !state || state.status === "clocked_out";
+
+  // Live state comes from <ClockGate>; only the schedule is fetched here.
+  // Refetch on clock-in/out (effective end can change) and on focus (an
+  // extension may have been granted from another tab).
+  const loadSchedule = useCallback(async () => {
+    const res = await fetch("/api/timeclock/schedule", { cache: "no-store" });
+    if (res.ok) setSchedule(await res.json());
   }, []);
 
   useEffect(() => {
-    load();
-    const onFocus = () => load();
+    loadSchedule().catch(() => {});
+    const onFocus = () => loadSchedule().catch(() => {});
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [load]);
-
-  const isClockedOut = !state || state.status === "clocked_out";
+  }, [loadSchedule, isClockedOut]);
 
   useEffect(() => {
     if (promptTimer.current) clearTimeout(promptTimer.current);

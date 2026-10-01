@@ -1,10 +1,52 @@
 "use client";
 
 import { signOut } from "next-auth/react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/button";
-import { Clock, LogIn, LogOut } from "lucide-react";
-import type { LiveState } from "@/lib/timesheets/state";
+import { Badge } from "@/components/ui/badge";
+import { CalendarCheck, Clock, LogIn, LogOut } from "lucide-react";
+import type { LiveState, PunchEventType } from "@/lib/timesheets/state";
+import {
+  TIME_OFF_TYPE_LABEL,
+  type TimeOffStatus,
+  type TimeOffType,
+} from "@/lib/timeoff/types";
+
+// Single owner of the viewer's live clock state for every (dashboard) page.
+// TimeClockShell and ShiftEndPrompt read it via useTimeClock() instead of
+// keeping their own copies — separate copies drifted apart after a punch
+// (the gate would unlock while the dashboard card still showed "clocked
+// out", and a second clock-in then 409'd).
+interface TimeClockContextValue {
+  state: LiveState | null;
+  loading: boolean;
+  punch: (event_type: PunchEventType) => Promise<string | null>;
+}
+
+const TimeClockContext = createContext<TimeClockContextValue | null>(null);
+
+export function useTimeClock(): TimeClockContextValue {
+  const ctx = useContext(TimeClockContext);
+  if (!ctx) throw new Error("useTimeClock must be used inside <ClockGate>");
+  return ctx;
+}
+
+interface MyTimeOffRow {
+  id: string;
+  type: TimeOffType;
+  subcategory: string | null;
+  start_date: string;
+  end_date: string;
+  full_day: boolean;
+  hours: number | null;
+  status: TimeOffStatus;
+}
 
 // Full-viewport clock-in gate. Sits at the top of the dashboard layout and
 // throws a modal-style overlay in front of everything (sidebar, header,
@@ -15,9 +57,17 @@ import type { LiveState } from "@/lib/timesheets/state";
 // Break / lunch don't lock — those states count as clocked in per the
 // company policy. The only escape hatches from the overlay are the
 // clock-in button and Sign out. There's no bypass for admins or managers.
-export function ClockGate({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<LiveState | null>(null);
-  const [loading, setLoading] = useState(true);
+export function ClockGate({
+  children,
+  initialState = null,
+}: {
+  children: React.ReactNode;
+  // Server-fetched in the layout so the gate paints correctly on the first
+  // frame instead of flashing the app (or the overlay) while /me resolves.
+  initialState?: LiveState | null;
+}) {
+  const [state, setState] = useState<LiveState | null>(initialState);
+  const [loading, setLoading] = useState(initialState === null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,32 +96,48 @@ export function ClockGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    load();
+    if (initialState === null) load();
     // Re-check when the tab regains focus — if the midnight cron clocked
     // them out while the tab was in the background, the overlay should
     // reappear on the next focus.
     const onFocus = () => load();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [load]);
+  }, [load, initialState]);
+
+  // Returns an error message, or null on success. A 409 means our state
+  // was stale (e.g. punched from another tab) — resync so the UI matches
+  // the server instead of leaving the user stuck on the wrong button.
+  const punch = useCallback(
+    async (event_type: PunchEventType): Promise<string | null> => {
+      const res = await fetch("/api/timeclock/punch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_type }),
+      });
+      if (!res.ok) {
+        if (res.status === 409) {
+          await load();
+          return null;
+        }
+        const b = await res.json().catch(() => ({}));
+        return typeof b.error === "string" ? b.error : "Punch failed";
+      }
+      const data = await res.json();
+      setState(data.state);
+      return null;
+    },
+    [load],
+  );
 
   const clockIn = async () => {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/timeclock/punch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event_type: "clock_in" }),
-      });
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}));
-        setError(typeof b.error === "string" ? b.error : "Clock in failed");
-        return;
-      }
-      const data = await res.json();
-      setState(data.state);
+      setError(await punch("clock_in"));
+    } catch {
+      setError("Clock in failed");
     } finally {
       setBusy(false);
     }
@@ -80,7 +146,7 @@ export function ClockGate({ children }: { children: React.ReactNode }) {
   const locked = !loading && (state === null || state.status === "clocked_out");
 
   return (
-    <>
+    <TimeClockContext.Provider value={{ state, loading, punch }}>
       {children}
       {locked && (
         <div
@@ -117,9 +183,77 @@ export function ClockGate({ children }: { children: React.ReactNode }) {
               <LogOut className="mr-2 h-4 w-4" />
               Sign out
             </Button>
+            <UpcomingTimeOff />
           </div>
         </div>
       )}
-    </>
+    </TimeClockContext.Provider>
+  );
+}
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function fmtRange(start: string, end: string) {
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  const s = new Date(start + "T00:00:00").toLocaleDateString([], opts);
+  if (start === end) return s;
+  const e = new Date(end + "T00:00:00").toLocaleDateString([], opts);
+  return `${s} – ${e}`;
+}
+
+// Compact list of the viewer's own upcoming time off — pending + approved
+// only, end_date >= today. Fetched only while the gate is showing; renders
+// nothing on quiet days so the clock-in card stays clean.
+function UpcomingTimeOff() {
+  const [rows, setRows] = useState<MyTimeOffRow[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/timeoff")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((all: MyTimeOffRow[]) => {
+        if (cancelled) return;
+        const today = todayISO();
+        setRows(
+          all
+            .filter((r) => r.end_date >= today && (r.status === "pending" || r.status === "approved"))
+            .sort((a, b) => a.start_date.localeCompare(b.start_date)),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (rows.length === 0) return null;
+  return (
+    <div className="mt-6 pt-4 border-t text-left space-y-2">
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <CalendarCheck className="h-3.5 w-3.5" />
+        Upcoming time off
+      </div>
+      <ul className="space-y-1.5">
+        {rows.map((r) => (
+          <li key={r.id} className="flex items-center gap-2 text-sm">
+            <Badge
+              variant={r.status === "approved" ? "default" : "outline"}
+              className="text-[10px] capitalize"
+            >
+              {r.status}
+            </Badge>
+            <span className="font-medium">{fmtRange(r.start_date, r.end_date)}</span>
+            <span className="text-xs text-muted-foreground truncate">
+              {TIME_OFF_TYPE_LABEL[r.type]}
+              {r.subcategory ? ` · ${r.subcategory}` : ""}
+              {!r.full_day && r.hours ? ` · ${r.hours}h` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
