@@ -3,7 +3,7 @@
 --
 -- Before: an app had a role list (launcher_role_app_access) AND an office list
 -- (launcher_apps.offices), and a user needed both — so "Harbor: managers only,
--- Marion: everyone" couldn't be expressed.
+-- BST: everyone" couldn't be expressed.
 --
 -- After: each access row carries an office.
 --   office IS NULL        → that role can open the app from every office
@@ -25,7 +25,7 @@ ALTER TABLE launcher_role_app_access ADD COLUMN IF NOT EXISTS office TEXT;
 
 ALTER TABLE launcher_role_app_access DROP CONSTRAINT IF EXISTS launcher_role_app_access_office_check;
 ALTER TABLE launcher_role_app_access ADD CONSTRAINT launcher_role_app_access_office_check
-  CHECK (office IS NULL OR office IN ('Harbor', 'Marion', 'BST', 'RnD', 'none'));
+  CHECK (office IS NULL OR office IN ('Harbor', 'BST', 'RnD', 'none'));
 
 ALTER TABLE launcher_role_app_access DROP CONSTRAINT IF EXISTS launcher_role_app_access_pkey;
 CREATE UNIQUE INDEX IF NOT EXISTS launcher_role_app_access_uniq

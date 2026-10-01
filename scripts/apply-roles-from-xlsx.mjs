@@ -85,14 +85,12 @@ const ASSIGNMENTS = [
   ["Ty Simpson",            "Harbor", "SALES TEAM", "sales_rep"],
   ["Tyler Hughes",          "Harbor", "SALES TEAM", "sales_rep"],
   ["Yesha Pandit",          "Harbor", "SALES TEAM", "sales_rep"],
-
-  // Marion / SALES TEAM
-  ["Robin Campbell",        "Marion", "SALES TEAM", "senior_manager"],
-  ["Bill Alexander",        "Marion", "SALES TEAM", "sales_rep"],
-  ["Nick Brunsman",         "Marion", "SALES TEAM", "sales_rep"],
-  ["Rob Salaita",           "Marion", "SALES TEAM", "sales_rep"],
-  ["Samantha Napoli",       "Marion", "SALES TEAM", "sales_rep"],
-  ["Timothy Hickman",       "Marion", "SALES TEAM", "sales_rep"],
+  ["Robin Campbell",        "Harbor", "SALES TEAM", "senior_manager"],
+  ["Bill Alexander",        "Harbor", "SALES TEAM", "sales_rep"],
+  ["Nick Brunsman",         "Harbor", "SALES TEAM", "sales_rep"],
+  ["Rob Salaita",           "Harbor", "SALES TEAM", "sales_rep"],
+  ["Samantha Napoli",       "Harbor", "SALES TEAM", "sales_rep"],
+  ["Timothy Hickman",       "Harbor", "SALES TEAM", "sales_rep"],
 
   // BST / BST
   ["Ryan Hamilton",         "BST",    "BST",        "senior_manager"],

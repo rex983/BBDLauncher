@@ -19,7 +19,7 @@ ALTER TABLE launcher_apps DROP COLUMN IF EXISTS office;
 -- 4. Constrain elements of offices to the allowed set
 ALTER TABLE launcher_apps DROP CONSTRAINT IF EXISTS launcher_apps_offices_check;
 ALTER TABLE launcher_apps ADD CONSTRAINT launcher_apps_offices_check
-  CHECK (offices <@ ARRAY['Harbor','Marion','BST','RnD']::TEXT[]);
+  CHECK (offices <@ ARRAY['Harbor','BST','RnD']::TEXT[]);
 
 -- 5. Replace the single-value office index with a GIN index for array lookups
 DROP INDEX IF EXISTS launcher_apps_office_idx;
@@ -29,4 +29,4 @@ CREATE INDEX IF NOT EXISTS launcher_apps_offices_idx
 -- 6. Loosen the links office check to allow the two new offices
 ALTER TABLE launcher_links DROP CONSTRAINT IF EXISTS launcher_links_office_check;
 ALTER TABLE launcher_links ADD CONSTRAINT launcher_links_office_check
-  CHECK (office IS NULL OR office IN ('Harbor','Marion','BST','RnD'));
+  CHECK (office IS NULL OR office IN ('Harbor','BST','RnD'));
