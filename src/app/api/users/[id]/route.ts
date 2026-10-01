@@ -11,11 +11,12 @@ const updateSchema = z.object({
   office: z.enum(OFFICES).nullable().optional(),
   department: z.enum(DEPARTMENTS).nullable().optional(),
   is_it: z.boolean().optional(),
+  can_offboard: z.boolean().optional(),
   is_active: z.boolean().optional(),
 });
 
 const USER_COLUMNS =
-  "id, email, name:full_name, role, office, department, is_it, is_active, created_at, updated_at";
+  "id, email, name:full_name, role, office, department, is_it, can_offboard, is_active, created_at, updated_at";
 
 export async function PUT(
   req: NextRequest,
@@ -40,6 +41,7 @@ export async function PUT(
   if (parsed.data.office !== undefined) updates.office = parsed.data.office;
   if (parsed.data.department !== undefined) updates.department = parsed.data.department;
   if (parsed.data.is_it !== undefined) updates.is_it = parsed.data.is_it;
+  if (parsed.data.can_offboard !== undefined) updates.can_offboard = parsed.data.can_offboard;
   if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active;
 
   if (Object.keys(updates).length === 0) {
@@ -51,6 +53,7 @@ export async function PUT(
     parsed.data.office !== undefined ||
     parsed.data.department !== undefined ||
     parsed.data.is_it !== undefined ||
+    parsed.data.can_offboard !== undefined ||
     parsed.data.is_active !== undefined;
   const viewerIsAdmin = isAdmin(session.user.role);
   const needsPrefetch = !viewerIsAdmin || securityChange;
@@ -96,6 +99,12 @@ export async function PUT(
       if (parsed.data.is_it !== undefined) {
         return NextResponse.json(
           { error: "Only admins can change the IT capability." },
+          { status: 403 }
+        );
+      }
+      if (parsed.data.can_offboard !== undefined) {
+        return NextResponse.json(
+          { error: "Only admins can change who runs offboarding." },
           { status: 403 }
         );
       }

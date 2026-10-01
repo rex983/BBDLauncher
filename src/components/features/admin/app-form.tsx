@@ -16,6 +16,7 @@ import {
 import type { AppWithAccess, LauncherRole, LauncherSection, SsoType, AppStatus } from "@/types/app";
 import type { AccessCell } from "@/lib/launcher/access";
 import { AppAccessGrid } from "@/components/features/admin/app-access-grid";
+import { PeoplePicker } from "@/components/features/admin/people-picker";
 
 interface AppFormProps {
   app?: AppWithAccess | null;
@@ -36,6 +37,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [displayOrder, setDisplayOrder] = useState(app?.display_order || 0);
   const [openInNewTab, setOpenInNewTab] = useState(app?.open_in_new_tab ?? true);
   const [accessCells, setAccessCells] = useState<AccessCell[]>(app?.access || []);
+  const [userIds, setUserIds] = useState<string[]>(app?.user_ids || []);
   const [sectionId, setSectionId] = useState<string>(app?.section_id || "none");
   const [roles, setRoles] = useState<LauncherRole[]>([]);
   const [sections, setSections] = useState<LauncherSection[]>([]);
@@ -82,6 +84,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       open_in_new_tab: openInNewTab,
       section_id: sectionId === "none" ? null : sectionId,
       access: accessCells,
+      user_ids: userIds,
       sso_config:
         ssoType === "saml"
           ? { sp_entity_id: spEntityId, acs_url: acsUrl, slo_url: sloUrl }
@@ -407,6 +410,14 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       <div className="space-y-2">
         <Label>Who can open it</Label>
         <AppAccessGrid roles={roles} cells={accessCells} onChange={setAccessCells} />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Individual people</Label>
+        <p className="text-xs text-muted-foreground">
+          These people can open it whatever their role or office.
+        </p>
+        <PeoplePicker value={userIds} onChange={setUserIds} />
       </div>
 
       <div className="flex justify-end gap-2">

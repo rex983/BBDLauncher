@@ -4,7 +4,7 @@ import { SectionedAppGrid } from "@/components/features/launcher/sectioned-app-g
 import { ImportantLinks } from "@/components/features/launcher/important-links";
 import { ViewAsRole } from "@/components/features/launcher/view-as-role";
 import { ViewAsOffice } from "@/components/features/launcher/view-as-office";
-import { allowedAppIds } from "@/lib/launcher/access";
+import { allowedAppIds, personalGrants } from "@/lib/launcher/access";
 import { QuoteBanner } from "@/components/features/launcher/quote-banner";
 import { TimeClockShell } from "@/components/features/timeclock/TimeClockShell";
 import { canManageContent, isAdmin as isAdminRole } from "@/lib/auth/permissions";
@@ -12,6 +12,7 @@ import { getMyScheduleToday } from "@/lib/timesheets/server";
 import {
   getCachedApps,
   getCachedRoleAppAccess,
+  getCachedUserAccess,
   getCachedSections,
   getCachedLinks,
   getCachedRoles,
@@ -61,10 +62,11 @@ export default async function DashboardPage({
   try {
     // Everything below is cached (see src/lib/launcher/cache.ts). On a
     // cache hit this whole block is zero Supabase round-trips.
-    const [allApps, accessRows, sectionsData, linksData, rolesData, quoteData] =
+    const [allApps, accessRows, userAccessRows, sectionsData, linksData, rolesData, quoteData] =
       await Promise.all([
         getCachedApps(),
         getCachedRoleAppAccess(),
+        getCachedUserAccess(),
         getCachedSections(),
         getCachedLinks(),
         isAdmin ? getCachedRoles() : Promise.resolve([] as { name: string; display_name: string }[]),
@@ -94,13 +96,18 @@ export default async function DashboardPage({
     // Office × role grid (migration 034). Admins skip the office part unless
     // they've pinned a view-as office.
     const roleAppIds = allowedAppIds(accessRows, effectiveRole, effectiveOffice, bypassOffice);
-    const roleFilteredApps = allApps
-      .filter((a) => roleAppIds.has(a.id))
-      .sort((a, b) => a.display_order - b.display_order);
+    // Apps and links granted to this person by name (migration 040). Left out
+    // while an admin previews another role or office — those are about what
+    // the role/office sees.
+    const previewing = effectiveRole !== session.user.role || !!viewAsOfficeValid;
+    const mine = previewing
+      ? { apps: new Set<string>(), links: new Set<string>() }
+      : personalGrants(userAccessRows, session.user.profileId);
 
-    // Links keep their single-office filter. Apps: the old per-app office list
-    // still applies as a second gate (the grid already encodes it; saving an
-    // app's grid clears it), so old and new code agree whatever ships first.
+    // Links keep their single-office filter; people-only links show just to
+    // their people (and admins). Apps: the old per-app office list still
+    // applies as a second gate (the grid already encodes it; saving an app's
+    // grid clears it), so old and new code agree whatever ships first.
     const linkOfficeMatches = (office: string | null) =>
       bypassOffice || !office || office === effectiveOffice;
     const appOfficesMatch = (offices: string[] | null) =>
@@ -109,9 +116,13 @@ export default async function DashboardPage({
       offices.length === 0 ||
       (effectiveOffice ? offices.includes(effectiveOffice) : false);
 
-    apps = roleFilteredApps.filter((a) => appOfficesMatch(a.offices));
+    apps = allApps.filter(
+      (a) => mine.apps.has(a.id) || (roleAppIds.has(a.id) && appOfficesMatch(a.offices)),
+    );
     sections = sectionsData;
-    links = linksData.filter((l) => linkOfficeMatches(l.office));
+    links = linksData.filter(
+      (l) => mine.links.has(l.id) || bypassOffice || (!l.people_only && linkOfficeMatches(l.office)),
+    );
     roles = rolesData;
     quote = quoteData;
   } catch (err) {

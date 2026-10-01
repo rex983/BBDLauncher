@@ -10,6 +10,7 @@
 
 import { revalidateTag, unstable_cache } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { UserAccessRow } from "@/lib/launcher/access";
 import type { LauncherApp, LauncherSection } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
 import type { MotivationalQuote } from "@/types/quote";
@@ -19,6 +20,7 @@ const REVALIDATE_SECONDS = 300;
 export const LAUNCHER_TAGS = {
   apps: "launcher-apps",
   roleAccess: "launcher-role-app-access",
+  userAccess: "launcher-user-access",
   sections: "launcher-sections",
   links: "launcher-links",
   roles: "launcher-roles",
@@ -61,6 +63,20 @@ export const getCachedRoleAppAccess = unstable_cache(
   },
   ["launcher-role-app-access-v2"],
   { tags: [LAUNCHER_TAGS.roleAccess], revalidate: REVALIDATE_SECONDS },
+);
+
+// Individual people on apps and links (migration 040). Empty until the
+// migration is applied.
+export const getCachedUserAccess = unstable_cache(
+  async (): Promise<UserAccessRow[]> => {
+    const supabase = createAdminClient();
+    const { data } = await supabase
+      .from("launcher_user_access")
+      .select("profile_id, app_id, link_id");
+    return (data || []) as UserAccessRow[];
+  },
+  ["launcher-user-access"],
+  { tags: [LAUNCHER_TAGS.userAccess], revalidate: REVALIDATE_SECONDS },
 );
 
 export const getCachedSections = unstable_cache(
@@ -126,12 +142,14 @@ export function bustLauncherCache(kind: LauncherCacheKind): void {
     case "apps":
       revalidateTag(LAUNCHER_TAGS.apps);
       revalidateTag(LAUNCHER_TAGS.roleAccess);
+      revalidateTag(LAUNCHER_TAGS.userAccess);
       break;
     case "sections":
       revalidateTag(LAUNCHER_TAGS.sections);
       break;
     case "links":
       revalidateTag(LAUNCHER_TAGS.links);
+      revalidateTag(LAUNCHER_TAGS.userAccess);
       break;
     case "roles":
       revalidateTag(LAUNCHER_TAGS.roles);

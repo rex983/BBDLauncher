@@ -10,12 +10,13 @@ import type { JWT } from "next-auth/jwt";
 // Hardcoded owner account — always admin, even before a profiles row exists.
 const OWNER_EMAIL = "rex@bigbuildingsdirect.com";
 
-// Copy the org claims (office / department / is_it) from a profiles row —
+// Copy the org claims (office / department / is_it / can_offboard) from a profiles row —
 // or from the token itself when normalizing legacy tokens — onto the JWT.
 function applyOrgClaims(token: JWT, row: Record<string, unknown>) {
   token.office = (row.office as Office | null) ?? null;
   token.department = (row.department as Department | null) ?? null;
   token.is_it = (row.is_it as boolean | null) ?? false;
+  token.can_offboard = (row.can_offboard as boolean | null) ?? false;
 }
 
 // Dev bypass ONLY in actual development, never via env var in production.
@@ -179,7 +180,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             const supabase = createAdminClient();
             const { data: profile } = await supabase
               .from("profiles")
-              .select("id, office, department, is_it")
+              .select("id, office, department, is_it, can_offboard")
               .eq("email", user.email.toLowerCase())
               .single();
             if (profile) {
@@ -206,7 +207,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, role, office, department, is_it, session_version")
+          .select("id, role, office, department, is_it, can_offboard, session_version")
           .eq("email", user.email.toLowerCase())
           .single();
 
@@ -233,7 +234,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const supabase = createAdminClient();
           const { data: profile } = await supabase
             .from("profiles")
-            .select("id, office, department, is_it")
+            .select("id, office, department, is_it, can_offboard")
             .eq("email", email)
             .single();
           if (profile) {
@@ -257,7 +258,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createAdminClient();
         const { data: current } = await supabase
           .from("profiles")
-          .select("role, office, department, is_it, is_active, session_version, signed_out_at")
+          .select("role, office, department, is_it, can_offboard, is_active, session_version, signed_out_at")
           .eq("id", profileId)
           .single();
         if (current) {
@@ -294,6 +295,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.office = (token.office as Office | null) ?? null;
         session.user.department = (token.department as Department | null) ?? null;
         session.user.is_it = (token.is_it as boolean | undefined) ?? false;
+        session.user.can_offboard = (token.can_offboard as boolean | undefined) ?? false;
       }
       return session;
     },

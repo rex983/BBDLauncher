@@ -241,6 +241,11 @@ export default function AdminAppsPage() {
                 ) : (
                   <span className="text-xs text-muted-foreground">All offices</span>
                 )}
+                {!!app.user_ids?.length && (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    + {app.user_ids.length} {app.user_ids.length === 1 ? "person" : "people"}
+                  </div>
+                )}
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-1">

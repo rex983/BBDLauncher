@@ -87,3 +87,25 @@ export function officesWithAccess(rows: Array<{ office: string | null }>): Acces
   if (rows.some((r) => r.office === null)) return null;
   return ACCESS_OFFICES.filter((o) => rows.some((r) => r.office === o));
 }
+
+// Individual people (migration 040): launcher_user_access rows grant one person
+// an app or a link on top of the grid / office filter.
+
+export interface UserAccessRow {
+  profile_id: string;
+  app_id: string | null;
+  link_id: string | null;
+}
+
+/** App and link ids granted to one person. */
+export function personalGrants(rows: UserAccessRow[], profileId: string | null | undefined) {
+  const apps = new Set<string>();
+  const links = new Set<string>();
+  if (!profileId) return { apps, links };
+  for (const r of rows) {
+    if (r.profile_id !== profileId) continue;
+    if (r.app_id) apps.add(r.app_id);
+    if (r.link_id) links.add(r.link_id);
+  }
+  return { apps, links };
+}

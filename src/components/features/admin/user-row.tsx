@@ -87,6 +87,7 @@ export function UserRow({
         <div className="flex flex-wrap gap-1">
           <Badge variant="secondary">{user.role}</Badge>
           {user.is_it && <Badge>IT</Badge>}
+          {user.can_offboard && <Badge variant="outline">Offboarding</Badge>}
         </div>
       </TableCell>
       <TableCell className="whitespace-nowrap text-muted-foreground">

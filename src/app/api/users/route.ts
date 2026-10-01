@@ -12,10 +12,11 @@ const createSchema = z.object({
   office: z.enum(OFFICES).nullable().optional(),
   department: z.enum(DEPARTMENTS).nullable().optional(),
   is_it: z.boolean().optional(),
+  can_offboard: z.boolean().optional(),
 });
 
 const USER_COLUMNS =
-  "id, email, name:full_name, role, office, department, is_it, is_active, created_at, updated_at";
+  "id, email, name:full_name, role, office, department, is_it, can_offboard, is_active, created_at, updated_at";
 
 export async function GET(req: NextRequest) {
   const session = await requireSession(canManageContent);
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { email, name, role, office, department, is_it } = parsed.data;
+  const { email, name, role, office, department, is_it, can_offboard } = parsed.data;
 
   // Only admins can grant admin role.
   if (role === "admin" && !isAdmin(session.user.role)) {
@@ -65,6 +66,12 @@ export async function POST(req: NextRequest) {
   if (is_it && !isAdmin(session.user.role)) {
     return NextResponse.json(
       { error: "Only admins can grant the IT capability." },
+      { status: 403 }
+    );
+  }
+  if (can_offboard && !isAdmin(session.user.role)) {
+    return NextResponse.json(
+      { error: "Only admins can grant offboarding." },
       { status: 403 }
     );
   }
@@ -85,6 +92,7 @@ export async function POST(req: NextRequest) {
       office: office ?? null,
       department: department ?? null,
       is_it: is_it ?? false,
+      can_offboard: can_offboard ?? false,
       approved: true,
     })
     .select(USER_COLUMNS)

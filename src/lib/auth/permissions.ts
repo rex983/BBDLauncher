@@ -119,12 +119,12 @@ export function analyticsScope(
   return { allowed: false };
 }
 
-// Employee offboarding (/offboarding): admins plus anyone flagged IT. It
-// deactivates accounts and exports personal records, so manager-tier alone
-// isn't enough — tick "IT" in /admin/users to grant it.
+// Employee offboarding (/offboarding): admins plus the named offboarding team.
+// It deactivates accounts and exports personal records, so manager-tier alone
+// isn't enough — tick "Offboarding" in /admin/users to grant it.
 export function canRunOffboarding(
   role: UserRole | undefined | null,
-  isIt: boolean | undefined | null,
+  canOffboard: boolean | undefined | null,
 ): boolean {
-  return isAdmin(role) || !!isIt;
+  return isAdmin(role) || !!canOffboard;
 }

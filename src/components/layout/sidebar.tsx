@@ -125,11 +125,11 @@ export function Sidebar() {
   const visibleManagementItems = managementItems.filter((item) =>
     canAccessManagementPath(effectiveRole, item.href)
   );
-  // While previewing another role, hide IT-only nav too (the preview is
-  // about what that role sees, and is_it isn't part of the role).
+  // While previewing another role, hide the offboarding nav too (the preview
+  // is about what that role sees, and can_offboard isn't part of the role).
   const showOffboarding = canRunOffboarding(
     effectiveRole,
-    isViewingAsOtherRole ? false : session?.user?.is_it,
+    isViewingAsOtherRole ? false : session?.user?.can_offboard,
   );
   const preview = { viewAs, viewAsOffice };
   const pendingCount = usePendingCount(
@@ -201,7 +201,7 @@ export function Sidebar() {
         {showOffboarding && (
           <>
             <div className="mt-6 mb-2 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              IT
+              People
             </div>
             <Link
               href="/offboarding"

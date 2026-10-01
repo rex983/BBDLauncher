@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import type { ImportantLink } from "@/types/link";
 import type { Office } from "@/types/auth";
+import { PeoplePicker } from "@/components/features/admin/people-picker";
 
 interface LinkFormProps {
   link?: ImportantLink | null;
@@ -26,7 +27,11 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
   const [url, setUrl] = useState(link?.url || "");
   const [iconUrl, setIconUrl] = useState(link?.icon_url || "");
   const [displayOrder, setDisplayOrder] = useState(link?.display_order ?? 0);
-  const [office, setOffice] = useState<Office | "none">(link?.office ?? "none");
+  // "people" = shown only to the people listed below.
+  const [office, setOffice] = useState<Office | "none" | "people">(
+    link?.people_only ? "people" : (link?.office ?? "none"),
+  );
+  const [userIds, setUserIds] = useState<string[]>(link?.user_ids || []);
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,7 +44,9 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
       url,
       icon_url: iconUrl || null,
       display_order: displayOrder,
-      office: office === "none" ? null : office,
+      office: office === "none" || office === "people" ? null : office,
+      people_only: office === "people",
+      user_ids: userIds,
     };
 
     const res = link
@@ -121,7 +128,7 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
           <Label>Office</Label>
           <Select
             value={office}
-            onValueChange={(v) => setOffice(v as Office | "none")}
+            onValueChange={(v) => setOffice(v as Office | "none" | "people")}
           >
             <SelectTrigger>
               <SelectValue />
@@ -131,9 +138,20 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
               <SelectItem value="Sales">Sales only</SelectItem>
               <SelectItem value="BST">BST only</SelectItem>
               <SelectItem value="RnD">RnD only</SelectItem>
+              <SelectItem value="people">Only the people below</SelectItem>
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Individual people</Label>
+        <p className="text-xs text-muted-foreground">
+          {office === "people"
+            ? "Only these people see the link."
+            : "These people see the link whatever their office."}
+        </p>
+        <PeoplePicker value={userIds} onChange={setUserIds} />
       </div>
 
       <Button type="submit" disabled={saving} className="w-full">

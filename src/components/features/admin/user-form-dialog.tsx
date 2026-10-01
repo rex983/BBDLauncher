@@ -33,6 +33,7 @@ interface FormState {
   office: Office | "";
   department: Department | "";
   is_it: boolean;
+  can_offboard: boolean;
 }
 
 const EMPTY_FORM: FormState = {
@@ -42,6 +43,7 @@ const EMPTY_FORM: FormState = {
   office: "",
   department: "",
   is_it: false,
+  can_offboard: false,
 };
 
 interface UserFormDialogProps {
@@ -76,6 +78,7 @@ export function UserFormDialog({
         office: editing.office ?? "",
         department: editing.department ?? "",
         is_it: editing.is_it ?? false,
+        can_offboard: editing.can_offboard ?? false,
       });
     } else {
       setForm(EMPTY_FORM);
@@ -92,6 +95,9 @@ export function UserFormDialog({
     setSaving(true);
 
     const itChanged = editing ? form.is_it !== (editing.is_it ?? false) : form.is_it;
+    const offboardChanged = editing
+      ? form.can_offboard !== (editing.can_offboard ?? false)
+      : form.can_offboard;
 
     const res = editing
       ? await fetch(`/api/users/${editing.id}`, {
@@ -103,6 +109,7 @@ export function UserFormDialog({
             office: form.office || null,
             department: form.department || null,
             ...(viewerIsAdmin && itChanged ? { is_it: form.is_it } : {}),
+            ...(viewerIsAdmin && offboardChanged ? { can_offboard: form.can_offboard } : {}),
           }),
         })
       : await fetch("/api/users", {
@@ -115,6 +122,7 @@ export function UserFormDialog({
             office: form.office || null,
             department: form.department || null,
             ...(viewerIsAdmin && form.is_it ? { is_it: true } : {}),
+            ...(viewerIsAdmin && form.can_offboard ? { can_offboard: true } : {}),
           }),
         });
 
@@ -243,9 +251,19 @@ export function UserFormDialog({
               />
               <span>IT — can handle BBD Help Desk tickets</span>
             </Label>
+            <Label className="flex items-center gap-2 font-normal">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input disabled:opacity-50"
+                checked={form.can_offboard}
+                disabled={!viewerIsAdmin}
+                onChange={(e) => setForm({ ...form, can_offboard: e.target.checked })}
+              />
+              <span>Offboarding — can run employee offboarding</span>
+            </Label>
             {!viewerIsAdmin && (
               <p className="text-xs text-muted-foreground">
-                Only admins can grant the IT capability.
+                Only admins can grant IT or offboarding.
               </p>
             )}
           </div>

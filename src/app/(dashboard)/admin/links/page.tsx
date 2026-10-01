@@ -183,10 +183,18 @@ export default function AdminLinksPage() {
                 </a>
               </TableCell>
               <TableCell>
-                {link.office ? (
+                {link.people_only ? (
+                  <Badge variant="outline">People only</Badge>
+                ) : link.office ? (
                   <Badge variant="outline">{link.office}</Badge>
                 ) : (
                   <span className="text-xs text-muted-foreground">Everyone</span>
+                )}
+                {!!link.user_ids?.length && (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {link.people_only ? "" : "+ "}
+                    {link.user_ids.length} {link.user_ids.length === 1 ? "person" : "people"}
+                  </div>
                 )}
               </TableCell>
               <TableCell>{link.display_order}</TableCell>

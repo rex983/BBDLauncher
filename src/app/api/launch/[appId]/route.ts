@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSamlAssertion, generateAutoSubmitForm } from "@/lib/saml/idp";
 import { generateSsoToken } from "@/lib/sso/jwt-issuer";
 import { rowsAllow } from "@/lib/launcher/access";
+import { hasPersonalAppGrant } from "@/lib/launcher/user-access";
 import { isClockedIn } from "@/lib/timesheets/server";
 import { rateLimit } from "@/lib/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
@@ -68,7 +69,9 @@ export async function GET(
     office: r.office ?? null,
   }));
 
-  if (!rowsAllow(rows, session.user.role, session.user.office, session.user.role === "admin")) {
+  // People added to the app by name (migration 040) skip both office gates.
+  const personal = await hasPersonalAppGrant(session.user.profileId, appId);
+  if (!personal && !rowsAllow(rows, session.user.role, session.user.office, session.user.role === "admin")) {
     return NextResponse.json(
       { error: "You do not have access to this application" },
       { status: 403 }
@@ -92,6 +95,7 @@ export async function GET(
   const appOffices: string[] = Array.isArray(app.offices) ? app.offices : [];
   if (
     appOffices.length > 0 &&
+    !personal &&
     session.user.role !== "admin" &&
     (!session.user.office || !appOffices.includes(session.user.office))
   ) {

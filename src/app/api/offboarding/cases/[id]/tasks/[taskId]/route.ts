@@ -51,7 +51,7 @@ export async function PATCH(
       const allowed = await listOffboarders();
       if (!allowed.some((p) => p.id === parsed.data.assigned_to)) {
         return NextResponse.json(
-          { error: "Tasks can only be assigned to admins or IT users." },
+          { error: "Tasks can only be assigned to admins or the offboarding team." },
           { status: 400 },
         );
       }

@@ -7,8 +7,8 @@ import type { Session } from "next-auth";
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canRunOffboarding, isAdmin } from "@/lib/auth/permissions";
-import { allowedAppIds } from "@/lib/launcher/access";
-import { getCachedApps, getCachedRoleAppAccess } from "@/lib/launcher/cache";
+import { allowedAppIds, personalGrants } from "@/lib/launcher/access";
+import { getCachedApps, getCachedRoleAppAccess, getCachedUserAccess } from "@/lib/launcher/cache";
 import { createNotification } from "@/lib/notifications/service";
 import type {
   CaseDetail,
@@ -32,23 +32,23 @@ const TASK_COLUMNS =
 export async function requireOffboarder(): Promise<Session | NextResponse> {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canRunOffboarding(session.user.role, session.user.is_it)) {
+  if (!canRunOffboarding(session.user.role, session.user.can_offboard)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   return session;
 }
 
-// People who can be assigned offboarding tasks — the same admin + IT set
+// People who can be assigned offboarding tasks — the same admin + team set
 // that can open /offboarding, so an assignee can always act on their task.
 export async function listOffboarders(): Promise<PersonRef[]> {
   const supabase = createAdminClient();
   const { data } = await supabase
     .from("profiles")
-    .select("id, email, name:full_name, role, is_it, is_active")
-    .or("role.eq.admin,is_it.eq.true")
+    .select("id, email, name:full_name, role, can_offboard, is_active")
+    .or("role.eq.admin,can_offboard.eq.true")
     .order("full_name", { ascending: true });
   return (data || [])
-    .filter((p) => p.is_active !== false && canRunOffboarding(p.role, p.is_it))
+    .filter((p) => p.is_active !== false && canRunOffboarding(p.role, p.can_offboard))
     .map((p) => ({ id: p.id, name: p.name, email: p.email }));
 }
 
@@ -183,7 +183,7 @@ export async function openCase(params: {
   }
   const caseId = created.id as string;
 
-  const [templateRes, apps, accessRows] = await Promise.all([
+  const [templateRes, apps, accessRows, userAccessRows] = await Promise.all([
     supabase
       .from("offboarding_checklist_items")
       .select("id, title, system, category, instructions, requires_note, default_assignee, display_order, is_active")
@@ -191,10 +191,12 @@ export async function openCase(params: {
       .order("display_order"),
     getCachedApps(),
     getCachedRoleAppAccess(),
+    getCachedUserAccess(),
   ]);
   const template = (templateRes.data || []) as ChecklistItem[];
   const appIds = allowedAppIds(accessRows, person.role, person.office, isAdmin(person.role));
-  const personApps = apps.filter((a) => appIds.has(a.id));
+  const namedAppIds = personalGrants(userAccessRows, person.id).apps;
+  const personApps = apps.filter((a) => appIds.has(a.id) || namedAppIds.has(a.id));
 
   const rows: Array<Record<string, unknown>> = [
     {

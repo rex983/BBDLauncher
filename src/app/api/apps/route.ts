@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OFFICES } from "@/lib/org/constants";
 import { ACCESS_OFFICES, cellsFromRows, officesWithAccess, rowsFromCells } from "@/lib/launcher/access";
+import { setUserIds, userIdsByTarget } from "@/lib/launcher/user-access";
 
 const httpUrl = z
   .string()
@@ -31,6 +32,8 @@ const appSchema = z.object({
     .array(z.object({ role: z.string().min(1), office: z.enum(ACCESS_OFFICES) }))
     .max(500)
     .optional(),
+  /** Individual people who can open the app, on top of the grid. */
+  user_ids: z.array(z.string().uuid()).max(500).optional(),
   sso_config: z
     .object({
       sp_entity_id: z.string().optional(),
@@ -79,6 +82,7 @@ export async function GET(req: NextRequest) {
 
     const appIds = (apps || []).map((a) => a.id);
 
+    const usersPromise = userIdsByTarget("app_id", appIds);
     const [accessRes, ssoRes] = appIds.length
       ? await Promise.all([
           supabase
@@ -91,6 +95,7 @@ export async function GET(req: NextRequest) {
             .in("app_id", appIds),
         ])
       : [{ data: [] as { app_id: string; role_name: string }[] }, { data: [] as { app_id: string }[] }];
+    const usersByAppId = await usersPromise;
 
     const rowsByAppId = new Map<string, Array<{ role_name: string; office: string | null }>>();
     for (const a of (accessRes.data || []) as Array<{ app_id: string; role_name: string; office?: string | null }>) {
@@ -106,6 +111,7 @@ export async function GET(req: NextRequest) {
       roles: [...new Set((rowsByAppId.get(app.id) || []).map((r) => r.role_name))],
       access: cellsFromRows(rowsByAppId.get(app.id) || []),
       access_offices: officesWithAccess(rowsByAppId.get(app.id) || []),
+      user_ids: usersByAppId.get(app.id) || [],
       sso_config: ssoByAppId.get(app.id) || null,
     }));
 
@@ -130,7 +136,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { roles, access, sso_config, ...appData } = parsed.data;
+    const { roles, access, user_ids, sso_config, ...appData } = parsed.data;
     // The grid holds office limits now; the app's own office list stays empty.
     if (access) appData.offices = [];
     const supabase = createAdminClient();
@@ -152,6 +158,11 @@ export async function POST(req: NextRequest) {
     if (accessRows.length) {
       const { error: roleError } = await supabase.from("launcher_role_app_access").insert(accessRows);
       if (roleError) console.error("Role access insert error:", roleError.message);
+    }
+
+    if (user_ids?.length) {
+      const userError = await setUserIds("app_id", app.id, user_ids);
+      if (userError) console.error("User access insert error:", userError);
     }
 
     // Set SSO config

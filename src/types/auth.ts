@@ -18,6 +18,7 @@ export interface UserProfile {
   office: Office | null;
   department: Department | null;
   is_it: boolean;
+  can_offboard: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -35,6 +36,7 @@ declare module "next-auth" {
       office: Office | null;
       department: Department | null;
       is_it: boolean;
+      can_offboard: boolean;
     };
   }
 
@@ -44,6 +46,7 @@ declare module "next-auth" {
     office: Office | null;
     department?: Department | null;
     is_it?: boolean;
+    can_offboard?: boolean;
     session_version?: number;
   }
 }

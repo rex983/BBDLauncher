@@ -5,6 +5,7 @@ import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OFFICES } from "@/lib/org/constants";
+import { setUserIds } from "@/lib/launcher/user-access";
 
 const linkUpdateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -13,6 +14,10 @@ const linkUpdateSchema = z.object({
   icon_url: z.string().nullable().optional(),
   display_order: z.number().optional(),
   office: z.enum(OFFICES).nullable().optional(),
+  /** Shown only to the people in user_ids. */
+  people_only: z.boolean().optional(),
+  /** Individual people who see the link, on top of the office filter. */
+  user_ids: z.array(z.string().uuid()).max(500).optional(),
 });
 
 export async function PUT(
@@ -29,11 +34,12 @@ export async function PUT(
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
+    const { user_ids, ...linkData } = parsed.data;
     const supabase = createAdminClient();
 
     const { data: link, error } = await supabase
       .from("launcher_links")
-      .update(parsed.data)
+      .update(linkData)
       .eq("id", id)
       .select()
       .single();
@@ -43,6 +49,11 @@ export async function PUT(
         { error: error?.message || "Failed to update" },
         { status: 500 }
       );
+    }
+
+    if (user_ids !== undefined) {
+      const userError = await setUserIds("link_id", id, user_ids);
+      if (userError) return NextResponse.json({ error: userError }, { status: 500 });
     }
 
     bustLauncherCache("links");

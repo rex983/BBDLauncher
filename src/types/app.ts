@@ -60,5 +60,7 @@ export interface AppWithAccess extends LauncherApp {
   access: import("@/lib/launcher/access").AccessCell[];
   /** Offices with any access; null = every office. */
   access_offices: import("@/lib/launcher/access").AccessOffice[] | null;
+  /** People who can open it by name, on top of the grid (migration 040). */
+  user_ids?: string[];
   sso_config?: SsoConfig | null;
 }

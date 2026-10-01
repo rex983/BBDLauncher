@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OFFICES } from "@/lib/org/constants";
 import { ACCESS_OFFICES, rowsFromCells } from "@/lib/launcher/access";
+import { setUserIds } from "@/lib/launcher/user-access";
 
 const httpUrl = z
   .string()
@@ -31,6 +32,8 @@ const appUpdateSchema = z.object({
     .array(z.object({ role: z.string().min(1), office: z.enum(ACCESS_OFFICES) }))
     .max(500)
     .optional(),
+  /** Individual people who can open the app, on top of the grid. */
+  user_ids: z.array(z.string().uuid()).max(500).optional(),
   sso_config: z
     .object({
       sp_entity_id: z.string().optional(),
@@ -83,7 +86,7 @@ export async function PUT(
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { roles, access, sso_config, ...appData } = parsed.data;
+  const { roles, access, user_ids, sso_config, ...appData } = parsed.data;
   // The grid holds office limits now; the app's own office list stays empty.
   if (access) appData.offices = [];
   const supabase = createAdminClient();
@@ -110,6 +113,11 @@ export async function PUT(
       const { error: insError } = await supabase.from("launcher_role_app_access").insert(rows);
       if (insError) return NextResponse.json({ error: insError.message }, { status: 500 });
     }
+  }
+
+  if (user_ids !== undefined) {
+    const userError = await setUserIds("app_id", id, user_ids);
+    if (userError) return NextResponse.json({ error: userError }, { status: 500 });
   }
 
   // Update SSO config
