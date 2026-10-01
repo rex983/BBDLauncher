@@ -1,20 +1,5 @@
 import type { BadgeVariant } from "@/lib/badge-variant";
 
-export const OFFBOARDING_CATEGORIES = [
-  { value: "access", label: "Revoke access" },
-  { value: "data", label: "Save & back up data" },
-  { value: "hardware", label: "Equipment" },
-  { value: "hr", label: "HR & payroll" },
-] as const;
-export type OffboardingCategory = (typeof OFFBOARDING_CATEGORIES)[number]["value"];
-export const OFFBOARDING_CATEGORY_VALUES = OFFBOARDING_CATEGORIES.map((c) => c.value) as [
-  OffboardingCategory,
-  ...OffboardingCategory[],
-];
-export const OFFBOARDING_CATEGORY_LABEL = Object.fromEntries(
-  OFFBOARDING_CATEGORIES.map((c) => [c.value, c.label]),
-) as Record<OffboardingCategory, string>;
-
 export const OFFBOARDING_REASONS = [
   { value: "resigned", label: "Resigned" },
   { value: "terminated", label: "Terminated" },
@@ -53,15 +38,31 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
 
 // Built-in actions the launcher performs itself (src/lib/offboarding/actions.ts).
 export type AutoAction = "deactivate_launcher" | "export_launcher_data";
+// Template-only: "revoke_apps" expands into one task per launcher app the
+// person can open when a case starts.
+export type TemplateAutoAction = AutoAction | "revoke_apps";
+
+export const TEMPLATE_AUTO_LABEL: Record<TemplateAutoAction, string> = {
+  deactivate_launcher: "one-click",
+  export_launcher_data: "one-click",
+  revoke_apps: "one task per app",
+};
+
+/** A checklist section ("Phone / communications", "Apps", …). */
+export interface OffboardingSection {
+  id: string;
+  name: string;
+  display_order: number;
+}
 
 export interface ChecklistItem {
   id: string;
+  section_id: string;
   title: string;
-  system: string;
-  category: OffboardingCategory;
+  system: string | null;
   instructions: string | null;
   requires_note: boolean;
-  default_assignee: string | null;
+  auto_action: TemplateAutoAction | null;
   display_order: number;
   is_active: boolean;
 }
@@ -101,14 +102,14 @@ export interface OffboardingTask {
   item_id: string | null;
   app_id: string | null;
   title: string;
-  system: string;
-  category: OffboardingCategory;
+  system: string | null;
+  /** Section name, snapshotted when the case opened. */
+  section: string;
   instructions: string | null;
   requires_note: boolean;
   auto_action: AutoAction | null;
   display_order: number;
   status: TaskStatus;
-  assigned_to: string | null;
   completed_by: string | null;
   completed_at: string | null;
   note: string | null;
@@ -136,7 +137,7 @@ export interface CaseDetail {
   tasks: OffboardingTask[];
   events: OffboardingEvent[];
   exports: CaseExport[];
-  /** Everyone referenced by the case (assignees, actors) for name lookup. */
+  /** Everyone referenced by the case (actors) for name lookup. */
   people: PersonRef[];
   /** Live state of the employee's launcher account (null if profile deleted). */
   account: { is_active: boolean } | null;
@@ -154,6 +155,7 @@ export const EVENT_LABEL: Record<string, string> = {
   task_assigned: "Assigned",
   task_note: "Updated note",
   task_added: "Added task",
+  task_deleted: "Deleted task",
   launcher_deactivated: "Deactivated launcher account",
   data_exported: "Backed up launcher records",
   export_downloaded: "Downloaded backup",

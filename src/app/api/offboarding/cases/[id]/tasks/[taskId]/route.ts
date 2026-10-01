@@ -3,13 +3,12 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logOffboardingEvent } from "@/lib/offboarding/audit";
 import { requireOpenCase } from "@/lib/offboarding/guard";
-import { listOffboarders, notifyAssignee, requireOffboarder } from "@/lib/offboarding/service";
+import { requireOffboarder } from "@/lib/offboarding/service";
 import { TASK_STATUSES } from "@/lib/offboarding/types";
 
 const updateSchema = z.object({
   status: z.enum(TASK_STATUSES).optional(),
   note: z.string().max(4000).nullable().optional(),
-  assigned_to: z.string().uuid().nullable().optional(),
 });
 
 export async function PATCH(
@@ -31,7 +30,7 @@ export async function PATCH(
   const supabase = createAdminClient();
   const { data: task } = await supabase
     .from("offboarding_tasks")
-    .select("id, title, status, note, assigned_to, requires_note, auto_action")
+    .select("id, title, status, note, requires_note, auto_action")
     .eq("id", taskId)
     .eq("case_id", id)
     .maybeSingle();
@@ -44,20 +43,6 @@ export async function PATCH(
   if (note !== task.note) {
     updates.note = note;
     events.push({ type: "task_note", details: { note } });
-  }
-
-  if (parsed.data.assigned_to !== undefined && parsed.data.assigned_to !== task.assigned_to) {
-    if (parsed.data.assigned_to) {
-      const allowed = await listOffboarders();
-      if (!allowed.some((p) => p.id === parsed.data.assigned_to)) {
-        return NextResponse.json(
-          { error: "Tasks can only be assigned to admins or the offboarding team." },
-          { status: 400 },
-        );
-      }
-    }
-    updates.assigned_to = parsed.data.assigned_to;
-    events.push({ type: "task_assigned", details: { from: task.assigned_to, to: parsed.data.assigned_to } });
   }
 
   const status = parsed.data.status;
@@ -97,14 +82,40 @@ export async function PATCH(
     });
   }
 
-  if (updates.assigned_to && updates.assigned_to !== session.user.profileId) {
-    notifyAssignee({
-      assigneeId: updates.assigned_to as string,
-      caseId: id,
-      employeeLabel: open.employee_name || open.employee_email,
-      taskTitle: task.title,
-    }).catch(() => undefined);
-  }
+  return NextResponse.json({ ok: true });
+}
 
+// Remove a task from this case. The log keeps a "Deleted task" row with its
+// title, so the record still shows it existed.
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; taskId: string }> },
+) {
+  const session = await requireOffboarder();
+  if (session instanceof NextResponse) return session;
+  const { id, taskId } = await params;
+
+  const open = await requireOpenCase(id);
+  if (open instanceof NextResponse) return open;
+
+  const supabase = createAdminClient();
+  const { data: task } = await supabase
+    .from("offboarding_tasks")
+    .select("id, title, section, status")
+    .eq("id", taskId)
+    .eq("case_id", id)
+    .maybeSingle();
+  if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const { error } = await supabase.from("offboarding_tasks").delete().eq("id", taskId);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logOffboardingEvent({
+    caseId: id,
+    eventType: "task_deleted",
+    session,
+    req,
+    details: { task: task.title, section: task.section, status: task.status },
+  });
   return NextResponse.json({ ok: true });
 }

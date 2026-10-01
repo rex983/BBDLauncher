@@ -9,7 +9,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { canRunOffboarding, isAdmin } from "@/lib/auth/permissions";
 import { allowedAppIds, personalGrants } from "@/lib/launcher/access";
 import { getCachedApps, getCachedRoleAppAccess, getCachedUserAccess } from "@/lib/launcher/cache";
-import { createNotification } from "@/lib/notifications/service";
 import type {
   CaseDetail,
   CaseSummary,
@@ -17,6 +16,7 @@ import type {
   OffboardingCase,
   OffboardingEvent,
   OffboardingReason,
+  OffboardingSection,
   OffboardingTask,
   PersonRef,
 } from "./types";
@@ -26,7 +26,7 @@ export const EXPORT_BUCKET = "offboarding-exports";
 const CASE_COLUMNS =
   "id, profile_id, employee_name, employee_email, employee_role, employee_office, employee_department, last_day, reason, notes, status, opened_by, closed_by, closed_at, created_at";
 const TASK_COLUMNS =
-  "id, case_id, item_id, app_id, title, system, category, instructions, requires_note, auto_action, display_order, status, assigned_to, completed_by, completed_at, note";
+  "id, case_id, item_id, app_id, title, system, section, instructions, requires_note, auto_action, display_order, status, completed_by, completed_at, note";
 
 // Route-handler gate: 401/403 response, or the session.
 export async function requireOffboarder(): Promise<Session | NextResponse> {
@@ -38,18 +38,20 @@ export async function requireOffboarder(): Promise<Session | NextResponse> {
   return session;
 }
 
-// People who can be assigned offboarding tasks — the same admin + team set
-// that can open /offboarding, so an assignee can always act on their task.
-export async function listOffboarders(): Promise<PersonRef[]> {
+const ITEM_COLUMNS =
+  "id, section_id, title, system, instructions, requires_note, auto_action, display_order, is_active";
+
+// The checklist template: sections top to bottom, items ordered within each.
+export async function getTemplate(): Promise<{ sections: OffboardingSection[]; items: ChecklistItem[] }> {
   const supabase = createAdminClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("id, email, name:full_name, role, can_offboard, is_active")
-    .or("role.eq.admin,can_offboard.eq.true")
-    .order("full_name", { ascending: true });
-  return (data || [])
-    .filter((p) => p.is_active !== false && canRunOffboarding(p.role, p.can_offboard))
-    .map((p) => ({ id: p.id, name: p.name, email: p.email }));
+  const [sectionsRes, itemsRes] = await Promise.all([
+    supabase.from("offboarding_sections").select("id, name, display_order").order("display_order"),
+    supabase.from("offboarding_checklist_items").select(ITEM_COLUMNS).order("display_order"),
+  ]);
+  return {
+    sections: (sectionsRes.data || []) as OffboardingSection[],
+    items: (itemsRes.data || []) as ChecklistItem[],
+  };
 }
 
 export async function listCases(): Promise<CaseSummary[]> {
@@ -100,8 +102,11 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail | null> 
 
   const ids = new Set<string>();
   for (const t of tasks) {
-    if (t.assigned_to) ids.add(t.assigned_to);
     if (t.completed_by) ids.add(t.completed_by);
+  }
+  // Older cases logged assignments; keep those log rows readable.
+  for (const e of events) {
+    if (e.event_type === "task_assigned" && typeof e.details?.to === "string") ids.add(e.details.to);
   }
   if (c.opened_by) ids.add(c.opened_by);
   if (c.closed_by) ids.add(c.closed_by);
@@ -129,15 +134,12 @@ const OWN_LOGIN_INSTRUCTIONS = (url: string) =>
   `Has its own login — the launcher can't revoke it. Disable or remove the user directly in the app (${url}) and reassign records they own.`;
 
 export type OpenCaseResult =
-  | { ok: true; caseId: string; assignees: string[]; employeeLabel: string }
+  | { ok: true; caseId: string }
   | { ok: false; status: number; error: string };
 
-// Opens a case and snapshots its checklist:
-//   1. built-in "Deactivate launcher account" (one click)
-//   2. one "Revoke access" task per launcher app the person could open
-//   3. the active template items
-//   4. built-in "Back up launcher records" (one click)
-// Template edits after this point never touch an open case.
+// Opens a case and snapshots the active checklist template, section by
+// section. A "revoke_apps" item becomes one task per launcher app the person
+// could open. Template edits after this point never touch an open case.
 export async function openCase(params: {
   session: Session;
   profileId: string;
@@ -183,96 +185,61 @@ export async function openCase(params: {
   }
   const caseId = created.id as string;
 
-  const [templateRes, apps, accessRows, userAccessRows] = await Promise.all([
-    supabase
-      .from("offboarding_checklist_items")
-      .select("id, title, system, category, instructions, requires_note, default_assignee, display_order, is_active")
-      .eq("is_active", true)
-      .order("display_order"),
+  const [template, apps, accessRows, userAccessRows] = await Promise.all([
+    getTemplate(),
     getCachedApps(),
     getCachedRoleAppAccess(),
     getCachedUserAccess(),
   ]);
-  const template = (templateRes.data || []) as ChecklistItem[];
   const appIds = allowedAppIds(accessRows, person.role, person.office, isAdmin(person.role));
   const namedAppIds = personalGrants(userAccessRows, person.id).apps;
   const personApps = apps.filter((a) => appIds.has(a.id) || namedAppIds.has(a.id));
 
-  const rows: Array<Record<string, unknown>> = [
-    {
-      title: "Deactivate BBD Launcher account",
-      system: "BBD Launcher",
-      category: "access",
-      instructions:
-        "Signs them out everywhere and blocks sign-in to the launcher and every app it signs into. Their timesheets, time off and incident records are kept.",
-      auto_action: "deactivate_launcher",
-      display_order: 0,
-    },
-    ...personApps.map((a, i) => ({
-      app_id: a.id,
-      title: `Revoke access: ${a.name}`,
-      system: a.name,
-      category: "access",
-      instructions:
-        a.sso_type === "none" || a.sso_type === "direct_link"
-          ? OWN_LOGIN_INSTRUCTIONS(a.url)
-          : SSO_APP_INSTRUCTIONS,
-      display_order: 1000 + i,
-    })),
-    ...template.map((t) => ({
-      item_id: t.id,
-      title: t.title,
-      system: t.system,
-      category: t.category,
-      instructions: t.instructions,
-      requires_note: t.requires_note,
-      assigned_to: t.default_assignee,
-      display_order: t.display_order,
-    })),
-    {
-      title: "Back up launcher records",
-      system: "BBD Launcher",
-      category: "data",
-      instructions:
-        "Saves their profile, timesheets, schedules, time off, incident reports, memo acknowledgements and app-launch history as a JSON file attached to this case.",
-      auto_action: "export_launcher_data",
-      display_order: 100,
-    },
-  ].map((r) => ({ case_id: caseId, ...r }));
-
-  // Rows don't all set the same columns (only template rows carry
-  // requires_note / assigned_to); defaultToNull:false lets each missing column
-  // take its table default instead of NULL.
-  const { error: tasksError } = await supabase
-    .from("offboarding_tasks")
-    .insert(rows, { defaultToNull: false });
-  if (tasksError) {
-    // Don't leave a half-built case behind.
-    await supabase.from("offboarding_cases").delete().eq("id", caseId);
-    return { ok: false, status: 500, error: tasksError.message };
+  const rows: Array<Record<string, unknown>> = [];
+  const push = (r: Record<string, unknown>) =>
+    rows.push({ case_id: caseId, requires_note: false, ...r, display_order: rows.length * 10 });
+  for (const section of template.sections) {
+    for (const item of template.items) {
+      if (item.section_id !== section.id || !item.is_active) continue;
+      if (item.auto_action === "revoke_apps") {
+        for (const a of personApps) {
+          push({
+            item_id: item.id,
+            app_id: a.id,
+            section: section.name,
+            title: `Revoke access: ${a.name}`,
+            system: a.name,
+            instructions:
+              a.sso_type === "none" || a.sso_type === "direct_link"
+                ? OWN_LOGIN_INSTRUCTIONS(a.url)
+                : SSO_APP_INSTRUCTIONS,
+          });
+        }
+        continue;
+      }
+      push({
+        item_id: item.id,
+        section: section.name,
+        title: item.title,
+        system: item.system,
+        instructions: item.instructions,
+        requires_note: item.requires_note,
+        auto_action: item.auto_action,
+      });
+    }
   }
 
-  const assignees = [
-    ...new Set(template.map((t) => t.default_assignee).filter((id): id is string => !!id)),
-  ];
-  return { ok: true, caseId, assignees, employeeLabel: person.name || person.email };
-}
+  if (rows.length) {
+    // Rows don't all set the same columns; let missing ones take their defaults.
+    const { error: tasksError } = await supabase
+      .from("offboarding_tasks")
+      .insert(rows, { defaultToNull: false });
+    if (tasksError) {
+      // Don't leave a half-built case behind.
+      await supabase.from("offboarding_cases").delete().eq("id", caseId);
+      return { ok: false, status: 500, error: tasksError.message };
+    }
+  }
 
-export function notifyAssignee(params: {
-  assigneeId: string;
-  caseId: string;
-  employeeLabel: string;
-  taskTitle?: string;
-}): Promise<void> {
-  return createNotification({
-    userId: params.assigneeId,
-    type: "offboarding_task_assigned",
-    title: params.taskTitle
-      ? `Offboarding task: ${params.taskTitle}`
-      : `You have offboarding tasks for ${params.employeeLabel}`,
-    body: params.taskTitle ? `For ${params.employeeLabel}` : undefined,
-    href: `/offboarding/${params.caseId}`,
-    referenceType: "offboarding_case",
-    referenceId: params.caseId,
-  });
+  return { ok: true, caseId };
 }

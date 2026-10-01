@@ -5,8 +5,6 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -14,13 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -38,24 +29,22 @@ import {
   RotateCcw,
   ShieldOff,
   StickyNote,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   CASE_STATUS_LABEL,
   CASE_STATUS_VARIANT,
   EVENT_LABEL,
-  OFFBOARDING_CATEGORIES,
   OFFBOARDING_REASON_LABEL,
   TASK_STATUS_LABEL,
   type CaseDetail,
-  type OffboardingCategory,
   type OffboardingTask,
   type PersonRef,
   type TaskStatus,
 } from "@/lib/offboarding/types";
 import { fmtDay } from "./OffboardingListShell";
-
-const UNASSIGNED = "__none";
+import { EMPTY_DRAFT, ItemFields, type ItemDraft } from "./ItemFields";
 
 function fmtWhen(iso: string) {
   return new Date(iso).toLocaleString([], {
@@ -78,25 +67,20 @@ async function send(url: string, method: string, body?: unknown): Promise<string
   return typeof b.error === "string" ? b.error : "Something went wrong";
 }
 
-export function OffboardingCaseShell({
-  initial,
-  offboarders,
-}: {
-  initial: CaseDetail;
-  offboarders: PersonRef[];
-}) {
+export function OffboardingCaseShell({ initial }: { initial: CaseDetail }) {
   const [detail, setDetail] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
+  // Section the "Add task" dialog is adding to.
+  const [addTo, setAddTo] = useState<string | null>(null);
   const c = detail.case;
   const isOpen = c.status === "open";
   const base = `/api/offboarding/cases/${c.id}`;
 
   const people = useMemo(() => {
     const m = new Map<string, PersonRef>();
-    for (const p of [...detail.people, ...offboarders]) m.set(p.id, p);
+    for (const p of detail.people) m.set(p.id, p);
     return m;
-  }, [detail.people, offboarders]);
+  }, [detail.people]);
   const who = (id: string | null) => (id ? people.get(id)?.name || people.get(id)?.email || "Unknown" : "—");
 
   const reload = useCallback(async () => {
@@ -120,6 +104,8 @@ export function OffboardingCaseShell({
   const done = detail.tasks.filter((t) => t.status !== "pending").length;
   const pct = total ? Math.round((done / total) * 100) : 0;
   const tasksById = new Map(detail.tasks.map((t) => [t.id, t]));
+  // Sections in the order their first task appears (tasks come sorted).
+  const sections = [...new Set(detail.tasks.map((t) => t.section))];
 
   const setCaseStatus = (status: "open" | "completed" | "cancelled") => {
     const prompts = {
@@ -192,14 +178,13 @@ export function OffboardingCaseShell({
         {c.notes && <p className="mt-2 whitespace-pre-wrap text-foreground">{c.notes}</p>}
       </div>
 
-      {OFFBOARDING_CATEGORIES.map((cat) => {
-        const tasks = detail.tasks.filter((t) => t.category === cat.value);
-        if (tasks.length === 0) return null;
+      {sections.map((section) => {
+        const tasks = detail.tasks.filter((t) => t.section === section);
         return (
-          <Card key={cat.value} className="break-inside-avoid">
+          <Card key={section} className="break-inside-avoid">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center justify-between text-base">
-                <span>{cat.label}</span>
+                <span>{section}</span>
                 <span className="text-xs font-normal text-muted-foreground tabular-nums">
                   {tasks.filter((t) => t.status !== "pending").length}/{tasks.length}
                 </span>
@@ -212,9 +197,12 @@ export function OffboardingCaseShell({
                   task={t}
                   caseOpen={isOpen}
                   busy={busy === t.id}
-                  offboarders={offboarders}
                   who={who}
                   onPatch={(body) => run(t.id, () => send(`${base}/tasks/${t.id}`, "PATCH", body))}
+                  onDelete={() => {
+                    if (!confirm(`Remove "${t.title}" from this case? The log keeps a record of it.`)) return;
+                    run(t.id, () => send(`${base}/tasks/${t.id}`, "DELETE"));
+                  }}
                   onAction={() => {
                     if (
                       t.auto_action === "deactivate_launcher" &&
@@ -228,17 +216,18 @@ export function OffboardingCaseShell({
                   }}
                 />
               ))}
+              {isOpen && (
+                <div className="px-6 py-2 print:hidden">
+                  <Button size="sm" variant="ghost" onClick={() => setAddTo(section)}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add task
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         );
       })}
-
-      {isOpen && (
-        <Button variant="outline" onClick={() => setAddOpen(true)} className="print:hidden">
-          <Plus className="mr-2 h-4 w-4" />
-          Add a task
-        </Button>
-      )}
 
       <Card className="break-inside-avoid">
         <CardHeader className="pb-2">
@@ -318,8 +307,8 @@ export function OffboardingCaseShell({
       </Card>
 
       <AddTaskDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
+        section={addTo}
+        onClose={() => setAddTo(null)}
         onAdd={async (body) => {
           const err = await send(`${base}/tasks`, "POST", body);
           if (!err) await reload();
@@ -359,6 +348,7 @@ function EventExtra({
 }) {
   if (!details) return null;
   let text: string | null = null;
+  // task_assigned only appears on cases from before assignments were removed.
   if (type === "task_assigned") text = `to ${details.to ? who(details.to as string) : "nobody"}`;
   else if (type === "task_note" && details.note) text = `“${details.note as string}”`;
   else if (type === "launcher_deactivated" && details.clocked_out) text = "(also clocked them out)";
@@ -374,17 +364,17 @@ function TaskRow({
   task,
   caseOpen,
   busy,
-  offboarders,
   who,
   onPatch,
+  onDelete,
   onAction,
 }: {
   task: OffboardingTask;
   caseOpen: boolean;
   busy: boolean;
-  offboarders: PersonRef[];
   who: (id: string | null) => string;
-  onPatch: (body: { status?: TaskStatus; note?: string | null; assigned_to?: string | null }) => void;
+  onPatch: (body: { status?: TaskStatus; note?: string | null }) => void;
+  onDelete: () => void;
   onAction: () => void;
 }) {
   const [editingNote, setEditingNote] = useState(false);
@@ -414,7 +404,7 @@ function TaskRow({
           <span className={cn("font-medium", task.status === "not_applicable" && "line-through text-muted-foreground")}>
             {task.title}
           </span>
-          <Badge variant="outline" className="text-[10px]">{task.system}</Badge>
+          {task.system && <Badge variant="outline" className="text-[10px]">{task.system}</Badge>}
           {task.requires_note && pending && (
             <Badge variant="secondary" className="text-[10px]">note required</Badge>
           )}
@@ -466,21 +456,6 @@ function TaskRow({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 md:justify-end print:hidden">
-        <Select
-          value={task.assigned_to ?? UNASSIGNED}
-          onValueChange={(v) => onPatch({ assigned_to: v === UNASSIGNED ? null : v })}
-          disabled={!caseOpen || busy}
-        >
-          <SelectTrigger className="h-8 w-[150px] text-xs">
-            <SelectValue placeholder="Unassigned" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-            {offboarders.map((p) => (
-              <SelectItem key={p.id} value={p.id}>{p.name || p.email}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         {caseOpen && !editingNote && (
           <Button size="sm" variant="ghost" onClick={openNoteEditor} title="Add or edit note">
             <StickyNote className="h-4 w-4" />
@@ -517,152 +492,79 @@ function TaskRow({
             </Button>
           </>
         )}
+        {caseOpen && (
+          <Button size="sm" variant="ghost" onClick={onDelete} disabled={busy} title="Remove from this case">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </div>
   );
 }
 
 function AddTaskDialog({
-  open,
-  onOpenChange,
+  section,
+  onClose,
   onAdd,
 }: {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
+  section: string | null;
+  onClose: () => void;
   onAdd: (body: {
+    section: string;
     title: string;
-    system: string;
-    category: OffboardingCategory;
+    system: string | null;
     instructions: string | null;
     requires_note: boolean;
   }) => Promise<string | null>;
 }) {
-  const [title, setTitle] = useState("");
-  const [system, setSystem] = useState("");
-  const [category, setCategory] = useState<OffboardingCategory>("access");
-  const [instructions, setInstructions] = useState("");
-  const [requiresNote, setRequiresNote] = useState(false);
+  const [draft, setDraft] = useState<ItemDraft>(EMPTY_DRAFT);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const close = () => {
+    setDraft(EMPTY_DRAFT);
+    setError(null);
+    onClose();
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!section) return;
     setSaving(true);
-    const err = await onAdd({ title, system, category, instructions: instructions || null, requires_note: requiresNote });
+    const err = await onAdd({
+      section,
+      title: draft.title,
+      system: draft.system || null,
+      instructions: draft.instructions || null,
+      requires_note: draft.requiresNote,
+    });
     setSaving(false);
     if (err) {
       setError(err);
       return;
     }
-    setTitle("");
-    setSystem("");
-    setInstructions("");
-    setRequiresNote(false);
-    setError(null);
-    onOpenChange(false);
+    close();
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={section !== null} onOpenChange={(o) => !o && close()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add a task to this case</DialogTitle>
+          <DialogTitle>Add a task to {section}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
-          <ChecklistItemFields
-            title={title}
-            setTitle={setTitle}
-            system={system}
-            setSystem={setSystem}
-            category={category}
-            setCategory={setCategory}
-            instructions={instructions}
-            setInstructions={setInstructions}
-            requiresNote={requiresNote}
-            setRequiresNote={setRequiresNote}
-          />
+          <ItemFields draft={draft} onChange={setDraft} />
           <p className="text-xs text-muted-foreground">
-            Only this case gets the task. To add it for everyone, edit the checklist template.
+            Only this case gets the task. To add it for everyone, edit the checklist.
           </p>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="flex justify-end">
-            <Button type="submit" disabled={saving || !title.trim() || !system.trim()}>
+            <Button type="submit" disabled={saving || !draft.title.trim()}>
               {saving ? "Adding…" : "Add task"}
             </Button>
           </div>
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// Shared by the add-task dialog and the checklist template editor.
-export function ChecklistItemFields(props: {
-  title: string;
-  setTitle: (v: string) => void;
-  system: string;
-  setSystem: (v: string) => void;
-  category: OffboardingCategory;
-  setCategory: (v: OffboardingCategory) => void;
-  instructions: string;
-  setInstructions: (v: string) => void;
-  requiresNote: boolean;
-  setRequiresNote: (v: boolean) => void;
-}) {
-  return (
-    <>
-      <div className="space-y-2">
-        <Label htmlFor="ci-title">Task</Label>
-        <Input
-          id="ci-title"
-          value={props.title}
-          onChange={(e) => props.setTitle(e.target.value)}
-          placeholder="e.g. Remove from manufacturer portal"
-          required
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="ci-system">System / place</Label>
-          <Input
-            id="ci-system"
-            value={props.system}
-            onChange={(e) => props.setSystem(e.target.value)}
-            placeholder="e.g. Eagle portal"
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Category</Label>
-          <Select value={props.category} onValueChange={(v) => props.setCategory(v as OffboardingCategory)}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {OFFBOARDING_CATEGORIES.map((c) => (
-                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="ci-instructions">Instructions</Label>
-        <Textarea
-          id="ci-instructions"
-          rows={3}
-          value={props.instructions}
-          onChange={(e) => props.setInstructions(e.target.value)}
-        />
-      </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={props.requiresNote}
-          onChange={(e) => props.setRequiresNote(e.target.checked)}
-        />
-        Require a note to close (e.g. where a backup was saved)
-      </label>
-    </>
   );
 }
