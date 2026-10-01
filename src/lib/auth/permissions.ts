@@ -26,8 +26,7 @@ export function isAdmin(role: UserRole | undefined | null): boolean {
 
 // Roles that get manager-tier privileges (canManageContent + office-scoped
 // analytics + MANAGER_ADMIN_PATHS access). Kept as a set so it's easy to
-// extend when the org chart adds a new manager rank. (The old plain 'manager'
-// role was retired in migration 035 — senior_manager replaced it.)
+// extend when the org chart adds a new manager rank.
 export const MANAGER_TIER_ROLES = new Set<UserRole>([
   "senior_manager",
   "junior_manager",

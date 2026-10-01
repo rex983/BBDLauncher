@@ -131,7 +131,7 @@ if (existingSso) {
 }
 
 // 4. Role grants — full R&D team gets in.
-const ROLES = ["admin", "senior_manager", "sales_rep"];
+const ROLES = ["admin", "senior_manager", "junior_manager", "sales_rep"];
 for (const role of ROLES) {
   const { error } = await supa
     .from("launcher_role_app_access")

@@ -152,9 +152,9 @@ export default function AdminRolesPage() {
         <div>
           <h1 className="text-2xl font-bold">Roles</h1>
           <p className="text-muted-foreground">
-            Custom roles tag which apps users see. Admin, senior manager and
-            junior manager keep their built-in launcher permissions; new roles
-            are app-access labels only.
+            Custom roles tag which apps users see. Admin and manager-tier roles
+            keep their built-in launcher permissions; new roles are app-access
+            labels only.
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
