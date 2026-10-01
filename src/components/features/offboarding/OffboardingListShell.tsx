@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ListChecks, UserMinus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   CASE_STATUS_LABEL,
   CASE_STATUS_VARIANT,
@@ -234,22 +235,32 @@ function StartOffboardingDialog({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            <Select value={profileId} onValueChange={setProfileId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Choose who is leaving" />
-              </SelectTrigger>
-              <SelectContent>
-                {matches.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name || p.email}
-                    <span className="text-muted-foreground">
-                      {" "}· {p.office || "no office"}
-                      {!p.is_active && " · inactive"}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* A plain list, not a Select: a searchable list of everyone is
+                easier to scan, and nests cleanly inside the dialog. */}
+            <div className="max-h-56 overflow-y-auto rounded-md border divide-y">
+              {matches.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setProfileId(p.id)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent",
+                    profileId === p.id && "bg-primary/10 font-medium",
+                  )}
+                >
+                  <span className="truncate">{p.name || p.email}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {p.office || "no office"}
+                    {!p.is_active && " · inactive"}
+                  </span>
+                </button>
+              ))}
+              {matches.length === 0 && (
+                <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                  {people.length === 0 ? "No employees found." : "No one matches that search."}
+                </p>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
