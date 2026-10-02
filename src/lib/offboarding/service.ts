@@ -213,7 +213,7 @@ function expectedTasks(
 }
 
 export type OpenCaseResult =
-  | { ok: true; caseId: string }
+  | { ok: true; caseId: string; employeeLabel: string }
   | { ok: false; status: number; error: string };
 
 // Opens a case and snapshots the active checklist. Template edits after this
@@ -282,7 +282,7 @@ export async function openCase(params: {
     }
   }
 
-  return { ok: true, caseId };
+  return { ok: true, caseId, employeeLabel: person.name || person.email };
 }
 
 export type SyncResult =

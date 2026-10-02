@@ -15,6 +15,7 @@ export type NotificationType =
   | "office_memo_acknowledged"
   | "time_off_decided"
   | "offboarding_task_assigned"
+  | "offboarding_opened"
   | "generic";
 
 export interface CreateNotificationParams {
