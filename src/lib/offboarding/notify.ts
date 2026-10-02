@@ -52,16 +52,32 @@ async function slackUserId(token: string, email: string): Promise<string | null>
   return json.ok && json.user ? json.user.id : null;
 }
 
-async function notifySlack(recipients: Recipient[], text: string): Promise<void> {
+// Posts to SLACK_OFFBOARDING_CHANNEL (or DMs each person when unset),
+// @-mentioning everyone with offboarding access. People Slack can't match
+// by email are named in bold instead.
+async function notifySlack(
+  team: Recipient[],
+  p: { openerId: string; openerName: string; employeeName: string; lastDay: string; reason: string; url: string },
+): Promise<void> {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) return;
-  const ids = (await Promise.all(recipients.map((r) => slackUserId(token, r.email)))).filter(
-    (id): id is string => !!id,
+  const ids = new Map<string, string | null>(
+    await Promise.all(team.map(async (r) => [r.id, await slackUserId(token, r.email)] as const)),
   );
+  const tag = (id: string, name: string) => (ids.get(id) ? `<@${ids.get(id)}>` : `*${slackEscape(name)}*`);
+  const text =
+    `${tag(p.openerId, p.openerName)} has submitted an offboarding request for *${slackEscape(p.employeeName)}*.\n` +
+    `Last day: ${p.lastDay} · ${p.reason}\n<${p.url}|Open the checklist>`;
+  const everyone = team.map((r) => tag(r.id, r.name || r.email)).join(" ");
+  const post = (channel: string, body: string) =>
+    slackApi("chat.postMessage", token, { channel, text: body, unfurl_links: false, unfurl_media: false });
+
   const channel = process.env.SLACK_OFFBOARDING_CHANNEL;
   const results = channel
-    ? [await slackApi("chat.postMessage", token, { channel, text: `${text}\n${ids.map((id) => `<@${id}>`).join(" ")}` })]
-    : await Promise.all(ids.map((id) => slackApi("chat.postMessage", token, { channel: id, text })));
+    ? [await post(channel, `${text}\n${everyone}`)]
+    : await Promise.all(
+        [...ids.values()].filter((id): id is string => !!id).map((id) => post(id, text)),
+      );
   for (const r of results) if (!r.ok) console.error("[offboarding] slack post failed:", r.error);
 }
 
@@ -73,9 +89,9 @@ export async function notifyCaseOpened(p: {
   lastDay: string;
   reason: OffboardingReason;
 }): Promise<void> {
-  // The person who started it already knows.
-  const recipients = (await offboardingTeam()).filter((r) => r.id !== p.openerId);
-  if (recipients.length === 0) return;
+  const team = await offboardingTeam();
+  // The person who started it already knows — no bell for them.
+  const others = team.filter((r) => r.id !== p.openerId);
 
   const url = `${LAUNCHER_URL}/offboarding/${p.caseId}`;
   const lastDay = new Date(p.lastDay + "T00:00:00").toLocaleDateString("en-US", {
@@ -86,7 +102,7 @@ export async function notifyCaseOpened(p: {
   const reason = OFFBOARDING_REASON_LABEL[p.reason];
 
   await Promise.all([
-    ...recipients.map((r) =>
+    ...others.map((r) =>
       createNotification({
         userId: r.id,
         type: "offboarding_opened",
@@ -97,10 +113,9 @@ export async function notifyCaseOpened(p: {
         referenceId: p.caseId,
       }).catch(() => undefined),
     ),
-    notifySlack(
-      recipients,
-      `*${slackEscape(p.openerName)}* has submitted an offboarding request for *${slackEscape(p.employeeName)}*.\n` +
-        `Last day: ${lastDay} · ${reason}\n<${url}|Open the checklist>`,
-    ).catch((e) => console.error("[offboarding] slack error:", e)),
+    // Slack tags everyone with access, including whoever started it.
+    notifySlack(team, { ...p, lastDay, reason, url }).catch((e) =>
+      console.error("[offboarding] slack error:", e),
+    ),
   ]);
 }
