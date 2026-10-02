@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { canViewTimeData, timeDataScope } from "@/lib/auth/permissions";
+import { canViewTimeData, isAdmin, timeDataScope } from "@/lib/auth/permissions";
 import { listScopedIncidentSummaries } from "@/lib/incidents/queries";
 import IncidentsShell from "./IncidentsShell";
 
@@ -36,6 +36,7 @@ export default async function IncidentsManagementPage() {
       department: scope.department,
       office: scope.office,
     },
+    excludeProfileId: isAdmin(session.user.role) ? undefined : session.user.profileId,
   });
 
   return <IncidentsShell initialRows={initialRows} />;

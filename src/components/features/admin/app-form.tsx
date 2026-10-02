@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +25,9 @@ interface AppFormProps {
 }
 
 export function AppForm({ app, onSaved }: AppFormProps) {
+  // Sign-on settings are admin-only; managers see the type but can't change it.
+  const { data: session } = useSession();
+  const canEditSso = session?.user?.role === "admin";
   const [name, setName] = useState(app?.name || "");
   const [description, setDescription] = useState(app?.description || "");
   const [url, setUrl] = useState(app?.url || "");
@@ -78,15 +82,16 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       description: description || null,
       url,
       icon_url: iconUrl || null,
-      sso_type: ssoType,
+      ...(canEditSso ? { sso_type: ssoType } : {}),
       status,
       display_order: displayOrder,
       open_in_new_tab: openInNewTab,
       section_id: sectionId === "none" ? null : sectionId,
       access: accessCells,
       user_ids: userIds,
-      sso_config:
-        ssoType === "saml"
+      sso_config: !canEditSso
+        ? undefined
+        : ssoType === "saml"
           ? { sp_entity_id: spEntityId, acs_url: acsUrl, slo_url: sloUrl }
           : ssoType === "oauth"
             ? {
@@ -285,7 +290,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label>SSO Type</Label>
-          <Select value={ssoType} onValueChange={(v) => setSsoType(v as SsoType)}>
+          <Select value={ssoType} onValueChange={(v) => setSsoType(v as SsoType)} disabled={!canEditSso}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -328,7 +333,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
         </div>
       </div>
 
-      {ssoType === "saml" && (
+      {canEditSso && ssoType === "saml" && (
         <div className="space-y-4 border rounded-lg p-4">
           <h3 className="font-semibold">SAML Configuration</h3>
           <div className="space-y-2">
@@ -346,7 +351,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
         </div>
       )}
 
-      {ssoType === "jwt" && (
+      {canEditSso && ssoType === "jwt" && (
         <div className="space-y-4 border rounded-lg p-4">
           <h3 className="font-semibold">JWT SSO Configuration</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -379,7 +384,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
         </div>
       )}
 
-      {ssoType === "oauth" && (
+      {canEditSso && ssoType === "oauth" && (
         <div className="space-y-4 border rounded-lg p-4">
           <h3 className="font-semibold">OAuth Configuration</h3>
           <div className="grid grid-cols-2 gap-4">

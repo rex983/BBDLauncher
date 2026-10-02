@@ -1,19 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
-import { canManageContent } from "@/lib/auth/permissions";
+import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OFFICES } from "@/lib/org/constants";
 import { ACCESS_OFFICES, rowsFromCells } from "@/lib/launcher/access";
 import { setUserIds } from "@/lib/launcher/user-access";
-
-const httpUrl = z
-  .string()
-  .url()
-  .refine((u) => /^https?:\/\//i.test(u), {
-    message: "URL must start with http:// or https://",
-  });
+import { httpUrl, ssoConfigSchema } from "@/lib/launcher/app-schema";
 
 const appUpdateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -34,20 +28,7 @@ const appUpdateSchema = z.object({
     .optional(),
   /** Individual people who can open the app, on top of the grid. */
   user_ids: z.array(z.string().uuid()).max(500).optional(),
-  sso_config: z
-    .object({
-      sp_entity_id: z.string().optional(),
-      acs_url: z.string().optional(),
-      slo_url: z.string().optional(),
-      oauth_client_id: z.string().optional(),
-      oauth_client_secret: z.string().optional(),
-      oauth_authorize_url: z.string().optional(),
-      oauth_token_url: z.string().optional(),
-      jwt_acs_url: z.string().optional(),
-      jwt_audience: z.string().optional(),
-    })
-    .nullable()
-    .optional(),
+  sso_config: ssoConfigSchema.nullable().optional(),
 });
 
 export async function GET(
@@ -89,6 +70,10 @@ export async function PUT(
   const { roles, access, user_ids, sso_config, ...appData } = parsed.data;
   // The grid holds office limits now; the app's own office list stays empty.
   if (access) appData.offices = [];
+  // Single sign-on decides where launch tokens (which carry the launching
+  // user's role) get sent, so only admins can change it.
+  const viewerIsAdmin = isAdmin(session.user.role);
+  if (!viewerIsAdmin) delete appData.sso_type;
   const supabase = createAdminClient();
 
   const { data: app, error } = await supabase
@@ -121,7 +106,7 @@ export async function PUT(
   }
 
   // Update SSO config
-  if (sso_config !== undefined) {
+  if (sso_config !== undefined && viewerIsAdmin) {
     await supabase.from("launcher_sso_configs").delete().eq("app_id", id);
     if (sso_config && (appData.sso_type === "saml" || appData.sso_type === "oauth" || appData.sso_type === "jwt")) {
       await supabase.from("launcher_sso_configs").insert({

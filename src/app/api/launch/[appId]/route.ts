@@ -2,9 +2,7 @@ import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSamlAssertion, generateAutoSubmitForm } from "@/lib/saml/idp";
 import { generateSsoToken } from "@/lib/sso/jwt-issuer";
-import { rowsAllow } from "@/lib/launcher/access";
-import { hasPersonalAppGrant } from "@/lib/launcher/user-access";
-import { isClockedIn } from "@/lib/timesheets/server";
+import { checkAppLaunch } from "@/lib/launcher/launch-gate";
 import { rateLimit } from "@/lib/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -32,78 +30,28 @@ export async function GET(
   }
   const supabase = createAdminClient();
 
-  // Active gate: an inactive user shouldn't be able to mint fresh SSO tokens
-  // for downstream apps even if their launcher JWT hasn't ticked over yet.
-  // The jwt callback also ejects them, but this is belt-and-suspenders in
-  // case a token still has valid claims for a few seconds.
-  const { data: viewer } = await supabase
-    .from("profiles")
-    .select("is_active")
-    .eq("id", session.user.profileId)
-    .single();
-  if (viewer?.is_active === false) {
-    return NextResponse.redirect(new URL("/login?deactivated=1", req.url));
-  }
-
-  // Clock gate: admins bypass so they can debug apps outside work hours.
-  // Everyone else must be clocked in — refusing to mint SSO tokens ensures
-  // downstream apps can't be reached fresh while a rep is off the clock.
-  if (session.user.role !== "admin") {
-    const clockedIn = await isClockedIn(session.user.profileId);
-    if (!clockedIn) {
-      const back = new URL("/dashboard", req.url);
-      back.searchParams.set("clock_required", "1");
-      return NextResponse.redirect(back);
+  const gate = await checkAppLaunch(supabase, session, appId);
+  if (!gate.ok) {
+    switch (gate.reason) {
+      case "deactivated":
+        return NextResponse.redirect(new URL("/login?deactivated=1", req.url));
+      case "clock_required": {
+        // Refusing to mint tokens keeps downstream apps out of reach while a
+        // rep is off the clock.
+        const back = new URL("/dashboard", req.url);
+        back.searchParams.set("clock_required", "1");
+        return NextResponse.redirect(back);
+      }
+      case "forbidden":
+        return NextResponse.json(
+          { error: "You do not have access to this application" },
+          { status: 403 }
+        );
+      case "not_found":
+        return NextResponse.json({ error: "Application not found" }, { status: 404 });
     }
   }
-
-  // Office × role grid (migration 034): the user's role must be allowed from
-  // their office. Admins still need an admin row but aren't limited by office.
-  const { data: accessRows } = await supabase
-    .from("launcher_role_app_access")
-    .select("*")
-    .eq("app_id", appId)
-    .eq("role_name", session.user.role);
-  const rows = ((accessRows || []) as Array<{ role_name: string; app_id: string; office?: string | null }>).map((r) => ({
-    ...r,
-    office: r.office ?? null,
-  }));
-
-  // People added to the app by name (migration 040) skip both office gates.
-  const personal = await hasPersonalAppGrant(session.user.profileId, appId);
-  if (!personal && !rowsAllow(rows, session.user.role, session.user.office, session.user.role === "admin")) {
-    return NextResponse.json(
-      { error: "You do not have access to this application" },
-      { status: 403 }
-    );
-  }
-
-  // Fetch app and SSO config
-  const { data: app } = await supabase
-    .from("launcher_apps")
-    .select("*")
-    .eq("id", appId)
-    .eq("status", "active")
-    .single();
-
-  if (!app) {
-    return NextResponse.json({ error: "Application not found" }, { status: 404 });
-  }
-
-  // Legacy office gate: the grid already encodes each app's office list (migration
-  // 034) and saving an app's grid clears it; kept so old and new code always agree.
-  const appOffices: string[] = Array.isArray(app.offices) ? app.offices : [];
-  if (
-    appOffices.length > 0 &&
-    !personal &&
-    session.user.role !== "admin" &&
-    (!session.user.office || !appOffices.includes(session.user.office))
-  ) {
-    return NextResponse.json(
-      { error: "You do not have access to this application" },
-      { status: 403 }
-    );
-  }
+  const { app } = gate;
 
   // Log the launch. Fail closed if the audit row can't be written — the
   // audit trail is the only forensic record of SSO token issuance and we'd

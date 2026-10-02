@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSamlAssertion, generateAutoSubmitForm } from "@/lib/saml/idp";
+import { checkAppLaunch } from "@/lib/launcher/launch-gate";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -73,6 +74,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Same access rules as clicking the tile: active account, clocked in,
+  // office × role grid or a personal grant, and an active app. The request
+  // is unsigned, so without this anyone signed in could name any SP.
+  const gate = await checkAppLaunch(supabase, session, ssoConfig.app_id);
+  if (!gate.ok) {
+    return NextResponse.json(
+      {
+        error:
+          gate.reason === "clock_required"
+            ? "Clock in before opening this application"
+            : "You do not have access to this application",
+      },
+      { status: 403 }
+    );
+  }
+
   // Build attributes from mapping. userField is admin-configured, but
   // whitelist to the identity claims we intend to expose — this way a
   // future addition to session.user (e.g. an internal token) can't leak
@@ -100,8 +117,8 @@ export async function POST(req: NextRequest) {
     attributes,
   });
 
-  // Log the SSO event
-  await supabase.from("launcher_sso_audit_log").insert({
+  // Log the SSO event. Fail closed, like /api/launch: no untraceable logins.
+  const { error: auditErr } = await supabase.from("launcher_sso_audit_log").insert({
     user_id: session.user.profileId,
     app_id: ssoConfig.app_id,
     event_type: "saml_assertion_issued",
@@ -109,6 +126,10 @@ export async function POST(req: NextRequest) {
     ip_address: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip"),
     user_agent: req.headers.get("user-agent"),
   });
+  if (auditErr) {
+    console.error("SAML audit log insert failed:", auditErr.message);
+    return NextResponse.json({ error: "Sign-in denied: audit log unavailable" }, { status: 500 });
+  }
 
   // Return auto-submit form — use trusted ACS URL
   const html = generateAutoSubmitForm(trustedAcsUrl, samlResponse, relayState || undefined);

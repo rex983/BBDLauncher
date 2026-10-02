@@ -7,13 +7,7 @@ import { z } from "zod";
 import { OFFICES } from "@/lib/org/constants";
 import { ACCESS_OFFICES, cellsFromRows, officesWithAccess, rowsFromCells } from "@/lib/launcher/access";
 import { setUserIds, userIdsByTarget } from "@/lib/launcher/user-access";
-
-const httpUrl = z
-  .string()
-  .url()
-  .refine((u) => /^https?:\/\//i.test(u), {
-    message: "URL must start with http:// or https://",
-  });
+import { httpUrl, ssoConfigSchema } from "@/lib/launcher/app-schema";
 
 const appSchema = z.object({
   name: z.string().min(1),
@@ -34,20 +28,7 @@ const appSchema = z.object({
     .optional(),
   /** Individual people who can open the app, on top of the grid. */
   user_ids: z.array(z.string().uuid()).max(500).optional(),
-  sso_config: z
-    .object({
-      sp_entity_id: z.string().optional(),
-      acs_url: z.string().optional(),
-      slo_url: z.string().optional(),
-      oauth_client_id: z.string().optional(),
-      oauth_client_secret: z.string().optional(),
-      oauth_authorize_url: z.string().optional(),
-      oauth_token_url: z.string().optional(),
-      jwt_acs_url: z.string().optional(),
-      jwt_audience: z.string().optional(),
-    })
-    .nullable()
-    .optional(),
+  sso_config: ssoConfigSchema.nullable().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -83,16 +64,17 @@ export async function GET(req: NextRequest) {
     const appIds = (apps || []).map((a) => a.id);
 
     const usersPromise = userIdsByTarget("app_id", appIds);
+    // Sign-on settings (including OAuth client secrets) are admin-only.
+    const viewerIsAdmin = isAdmin(session.user.role);
     const [accessRes, ssoRes] = appIds.length
       ? await Promise.all([
           supabase
             .from("launcher_role_app_access")
             .select("*")
             .in("app_id", appIds),
-          supabase
-            .from("launcher_sso_configs")
-            .select("*")
-            .in("app_id", appIds),
+          viewerIsAdmin
+            ? supabase.from("launcher_sso_configs").select("*").in("app_id", appIds)
+            : Promise.resolve({ data: [] as { app_id: string }[] }),
         ])
       : [{ data: [] as { app_id: string; role_name: string }[] }, { data: [] as { app_id: string }[] }];
     const usersByAppId = await usersPromise;
@@ -137,6 +119,13 @@ export async function POST(req: NextRequest) {
     }
 
     const { roles, access, user_ids, sso_config, ...appData } = parsed.data;
+    // Single sign-on decides where launch tokens get sent — admins only.
+    if (
+      !isAdmin(session.user.role) &&
+      (appData.sso_type === "saml" || appData.sso_type === "oauth" || appData.sso_type === "jwt")
+    ) {
+      return NextResponse.json({ error: "Only admins can set up single sign-on." }, { status: 403 });
+    }
     // The grid holds office limits now; the app's own office list stays empty.
     if (access) appData.offices = [];
     const supabase = createAdminClient();

@@ -1,5 +1,7 @@
 import {
+  isOwnRecord,
   isTargetInScope,
+  ownRecordResponse,
   requireTimeDataAccess,
   type ScopedProfile,
 } from "@/lib/auth/scope-check";
@@ -27,6 +29,9 @@ async function loadPunchWithScope(id: string) {
     .maybeSingle();
   if (!punch) {
     return { fail: NextResponse.json({ error: "Punch not found" }, { status: 404 }) };
+  }
+  if (isOwnRecord(gate.viewerIsAdmin, gate.session, punch.profile_id)) {
+    return { fail: ownRecordResponse() };
   }
 
   if (!gate.viewerIsAdmin) {

@@ -9,6 +9,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createNotification } from "@/lib/notifications/service";
+import { slackEscape } from "@/lib/slack/escape";
 import { OFFBOARDING_REASON_LABEL, type OffboardingReason } from "./types";
 
 const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
@@ -29,11 +30,9 @@ async function offboardingTeam(): Promise<Recipient[]> {
   return (data || []).filter((p) => p.is_active !== false) as Recipient[];
 }
 
-// Names come from profiles, but escape Slack mrkdwn anyway so a name can't
-// inject mentions or formatting.
-function slackEscape(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/[\r\n]+/g, " ");
-}
+// Names come from profiles, but escape them so a name can't inject mentions
+// or break the one-line layout.
+const slackName = (s: string) => slackEscape(s).replace(/[\r\n]+/g, " ");
 
 async function slackApi(method: string, token: string, body: Record<string, unknown>) {
   const res = await fetch(`https://slack.com/api/${method}`, {
@@ -64,9 +63,9 @@ async function notifySlack(
   const ids = new Map<string, string | null>(
     await Promise.all(team.map(async (r) => [r.id, await slackUserId(token, r.email)] as const)),
   );
-  const tag = (id: string, name: string) => (ids.get(id) ? `<@${ids.get(id)}>` : `*${slackEscape(name)}*`);
+  const tag = (id: string, name: string) => (ids.get(id) ? `<@${ids.get(id)}>` : `*${slackName(name)}*`);
   const text =
-    `${tag(p.openerId, p.openerName)} has submitted an offboarding request for *${slackEscape(p.employeeName)}*.\n` +
+    `${tag(p.openerId, p.openerName)} has submitted an offboarding request for *${slackName(p.employeeName)}*.\n` +
     `Last day: ${p.lastDay} · ${p.reason}\n<${p.url}|Open the checklist>`;
   const everyone = team.map((r) => tag(r.id, r.name || r.email)).join(" ");
   const post = (channel: string, body: string) =>

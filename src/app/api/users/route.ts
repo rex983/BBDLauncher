@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent, isAdmin } from "@/lib/auth/permissions";
+import { managerAssignError } from "@/lib/auth/user-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
@@ -54,12 +55,10 @@ export async function POST(req: NextRequest) {
 
   const { email, name, role, office, department, is_it, can_offboard } = parsed.data;
 
-  // Only admins can grant admin role.
-  if (role === "admin" && !isAdmin(session.user.role)) {
-    return NextResponse.json(
-      { error: "Only admins can assign the admin role." },
-      { status: 403 }
-    );
+  // Managers can only add people below their own role, in their own office.
+  if (!isAdmin(session.user.role)) {
+    const assignError = managerAssignError(session.user, { role, office });
+    if (assignError) return NextResponse.json({ error: assignError }, { status: 403 });
   }
 
   // IT capability gates the Help Desk queue — admin-only to grant.
@@ -77,6 +76,13 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createAdminClient();
+
+  const { data: roleRow } = await supabase
+    .from("launcher_roles")
+    .select("name")
+    .eq("name", role)
+    .maybeSingle();
+  if (!roleRow) return NextResponse.json({ error: "Unknown role" }, { status: 400 });
 
   // Insert the profile directly. The shared DB has no auth.users FK on
   // profiles.id, and we don't manage Supabase Auth from the launcher —

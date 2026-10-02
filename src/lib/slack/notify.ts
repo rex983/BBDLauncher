@@ -3,6 +3,7 @@
 // per URL. Fire-and-forget: failures are logged, never thrown, so a
 // broken webhook can't break the primary user flow (submitting a request).
 
+import { slackEscapeFields } from "@/lib/slack/escape";
 import type { TimeOffType } from "@/lib/timeoff/types";
 import { TIME_OFF_TYPE_LABEL } from "@/lib/timeoff/types";
 import type { IncidentSeverity, IncidentCategory } from "@/lib/incidents/types";
@@ -137,7 +138,8 @@ export interface TimeOffSubmittedPayload {
   attachmentCount: number;
 }
 
-export async function notifyTimeOffSubmitted(p: TimeOffSubmittedPayload): Promise<void> {
+export async function notifyTimeOffSubmitted(raw: TimeOffSubmittedPayload): Promise<void> {
+  const p = slackEscapeFields(raw);
   const dateLine = p.startDate === p.endDate
     ? fmtDate(p.startDate)
     : `${fmtDate(p.startDate)} → ${fmtDate(p.endDate)}`;
@@ -191,7 +193,8 @@ export interface IncidentSubmittedPayload {
   attachmentCount: number;
 }
 
-export async function notifyIncidentSubmitted(p: IncidentSubmittedPayload): Promise<void> {
+export async function notifyIncidentSubmitted(raw: IncidentSubmittedPayload): Promise<void> {
+  const p = slackEscapeFields(raw);
   await send(
     "SLACK_INCIDENT_WEBHOOK_URL",
     "incident-submitted",
@@ -217,7 +220,8 @@ export interface IncidentCompletedPayload {
   severity: IncidentSeverity;
 }
 
-export async function notifyIncidentCompleted(p: IncidentCompletedPayload): Promise<void> {
+export async function notifyIncidentCompleted(raw: IncidentCompletedPayload): Promise<void> {
+  const p = slackEscapeFields(raw);
   await send(
     "SLACK_INCIDENT_WEBHOOK_URL",
     "incident-completed",
@@ -249,7 +253,8 @@ export interface IncidentPurgedPayload {
   priorStatus: string;
 }
 
-export async function notifyIncidentPurged(p: IncidentPurgedPayload): Promise<void> {
+export async function notifyIncidentPurged(raw: IncidentPurgedPayload): Promise<void> {
+  const p = slackEscapeFields(raw);
   await send(
     "SLACK_INCIDENT_WEBHOOK_URL",
     "incident-purged",
@@ -295,7 +300,8 @@ export interface MemoPublishedPayload {
   ackMode: MemoAcknowledgementMode;
 }
 
-export async function notifyMemoPublished(p: MemoPublishedPayload): Promise<void> {
+export async function notifyMemoPublished(raw: MemoPublishedPayload): Promise<void> {
+  const p = slackEscapeFields(raw);
   const titleLine = p.numberLabel ? `${p.numberLabel} · ${p.title}` : p.title;
 
   await send(
@@ -329,7 +335,8 @@ export interface MemoPurgedPayload {
   priorStatus: string;
 }
 
-export async function notifyMemoPurged(p: MemoPurgedPayload): Promise<void> {
+export async function notifyMemoPurged(raw: MemoPurgedPayload): Promise<void> {
+  const p = slackEscapeFields(raw);
   await send(
     "SLACK_MEMO_WEBHOOK_URL",
     "memo-purged",

@@ -1,4 +1,9 @@
-import { isTargetInScope, requireTimeDataAccess } from "@/lib/auth/scope-check";
+import {
+  isOwnRecord,
+  isTargetInScope,
+  ownRecordResponse,
+  requireTimeDataAccess,
+} from "@/lib/auth/scope-check";
 import {
   EVENT_LABEL,
   logIncidentEvent,
@@ -21,7 +26,7 @@ export async function GET(
 
   const gate = await requireTimeDataAccess(null, "view");
   if (!gate.ok) return gate.response;
-  const { supabase, scope, viewerIsAdmin } = gate;
+  const { session, supabase, scope, viewerIsAdmin } = gate;
 
   const { data: row, error } = await supabase
     .from("incident_reports")
@@ -33,6 +38,8 @@ export async function GET(
   if (error || !row) {
     return NextResponse.json({ error: error?.message || "Not found" }, { status: 404 });
   }
+  // A report filed against you is read through /api/incidents (no manager notes).
+  if (isOwnRecord(viewerIsAdmin, session, row.employee_profile_id)) return ownRecordResponse();
 
   // Events first — the actor id list depends on the event rows. Then a
   // single batched profile fetch covers the reporter, the subject
@@ -154,6 +161,7 @@ export async function PATCH(
       employee_signed_at: string | null;
     }>();
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (isOwnRecord(viewerIsAdmin, session, existing.employee_profile_id)) return ownRecordResponse();
 
   if (!viewerIsAdmin) {
     const { data: emp } = await supabase
@@ -355,6 +363,7 @@ export async function DELETE(
     .eq("id", id)
     .single();
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (isOwnRecord(viewerIsAdmin, session, existing.employee_profile_id)) return ownRecordResponse();
 
   if (!viewerIsAdmin) {
     const { data: emp } = await supabase

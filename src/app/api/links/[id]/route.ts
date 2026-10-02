@@ -4,13 +4,14 @@ import { canManageContent } from "@/lib/auth/permissions";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { httpUrl } from "@/lib/launcher/app-schema";
 import { OFFICES } from "@/lib/org/constants";
 import { setUserIds } from "@/lib/launcher/user-access";
 
 const linkUpdateSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
-  url: z.string().url().optional(),
+  url: httpUrl.optional(),
   icon_url: z.string().nullable().optional(),
   display_order: z.number().optional(),
   office: z.enum(OFFICES).nullable().optional(),

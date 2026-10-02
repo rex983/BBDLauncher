@@ -3,6 +3,7 @@ import { isAnalyticsRange } from "@/lib/analytics/ranges";
 import { redirect } from "next/navigation";
 import { analyticsScope, canViewTimeData } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isTargetInScope, resolveTimeDataScope } from "@/lib/auth/scope-check";
 import {
   coerceDays,
   getEmployeeDetail,
@@ -55,7 +56,15 @@ export default async function UserProfile360Page({
   // Time-data scope is a superset of the analytics gate for its own decisions
   // (dept + office). We attempt the fetch and let the helper tell us "no
   // scope" without redirecting — the UI degrades gracefully.
-  const hasTimeDataRole = canViewTimeData(session.user.role);
+  // Schedules and incidents are read directly below, so they need the same
+  // dept + office check getEmployeeDetail applies to punches. Managers also
+  // don't see incidents filed against themselves here.
+  const timeScope = resolveTimeDataScope(session.user, "view");
+  const hasTimeDataRole =
+    canViewTimeData(session.user.role) &&
+    timeScope.ok &&
+    !!profile &&
+    (timeScope.viewerIsAdmin || (isTargetInScope(timeScope.scope, profile) && id !== session.user.profileId));
 
   const days = coerceRangeToDays(range);
 

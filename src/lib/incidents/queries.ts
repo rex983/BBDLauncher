@@ -52,6 +52,8 @@ export interface ListParams {
   // already narrowed (managers can't override their own scope).
   departmentOverride?: string | null;
   officeOverride?: string | null;
+  // Leave out reports filed against this person (the viewing manager).
+  excludeProfileId?: string;
 }
 
 const DEFAULT_STATUSES = [
@@ -80,7 +82,9 @@ export async function listScopedIncidentSummaries(
     scope,
     { department: params.departmentOverride, office: params.officeOverride },
   );
-  const profileIds = (profiles || []).map((p) => p.id);
+  const profileIds = (profiles || [])
+    .map((p) => p.id)
+    .filter((pid) => pid !== params.excludeProfileId);
   if (profileIds.length === 0) return [];
 
   const { data: reports } = await supabase

@@ -65,7 +65,7 @@ const createSchema = z.object({
 export async function GET(req: NextRequest) {
   const gate = await requireTimeDataAccess(null, "view");
   if (!gate.ok) return gate.response;
-  const { supabase, scope } = gate;
+  const { session, supabase, scope, viewerIsAdmin } = gate;
 
   const url = new URL(req.url);
   const statusParam = url.searchParams.get("statuses") || url.searchParams.get("status");
@@ -91,6 +91,8 @@ export async function GET(req: NextRequest) {
     statuses,
     departmentOverride: departmentFilter,
     officeOverride: officeFilter,
+    // Managers don't see reports filed against themselves here.
+    excludeProfileId: viewerIsAdmin ? undefined : session.user.profileId,
   });
   return NextResponse.json(rows);
 }

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent, isAdmin } from "@/lib/auth/permissions";
+import { managerAssignError, managerTargetError } from "@/lib/auth/user-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
@@ -79,22 +80,29 @@ export async function PUT(
   if (needsPrefetch) {
     const { data: before } = await supabase
       .from("profiles")
-      .select("role, session_version")
+      .select("role, office, department, is_active, session_version")
       .eq("id", id)
       .single();
+    if (!before) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     if (!viewerIsAdmin) {
-      if (before?.role === "admin") {
-        return NextResponse.json(
-          { error: "Only admins can modify an admin account." },
-          { status: 403 }
-        );
-      }
-      if (parsed.data.role === "admin") {
-        return NextResponse.json(
-          { error: "Only admins can assign the admin role." },
-          { status: 403 }
-        );
+      const deny = (error: string) => NextResponse.json({ error }, { status: 403 });
+      if (id === session.user.profileId) {
+        // The form sends every field, so only refuse actual changes.
+        const changed =
+          (parsed.data.role !== undefined && parsed.data.role !== before.role) ||
+          (parsed.data.office !== undefined && parsed.data.office !== before.office) ||
+          (parsed.data.department !== undefined && parsed.data.department !== before.department) ||
+          (parsed.data.is_active !== undefined && parsed.data.is_active !== before.is_active);
+        if (changed) return deny("You can't change your own role, office, department or status.");
+      } else {
+        const targetError = managerTargetError(session.user, before);
+        if (targetError) return deny(targetError);
+        const assignError = managerAssignError(session.user, {
+          role: parsed.data.role,
+          office: parsed.data.office,
+        });
+        if (assignError) return deny(assignError);
       }
       if (parsed.data.is_it !== undefined) {
         return NextResponse.json(
@@ -156,19 +164,16 @@ export async function DELETE(
 
   const supabase = createAdminClient();
 
-  // Non-admins can't delete admin accounts.
+  // Managers can only delete people below them in their own office.
   if (!isAdmin(session.user.role)) {
     const { data: target } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, office")
       .eq("id", id)
       .single();
-    if (target?.role === "admin") {
-      return NextResponse.json(
-        { error: "Only admins can delete an admin account." },
-        { status: 403 }
-      );
-    }
+    if (!target) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const targetError = managerTargetError(session.user, target);
+    if (targetError) return NextResponse.json({ error: targetError }, { status: 403 });
   }
 
   // Delete the profile directly. ASC manages its own auth.users lifecycle —

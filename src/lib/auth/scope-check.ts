@@ -71,6 +71,24 @@ export function isTargetInScope(scope: AllowedScope, target: ScopedProfile): boo
   return true;
 }
 
+// Managers are always inside their own scope, so without this they could
+// approve their own time off, move their own punches, or handle an incident
+// filed against them. Admins are exempt (they may be the only signer).
+export function isOwnRecord(
+  viewerIsAdmin: boolean,
+  session: Session,
+  profileId: string | null | undefined,
+): boolean {
+  return !viewerIsAdmin && !!profileId && profileId === session.user.profileId;
+}
+
+export function ownRecordResponse(): NextResponse {
+  return NextResponse.json(
+    { error: "You can't manage your own records. Ask another manager or an admin." },
+    { status: 403 },
+  );
+}
+
 interface EqBuilder {
   eq(column: string, value: string | boolean): EqBuilder;
 }
@@ -105,7 +123,9 @@ export function scopeProfilesQuery<Q>(
 //   3. viewer has a valid (department, office) scope
 //   4. (optional) target profile falls within both scope axes AND is active
 //
-// Admins bypass step 4 entirely — they can view/edit anyone, including
+//   5. for edits, the target isn't the viewer (see isOwnRecord)
+//
+// Admins bypass steps 4–5 entirely — they can view/edit anyone, including
 // inactive users and themselves. Pass null for targetProfileId when the
 // route touches a list, not a specific employee.
 export async function requireTimeDataAccess(
@@ -115,6 +135,9 @@ export async function requireTimeDataAccess(
   const base = await enterScope(need);
   if (!base.ok) return base;
   if (base.viewerIsAdmin) return base;
+  if (need === "edit" && isOwnRecord(false, base.session, targetProfileId)) {
+    return { ok: false, response: ownRecordResponse() };
+  }
 
   if (targetProfileId && (base.scope.department || base.scope.office)) {
     const { data } = await base.supabase
@@ -139,6 +162,9 @@ export async function requireTimeDataAccessWithProfile<T extends ScopedProfile>(
 ): Promise<ScopeGateWithTarget<T>> {
   const base = await enterScope(need);
   if (!base.ok) return base;
+  if (need === "edit" && isOwnRecord(base.viewerIsAdmin, base.session, targetProfileId)) {
+    return { ok: false, response: ownRecordResponse() };
+  }
 
   const { data: target } = await base.supabase
     .from("profiles")
