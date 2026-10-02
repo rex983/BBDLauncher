@@ -30,7 +30,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ListChecks, UserMinus } from "lucide-react";
+import { ListChecks, ShieldCheck, UserMinus } from "lucide-react";
+import { OffboardingAccessDialog } from "./OffboardingAccessDialog";
 import { cn } from "@/lib/utils";
 import {
   CASE_STATUS_LABEL,
@@ -49,6 +50,7 @@ interface Person {
   office: string | null;
   department: string | null;
   is_active: boolean;
+  can_offboard: boolean;
 }
 
 export function fmtDay(d: string) {
@@ -67,12 +69,15 @@ function todayISO() {
 export function OffboardingListShell({
   initialCases,
   people,
+  isAdmin,
 }: {
   initialCases: CaseSummary[];
   people: Person[];
+  isAdmin: boolean;
 }) {
   const [tab, setTab] = useState<"open" | "closed">("open");
   const [startOpen, setStartOpen] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
 
   const rows = useMemo(
     () => initialCases.filter((c) => (tab === "open" ? c.status === "open" : c.status !== "open")),
@@ -94,6 +99,12 @@ export function OffboardingListShell({
           </p>
         </div>
         <div className="flex gap-2">
+          {isAdmin && (
+            <Button variant="outline" onClick={() => setAccessOpen(true)}>
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Access
+            </Button>
+          )}
           <Button variant="outline" asChild>
             <Link href="/offboarding/checklist">
               <ListChecks className="mr-2 h-4 w-4" />
@@ -174,6 +185,7 @@ export function OffboardingListShell({
         onOpenChange={setStartOpen}
         people={people.filter((p) => !busyProfileIds.has(p.id))}
       />
+      {isAdmin && <OffboardingAccessDialog open={accessOpen} onOpenChange={setAccessOpen} people={people} />}
     </div>
   );
 }
