@@ -3,6 +3,7 @@ import { analyticsScope } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { sinceIsoForRange } from "@/lib/analytics/ranges";
+import { fetchAllPages } from "@/app/api/_lib/paged";
 
 type AuditRow = {
   id: string;
@@ -11,7 +12,6 @@ type AuditRow = {
   created_at: string;
   ip_address: string | null;
   user_agent: string | null;
-  details: Record<string, unknown> | null;
 };
 
 type ProfileRow = {
@@ -43,27 +43,23 @@ export async function GET(
 
     const supabase = createAdminClient();
 
-    // Office-scoped viewers only see rows from users in their office.
-    let allowedUserIds: string[] | null = null;
-    if (scope.office !== null) {
-      const { data: officeProfiles, error: officeErr } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("office", scope.office);
-      if (officeErr) {
-        return NextResponse.json({ error: officeErr.message }, { status: 500 });
-      }
-      allowedUserIds = (officeProfiles ?? []).map((p) => p.id);
-    }
-
-    // Look up destination metadata
+    // Office-scoped viewers only see rows from users in their office. The
+    // destination metadata lookup is independent, so both run together.
     const table = kind === "apps" ? "launcher_apps" : "launcher_links";
     const cols = kind === "apps" ? "id, name, url, sso_type, status" : "id, name, url";
-    const { data: dest, error: destErr } = await supabase
-      .from(table)
-      .select(cols)
-      .eq("id", id)
-      .maybeSingle();
+    const [officeRes, { data: dest, error: destErr }] = await Promise.all([
+      scope.office !== null
+        ? supabase.from("profiles").select("id").eq("office", scope.office)
+        : null,
+      supabase.from(table).select(cols).eq("id", id).maybeSingle(),
+    ]);
+    let allowedUserIds: string[] | null = null;
+    if (officeRes) {
+      if (officeRes.error) {
+        return NextResponse.json({ error: officeRes.error.message }, { status: 500 });
+      }
+      allowedUserIds = (officeRes.data ?? []).map((p) => p.id);
+    }
     if (destErr) {
       return NextResponse.json({ error: destErr.message }, { status: 500 });
     }
@@ -72,29 +68,24 @@ export async function GET(
     const filterCol = kind === "apps" ? "app_id" : "link_id";
     const eventType = kind === "apps" ? "app_launch" : "link_click";
 
-    // PostgREST silently caps rows (Supabase default 1000), so paginate.
-    const PAGE_SIZE = 1000;
-    const MAX_ROWS = 200_000;
-    const events: AuditRow[] = [];
-    const skipEvents = allowedUserIds?.length === 0;
-    for (let from = 0; !skipEvents && from < MAX_ROWS; from += PAGE_SIZE) {
-      let query = supabase
-        .from("launcher_sso_audit_log")
-        .select("id, user_id, event_type, created_at, ip_address, user_agent, details")
-        .eq(filterCol, id)
-        .eq("event_type", eventType)
-        .order("created_at", { ascending: false })
-        .range(from, from + PAGE_SIZE - 1);
-      if (sinceIso) query = query.gte("created_at", sinceIso);
-      if (allowedUserIds) query = query.in("user_id", allowedUserIds);
-
-      const { data: pageRaw, error: pageErr } = await query;
-      if (pageErr) {
-        return NextResponse.json({ error: pageErr.message }, { status: 500 });
+    let events: AuditRow[] = [];
+    if (allowedUserIds?.length !== 0) {
+      const paged = await fetchAllPages<AuditRow>((from, to) => {
+        let query = supabase
+          .from("launcher_sso_audit_log")
+          .select("id, user_id, event_type, created_at, ip_address, user_agent")
+          .eq(filterCol, id)
+          .eq("event_type", eventType)
+          .order("created_at", { ascending: false })
+          .range(from, to);
+        if (sinceIso) query = query.gte("created_at", sinceIso);
+        if (allowedUserIds) query = query.in("user_id", allowedUserIds);
+        return query;
+      });
+      if (paged.error) {
+        return NextResponse.json({ error: paged.error }, { status: 500 });
       }
-      const page = (pageRaw ?? []) as AuditRow[];
-      events.push(...page);
-      if (page.length < PAGE_SIZE) break;
+      events = paged.data;
     }
 
     const userIds = [...new Set(events.map((e) => e.user_id))];

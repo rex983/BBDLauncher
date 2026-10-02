@@ -28,6 +28,7 @@ import {
   type TimeOffType,
 } from "@/lib/timeoff/types";
 import { formatBytes } from "@/components/shared/AttachmentPreview";
+import { fmtDay as fmtDate } from "@/components/shared/format";
 import { Paperclip, Plus, X } from "lucide-react";
 
 export interface TimeOffRequest {
@@ -46,13 +47,7 @@ export interface TimeOffRequest {
   attachments?: TimeOffAttachment[] | null;
 }
 
-function fmtDate(d: string) {
-  return new Date(d + "T00:00:00").toLocaleDateString([], {
-    month: "short", day: "numeric", year: "numeric",
-  });
-}
-
-export interface TimeOffPanelProps {
+interface TimeOffPanelProps {
   initialRequests?: TimeOffRequest[];
   title?: string;
   description?: string;
@@ -82,15 +77,16 @@ export function TimeOffPanel({
   const [error, setError] = useState<string | null>(null);
 
   const today = todayISO();
-  const [form, setForm] = useState({
+  const blankForm = () => ({
     type: "vacation" as TimeOffType,
-    subcategory: "" as string,
+    subcategory: "",
     start_date: today,
     end_date: today,
     full_day: true,
     hours: "",
     reason: "",
   });
+  const [form, setForm] = useState(blankForm);
   const [attachments, setAttachments] = useState<TimeOffAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -112,15 +108,7 @@ export function TimeOffPanel({
   const subOptions = TIME_OFF_SUBCATEGORIES[form.type];
 
   const resetForm = () => {
-    setForm({
-      type: "vacation",
-      subcategory: "",
-      start_date: today,
-      end_date: today,
-      full_day: true,
-      hours: "",
-      reason: "",
-    });
+    setForm(blankForm());
     setAttachments([]);
     setError(null);
   };

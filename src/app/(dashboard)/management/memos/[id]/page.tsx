@@ -79,7 +79,9 @@ export default async function ManagerMemoDetailPage({
   const supabase = createAdminClient();
   const { data: memo } = await supabase
     .from("office_memos")
-    .select("*")
+    .select(
+      "id, number, title, body, category, priority, acknowledgement_mode, audience_scope, audience_office, audience_department, effective_date, published_at, status, attachments, edit_count, last_edited_at, document_hash, author_signature_text, author_signature_hash, author_signed_at, author_profile_id",
+    )
     .eq("id", id)
     .single();
   if (!memo) notFound();

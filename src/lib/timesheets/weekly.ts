@@ -2,7 +2,6 @@ import { computeState, type TimePunch } from "./state";
 import {
   localDateInZone,
   scheduledTimeInZone,
-  startOfDayInZone,
   startOfWeekSundayInZone,
 } from "./tz";
 
@@ -194,7 +193,6 @@ export function aggregatePunches(punches: TimePunch[], now: Date = new Date()): 
   days: number;
 } {
   if (punches.length === 0) return { worked_ms: 0, lunch_ms: 0, break_ms: 0, days: 0 };
-  const startOfToday = startOfDayInZone(now);
   const todayKey = localDateInZone(now);
 
   const dayBuckets = new Map<string, TimePunch[]>();
@@ -209,12 +207,11 @@ export function aggregatePunches(punches: TimePunch[], now: Date = new Date()): 
   let lunch_ms = 0;
   let break_ms = 0;
   for (const [dayKey, list] of dayBuckets) {
-    worked_ms += computeDayWorkedMs(list, dayKey, now);
-    const capNow = dayKey === todayKey ? now : new Date(startOfToday);
+    worked_ms += computeDayTotals(list, dayKey, now, todayKey).worked_ms;
+    let capNow = now;
     if (dayKey !== todayKey) {
       const [y, m, d] = dayKey.split("-").map(Number);
-      const dayEnd = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
-      capNow.setTime(dayEnd.getTime());
+      capNow = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
     }
     const s = computeState(list, capNow);
     lunch_ms += s.lunch_ms;

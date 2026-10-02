@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -44,25 +44,10 @@ import type {
 import { ExportMenu } from "@/components/ui/export-menu";
 import type { ExportColumn } from "@/lib/export/csv";
 import { FileIncidentDialog } from "@/components/features/incidents/FileIncidentDialog";
-
-function fmtDateShort(d: string) {
-  return new Date(d + "T00:00:00").toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+import { fmtDay as fmtDateShort, toLocalInputValue } from "@/components/shared/format";
 
 // Convert a UTC ISO to a value acceptable by <input type="datetime-local">.
-function isoToLocalInput(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function localInputToISO(local: string): string {
-  return new Date(local).toISOString();
-}
+const isoToLocalInput = (iso: string) => toLocalInputValue(new Date(iso));
 
 // Punches export column set — dates are ET-local (matches how the UI
 // buckets days) and times are user-local so a manager reading the CSV on
@@ -235,7 +220,7 @@ export default function EmployeeDetailShell({
     e.preventDefault();
     const body = JSON.stringify({
       event_type: form.event_type,
-      occurred_at: localInputToISO(form.occurred_at),
+      occurred_at: new Date(form.occurred_at).toISOString(),
       note: form.note || (editingId ? null : undefined),
     });
     const res = editingId
@@ -268,15 +253,23 @@ export default function EmployeeDetailShell({
 
   // Bucket punches by ET-local day (matches other timesheet math). Days
   // render newest-first; within a day, punches stay chronological so the
-  // reader can follow the shift top-to-bottom.
+  // reader can follow the shift top-to-bottom. Memoized on `punches` so
+  // typing in the punch dialog doesn't re-bucket the window per keystroke.
   const now = new Date();
-  const byDay = new Map<string, TimePunch[]>();
-  for (const p of punches) {
-    const key = localDateInZone(new Date(p.occurred_at));
-    const list = byDay.get(key) || [];
-    list.push(p);
-    byDay.set(key, list);
-  }
+  const days_desc = useMemo(() => {
+    const byDay = new Map<string, TimePunch[]>();
+    for (const p of punches) {
+      const key = localDateInZone(new Date(p.occurred_at));
+      const list = byDay.get(key) || [];
+      list.push(p);
+      byDay.set(key, list);
+    }
+    const desc = [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+    for (const [, list] of desc) {
+      list.sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime());
+    }
+    return desc;
+  }, [punches]);
   // Newest week first; skip weeks with no clocked time (pre-hire, leave).
   const otWeeksDesc = (overtime?.weeks ?? [])
     .filter((w) => w.worked_ms > 0)
@@ -288,11 +281,6 @@ export default function EmployeeDetailShell({
   const employeeSlug = (profile?.name || profile?.email || profileId)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-");
-
-  const days_desc = [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
-  for (const [, list] of days_desc) {
-    list.sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime());
-  }
 
   return (
     <div className="space-y-6">

@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { ANALYTICS_RANGE_OPTIONS, isAnalyticsRange } from "@/lib/analytics/ranges";
-import { use } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -284,15 +283,7 @@ export default function DestinationAnalyticsPage({
             <TableBody>
               {filteredUsers.map((u) => {
                 const unresolved = u.email === "(unknown user)";
-                const href = `/admin/analytics/users/${u.user_id}?range=${range}`;
-                const Wrapper = ({ children }: { children: React.ReactNode }) =>
-                  unresolved ? (
-                    <>{children}</>
-                  ) : (
-                    <Link href={href} className="block">
-                      {children}
-                    </Link>
-                  );
+                const href = unresolved ? null : `/admin/analytics/users/${u.user_id}?range=${range}`;
                 return (
                 <TableRow
                   key={u.user_id}
@@ -303,7 +294,7 @@ export default function DestinationAnalyticsPage({
                   }
                 >
                   <TableCell>
-                    <Wrapper>
+                    <RowLink href={href}>
                       <div
                         className={
                           unresolved ? "font-medium" : "font-medium hover:underline"
@@ -323,36 +314,36 @@ export default function DestinationAnalyticsPage({
                           {u.user_id.length > 12 && "…"}
                         </div>
                       )}
-                    </Wrapper>
+                    </RowLink>
                   </TableCell>
                   <TableCell>
-                    <Wrapper>
+                    <RowLink href={href}>
                       <Badge variant="secondary">{u.role}</Badge>
-                    </Wrapper>
+                    </RowLink>
                   </TableCell>
                   <TableCell>
-                    <Wrapper>
+                    <RowLink href={href}>
                       {u.office ? (
                         <Badge variant="outline">{u.office}</Badge>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
-                    </Wrapper>
+                    </RowLink>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    <Wrapper>{u.clicks.toLocaleString()}</Wrapper>
+                    <RowLink href={href}>{u.clicks.toLocaleString()}</RowLink>
                   </TableCell>
                   <TableCell
                     className="text-muted-foreground"
                     title={formatDateTime(u.first_click)}
                   >
-                    <Wrapper>{formatRelative(u.first_click)}</Wrapper>
+                    <RowLink href={href}>{formatRelative(u.first_click)}</RowLink>
                   </TableCell>
                   <TableCell
                     className="text-muted-foreground"
                     title={formatDateTime(u.last_click)}
                   >
-                    <Wrapper>{formatRelative(u.last_click)}</Wrapper>
+                    <RowLink href={href}>{formatRelative(u.last_click)}</RowLink>
                   </TableCell>
                 </TableRow>
                 );
@@ -441,6 +432,17 @@ export default function DestinationAnalyticsPage({
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// Wraps a cell's content in a link to the user's 360 page, or renders it
+// bare when the user couldn't be resolved.
+function RowLink({ href, children }: { href: string | null; children: React.ReactNode }) {
+  if (!href) return <>{children}</>;
+  return (
+    <Link href={href} className="block">
+      {children}
+    </Link>
   );
 }
 

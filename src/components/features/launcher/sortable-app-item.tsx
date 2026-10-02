@@ -12,7 +12,6 @@ interface SortableAppItemProps {
   as: typeof AppCard | typeof AppListRow;
   isFavorite?: boolean;
   onToggleFavorite?: (appId: string) => void;
-  sortable?: boolean;
 }
 
 export function SortableAppItem({
@@ -20,7 +19,6 @@ export function SortableAppItem({
   as: Item,
   isFavorite,
   onToggleFavorite,
-  sortable = true,
 }: SortableAppItemProps) {
   const {
     attributes,
@@ -29,15 +27,14 @@ export function SortableAppItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: app.id, disabled: !sortable });
+  } = useSortable({ id: app.id });
 
   return (
     <Item
       ref={setNodeRef}
       app={app}
       isDragging={isDragging}
-      dragHandleProps={sortable ? { ...attributes, ...listeners } : undefined}
-      showDragHandle={sortable}
+      dragHandleProps={{ ...attributes, ...listeners }}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       isFavorite={isFavorite}
       onToggleFavorite={onToggleFavorite}

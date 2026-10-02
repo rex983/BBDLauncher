@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Bell, Check, Trash2 } from "lucide-react";
@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getBrowserClient } from "@/lib/supabase/browser";
+import { fmtRelative } from "@/components/shared/format";
 
 interface Notification {
   id: string;
@@ -26,17 +27,7 @@ interface Notification {
   created_at: string;
 }
 
-function fmtRelative(iso: string) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diffMs / 60_000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString();
 
 export function NotificationsBell() {
   const { data: session, status: sessionStatus } = useSession();
@@ -44,6 +35,10 @@ export function NotificationsBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  // Read by the realtime handler so toggling the dropdown doesn't tear
+  // down and re-open the channel.
+  const openRef = useRef(open);
+  openRef.current = open;
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -81,14 +76,14 @@ export function NotificationsBell() {
         },
         () => {
           fetchCount();
-          if (open) fetchList();
+          if (openRef.current) fetchList();
         },
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.profileId, sessionStatus, open, fetchCount, fetchList]);
+  }, [session?.user?.profileId, sessionStatus, fetchCount, fetchList]);
 
   // Load the list when the user opens the dropdown so we always show the
   // freshest data (in case the realtime subscription missed anything).
@@ -97,7 +92,7 @@ export function NotificationsBell() {
   }, [open, fetchList]);
 
   const markRead = async (id: string) => {
-    // Optimistic — flip locally, revert on failure.
+    // Optimistic — flip locally.
     setItems((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)),
     );
@@ -123,13 +118,13 @@ export function NotificationsBell() {
     await fetch("/api/notifications/read-all", { method: "POST" });
   };
 
-  const activate = async (n: Notification) => {
+  const activate = (n: Notification) => {
     if (!n.read_at) markRead(n.id);
     setOpen(false);
   };
 
   const showBadge = unreadCount > 0;
-  const badgeText = useMemo(() => (unreadCount > 99 ? "99+" : String(unreadCount)), [unreadCount]);
+  const badgeText = unreadCount > 99 ? "99+" : String(unreadCount);
 
   // Never render for anonymous — the header shows nothing until session
   // hydrates.
@@ -193,7 +188,7 @@ export function NotificationsBell() {
                   </p>
                 )}
                 <p className="mt-1 text-[10px] text-muted-foreground">
-                  {fmtRelative(n.created_at)}
+                  {fmtRelative(n.created_at, fmtDate)}
                 </p>
               </div>
             );

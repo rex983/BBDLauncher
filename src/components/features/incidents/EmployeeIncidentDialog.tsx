@@ -1,29 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  formatIncidentNumber,
-  INCIDENT_CATEGORY_LABEL,
-  INCIDENT_SEVERITY_LABEL,
-  INCIDENT_STATUS_LABEL,
-  type IncidentAttachment,
-  type IncidentCategory,
-  type IncidentSeverity,
-  type IncidentStatus,
-  INCIDENT_SEVERITY_VARIANT,
+import type {
+  IncidentAttachment,
+  IncidentCategory,
+  IncidentSeverity,
+  IncidentStatus,
 } from "@/lib/incidents/types";
 import { AttachmentPreview } from "@/components/shared/AttachmentPreview";
+import { fmtLongDateTimeUS as fmtDate } from "@/components/shared/format";
+import { IncidentDialogTitle, SignatureBlock } from "./incident-parts";
 import { Download, ShieldCheck } from "lucide-react";
 
 interface EmployeeReport {
@@ -48,14 +38,6 @@ interface EmployeeReport {
   employee_signature_hash: string | null;
   created_at: string;
   reporter_name: string | null;
-}
-
-function fmtDate(iso: string | null | undefined) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-US", {
-    dateStyle: "long",
-    timeStyle: "short",
-  });
 }
 
 // Employee-facing detail dialog. Shows the manager-signed report, the
@@ -150,27 +132,7 @@ export function EmployeeIncidentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-baseline gap-2">
-            {report?.number != null && (
-              <span className="font-mono text-sm text-muted-foreground">
-                {formatIncidentNumber(report.number)}
-              </span>
-            )}
-            <span>{report?.title || (loading ? "Loading…" : "Incident report")}</span>
-          </DialogTitle>
-          {report && (
-            <DialogDescription className="flex flex-wrap items-center gap-2 pt-1">
-              <Badge variant={INCIDENT_SEVERITY_VARIANT[report.severity]}>
-                {INCIDENT_SEVERITY_LABEL[report.severity]}
-              </Badge>
-              <Badge variant="outline">
-                {INCIDENT_CATEGORY_LABEL[report.category]}
-              </Badge>
-              <Badge variant="secondary">
-                {INCIDENT_STATUS_LABEL[report.status]}
-              </Badge>
-            </DialogDescription>
-          )}
+          <IncidentDialogTitle report={report} loading={loading} />
         </DialogHeader>
 
         {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
@@ -246,50 +208,18 @@ export function EmployeeIncidentDialog({
             )}
 
             <div className="grid grid-cols-2 gap-3 border-t pt-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Manager signature</p>
-                {report.manager_signed_at ? (
-                  <>
-                    <p className="font-medium">{report.manager_signature_text}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {fmtDate(report.manager_signed_at)}
-                    </p>
-                    {report.manager_signature_hash && (
-                      <p
-                        className="mt-1 break-all font-mono text-[10px] text-muted-foreground"
-                        title={report.manager_signature_hash}
-                      >
-                        SHA-256: {report.manager_signature_hash}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-muted-foreground italic">Not yet signed</p>
-                )}
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Your signature</p>
-                {report.employee_signed_at ? (
-                  <>
-                    <p className="font-medium">{report.employee_signature_text}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {fmtDate(report.employee_signed_at)}
-                    </p>
-                    {report.employee_signature_hash && (
-                      <p
-                        className="mt-1 break-all font-mono text-[10px] text-muted-foreground"
-                        title={report.employee_signature_hash}
-                      >
-                        SHA-256: {report.employee_signature_hash}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-muted-foreground italic">
-                    Not yet signed
-                  </p>
-                )}
-              </div>
+              <SignatureBlock
+                label="Manager signature"
+                signedAt={report.manager_signed_at}
+                text={report.manager_signature_text}
+                hash={report.manager_signature_hash}
+              />
+              <SignatureBlock
+                label="Your signature"
+                signedAt={report.employee_signed_at}
+                text={report.employee_signature_text}
+                hash={report.employee_signature_hash}
+              />
             </div>
 
             {report.document_hash && (

@@ -4,6 +4,7 @@ import { generateSamlAssertion, generateAutoSubmitForm } from "@/lib/saml/idp";
 import { generateSsoToken } from "@/lib/sso/jwt-issuer";
 import { checkAppLaunch } from "@/lib/launcher/launch-gate";
 import { rateLimit } from "@/lib/rate-limit";
+import { applyAttributeMapping } from "@/app/api/_lib/saml-attributes";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -55,15 +56,31 @@ export async function GET(
 
   // Log the launch. Fail closed if the audit row can't be written — the
   // audit trail is the only forensic record of SSO token issuance and we'd
-  // rather deny a launch than mint an untraceable token.
-  const { error: auditErr } = await supabase.from("launcher_sso_audit_log").insert({
-    user_id: session.user.profileId,
-    app_id: appId,
-    event_type: "app_launch",
-    details: { sso_type: app.sso_type, app_name: app.name },
-    ip_address: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip"),
-    user_agent: req.headers.get("user-agent"),
-  });
+  // rather deny a launch than mint an untraceable token. The sign-on config
+  // (only needed for saml/jwt/oauth) is read alongside; it isn't used
+  // unless the audit write succeeds.
+  const needsConfig =
+    app.sso_type === "saml" || app.sso_type === "jwt" || app.sso_type === "oauth";
+  const [{ error: auditErr }, configRes] = await Promise.all([
+    supabase.from("launcher_sso_audit_log").insert({
+      user_id: session.user.profileId,
+      app_id: appId,
+      event_type: "app_launch",
+      details: { sso_type: app.sso_type, app_name: app.name },
+      ip_address: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip"),
+      user_agent: req.headers.get("user-agent"),
+    }),
+    needsConfig
+      ? supabase
+          .from("launcher_sso_configs")
+          .select(
+            "acs_url, sp_entity_id, name_id_format, attribute_mapping, jwt_acs_url, jwt_audience, oauth_authorize_url, oauth_client_id",
+          )
+          .eq("app_id", appId)
+          .single()
+      : null,
+  ]);
+  const ssoConfig = configRes?.data;
   if (auditErr) {
     console.error("Audit log insert failed:", {
       code: auditErr.code,
@@ -95,12 +112,6 @@ export async function GET(
       return NextResponse.redirect(safeAppUrl);
 
     case "saml": {
-      const { data: ssoConfig } = await supabase
-        .from("launcher_sso_configs")
-        .select("*")
-        .eq("app_id", appId)
-        .single();
-
       if (!ssoConfig?.acs_url || !ssoConfig?.sp_entity_id) {
         return NextResponse.json(
           { error: "SAML not configured for this application" },
@@ -108,26 +119,16 @@ export async function GET(
         );
       }
 
-      const attributes: Record<string, string> = {
-        email: session.user.email!,
-        name: session.user.name || "",
-        role: session.user.role,
-      };
-
-      // Apply custom attribute mapping if configured. Whitelist which
-      // session.user fields can be exposed — matches the SAML SP-initiated
-      // path so a stale mapping row can't accidentally leak future claims.
-      const ALLOWED_USER_FIELDS = new Set([
-        "email", "name", "role", "office", "department", "is_it", "profileId",
-      ]);
-      if (ssoConfig.attribute_mapping) {
-        const mapping = ssoConfig.attribute_mapping as Record<string, string>;
-        for (const [samlAttr, userField] of Object.entries(mapping)) {
-          if (!ALLOWED_USER_FIELDS.has(userField)) continue;
-          const value = (session.user as Record<string, unknown>)[userField];
-          if (value) attributes[samlAttr] = String(value);
-        }
-      }
+      // Apply custom attribute mapping (whitelisted) on top of the defaults.
+      const attributes = applyAttributeMapping(
+        {
+          email: session.user.email!,
+          name: session.user.name || "",
+          role: session.user.role,
+        },
+        ssoConfig.attribute_mapping,
+        session.user,
+      );
 
       const samlResponse = generateSamlAssertion({
         nameId: session.user.email!,
@@ -144,12 +145,6 @@ export async function GET(
     }
 
     case "jwt": {
-      const { data: ssoConfig } = await supabase
-        .from("launcher_sso_configs")
-        .select("*")
-        .eq("app_id", appId)
-        .single();
-
       if (!ssoConfig?.jwt_acs_url || !ssoConfig?.jwt_audience) {
         return NextResponse.json(
           { error: "JWT SSO not configured for this application" },
@@ -174,12 +169,6 @@ export async function GET(
     }
 
     case "oauth": {
-      const { data: ssoConfig } = await supabase
-        .from("launcher_sso_configs")
-        .select("*")
-        .eq("app_id", appId)
-        .single();
-
       if (!ssoConfig?.oauth_authorize_url || !ssoConfig?.oauth_client_id) {
         return NextResponse.json(
           { error: "OAuth not configured for this application" },

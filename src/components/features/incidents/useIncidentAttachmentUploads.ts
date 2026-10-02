@@ -45,7 +45,7 @@ function makePreviewUrl(file: File): string | null {
   }
 }
 
-export interface UseIncidentAttachmentUploadsResult {
+interface UseIncidentAttachmentUploadsResult {
   uploads: UploadItem[];
   uploadingCount: number;
   errorCount: number;
@@ -68,8 +68,8 @@ export function useIncidentAttachmentUploads(options?: {
   uploadsRef.current = uploads;
 
   // Revoke minted object URLs on unmount only — mid-life removal handles
-  // its own revoke inline. The eslint disable is intentional: we deliberately
-  // read the latest queue via the ref so this cleanup runs exactly once.
+  // its own revoke inline. Reads the latest queue via the ref so this
+  // cleanup runs exactly once.
   useEffect(() => {
     return () => {
       uploadsRef.current.forEach((u) => {
@@ -181,14 +181,7 @@ export function useIncidentAttachmentUploads(options?: {
     });
   }, []);
 
-  const reset = useCallback(() => {
-    setUploads((prev) => {
-      prev.forEach((u) => {
-        if (u.status !== "existing" && u.previewUrl) URL.revokeObjectURL(u.previewUrl);
-      });
-      return [];
-    });
-  }, []);
+  const reset = useCallback(() => seedExisting([]), [seedExisting]);
 
   const uploadingCount = uploads.filter((u) => u.status === "uploading").length;
   const errorCount = uploads.filter((u) => u.status === "error").length;

@@ -39,10 +39,9 @@ export async function getMyStateToday(profileId: string): Promise<{
   return { state: computeState(punches), punches };
 }
 
-// Mirror of /api/timeclock/schedule so server components (namely /dashboard)
-// can hydrate TimeClockShell without a client round-trip. Keep in sync
-// with that route — both compute the effective end-of-day for the T-5
-// prompt and the auto-clockout cron.
+// Today's schedule + effective end-of-day (for the T-5 prompt and the
+// auto-clockout cron). Served by /api/timeclock/schedule and used directly
+// by /dashboard to hydrate TimeClockShell without a client round-trip.
 export async function getMyScheduleToday(
   profileId: string,
 ): Promise<TodayScheduleData> {
@@ -50,18 +49,13 @@ export async function getMyScheduleToday(
   const now = new Date();
   const weekday = weekdayInZone(now);
 
-  const [overrideRes, anyOverrideRes, extensionRes] = await Promise.all([
+  // All of the profile's schedule rows (at most one per weekday) answer both
+  // "is there an override for today" and "has any override at all".
+  const [schedulesRes, extensionRes] = await Promise.all([
     supabase
       .from("work_schedules")
-      .select("weekday, start_time, end_time, timezone")
-      .eq("profile_id", profileId)
-      .eq("weekday", weekday)
-      .maybeSingle(),
-    supabase
-      .from("work_schedules")
-      .select("weekday")
-      .eq("profile_id", profileId)
-      .limit(1),
+      .select("weekday, start_time, end_time")
+      .eq("profile_id", profileId),
     supabase
       .from("time_extensions")
       .select("extension_until, requested_minutes")
@@ -70,8 +64,8 @@ export async function getMyScheduleToday(
       .maybeSingle(),
   ]);
 
-  const override = overrideRes.data;
-  const anyOverride = anyOverrideRes.data;
+  const schedules = schedulesRes.data || [];
+  const override = schedules.find((s) => s.weekday === weekday);
   const extension = extensionRes.data;
 
   let start = DEFAULT_START;
@@ -82,7 +76,7 @@ export async function getMyScheduleToday(
     start = override.start_time.slice(0, 5);
     end = override.end_time.slice(0, 5);
     scheduled = true;
-  } else if (anyOverride && anyOverride.length > 0) {
+  } else if (schedules.length > 0) {
     scheduled = false;
   }
 

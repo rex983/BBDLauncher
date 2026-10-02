@@ -2,15 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -24,37 +17,26 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   formatIncidentNumber,
   INCIDENT_CATEGORIES,
-  INCIDENT_CATEGORY_LABEL,
   INCIDENT_SEVERITIES,
-  INCIDENT_SEVERITY_LABEL,
-  INCIDENT_STATUS_LABEL,
   type IncidentAttachment,
   type IncidentCategory,
   type IncidentSeverity,
   type IncidentStatus,
-  INCIDENT_SEVERITY_VARIANT,
 } from "@/lib/incidents/types";
 import { isAdmin as isAdminRole } from "@/lib/auth/permissions";
-import {
-  AttachmentPreview,
-  FileKindIcon,
-  formatBytes,
-  isImageMime,
-} from "@/components/shared/AttachmentPreview";
+import { AttachmentPreview } from "@/components/shared/AttachmentPreview";
+import { fmtLongDateTimeUS as fmtDate, fmtRelative } from "@/components/shared/format";
 import { useIncidentAttachmentUploads } from "./useIncidentAttachmentUploads";
+import { IncidentDialogTitle, SignatureBlock, UploadRow, VisibilityPill } from "./incident-parts";
 import {
   AlertTriangle,
-  CheckCircle2,
   Download,
-  Loader2,
   Paperclip,
   Pencil,
-  RotateCcw,
   Save,
   ShieldCheck,
   Trash2,
   X,
-  XCircle,
 } from "lucide-react";
 
 export interface ManagerIncidentSummary {
@@ -110,25 +92,23 @@ interface FullReport extends ManagerIncidentSummary {
   events?: IncidentEvent[];
 }
 
-function fmtDate(iso: string | null | undefined) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-US", {
-    dateStyle: "long",
-    timeStyle: "short",
-  });
+// Edit-form values for a report. Legacy rows have no problem /
+// proposed_solution — the form hides those fields then and edits the raw
+// document body instead.
+function formFromReport(r: FullReport) {
+  return {
+    title: r.title,
+    severity: r.severity,
+    category: r.category,
+    problem: r.problem ?? "",
+    proposed_solution: r.proposed_solution ?? "",
+    manager_notes: r.manager_notes ?? "",
+    document: r.document,
+  };
 }
 
-function fmtRelative(iso: string) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diffMs / 60_000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return fmtDate(iso);
-}
+// Split-section rows (problem / proposed solution) vs legacy single-body rows.
+const hasSections = (r: FullReport) => r.problem !== null || r.proposed_solution !== null;
 
 export function ManagerIncidentDialog({
   incidentId,
@@ -160,7 +140,6 @@ export function ManagerIncidentDialog({
     title: "",
     severity: "medium" as IncidentSeverity,
     category: "performance" as IncidentCategory,
-    // Split-section fields when present, falls back to document for legacy rows.
     problem: "",
     proposed_solution: "",
     manager_notes: "",
@@ -205,18 +184,7 @@ export function ManagerIncidentDialog({
       if (!res.ok) throw new Error((await res.json()).error || "Failed to load");
       const data: FullReport = await res.json();
       setReport(data);
-      setEditForm({
-        title: data.title,
-        severity: data.severity,
-        category: data.category,
-        problem: data.problem ?? "",
-        proposed_solution: data.proposed_solution ?? "",
-        manager_notes: data.manager_notes ?? "",
-        // Legacy rows have no problem/proposed_solution — the edit form
-        // will hide those two fields in that case (see below) and this
-        // preserves the raw document body for editing directly.
-        document: data.document,
-      });
+      setEditForm(formFromReport(data));
       // Reset the attachment editor to mirror what's on the row. Existing
       // attachments start as `existing` items; the user can remove them
       // or upload new ones on top.
@@ -229,14 +197,7 @@ export function ManagerIncidentDialog({
   };
 
   useEffect(() => {
-    if (!open || !incidentId) return;
-    let cancelled = false;
-    load(incidentId).then(() => {
-      if (cancelled) return;
-    });
-    return () => {
-      cancelled = true;
-    };
+    if (open && incidentId) load(incidentId);
   }, [incidentId, open]);
 
   useEffect(() => {
@@ -329,8 +290,8 @@ export function ManagerIncidentDialog({
       setError("Title is required.");
       return;
     }
-    const hasSections = report.problem !== null || report.proposed_solution !== null;
-    if (hasSections) {
+    const sections = hasSections(report);
+    if (sections) {
       if (editForm.problem.trim().length < 3) {
         setError("Problem must be at least 3 characters.");
         return;
@@ -360,7 +321,7 @@ export function ManagerIncidentDialog({
     if (editForm.title !== report.title) patchBody.title = editForm.title;
     if (editForm.severity !== report.severity) patchBody.severity = editForm.severity;
     if (editForm.category !== report.category) patchBody.category = editForm.category;
-    if (hasSections) {
+    if (sections) {
       if (editForm.problem !== (report.problem ?? "")) patchBody.problem = editForm.problem;
       if (editForm.proposed_solution !== (report.proposed_solution ?? "")) {
         patchBody.proposed_solution = editForm.proposed_solution;
@@ -430,27 +391,7 @@ export function ManagerIncidentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-baseline gap-2">
-            {report?.number != null && (
-              <span className="font-mono text-sm text-muted-foreground">
-                {formatIncidentNumber(report.number)}
-              </span>
-            )}
-            <span>{report?.title || (loading ? "Loading…" : "Incident report")}</span>
-          </DialogTitle>
-          {report && (
-            <DialogDescription className="flex flex-wrap items-center gap-2 pt-1">
-              <Badge variant={INCIDENT_SEVERITY_VARIANT[report.severity]}>
-                {INCIDENT_SEVERITY_LABEL[report.severity]}
-              </Badge>
-              <Badge variant="outline">
-                {INCIDENT_CATEGORY_LABEL[report.category]}
-              </Badge>
-              <Badge variant="secondary">
-                {INCIDENT_STATUS_LABEL[report.status]}
-              </Badge>
-            </DialogDescription>
-          )}
+          <IncidentDialogTitle report={report} loading={loading} />
         </DialogHeader>
 
         {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
@@ -546,14 +487,12 @@ export function ManagerIncidentDialog({
                     </Select>
                   </div>
                 </div>
-                {report.problem !== null || report.proposed_solution !== null ? (
+                {hasSections(report) ? (
                   <>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <Label htmlFor="edit-problem">Problem</Label>
-                        <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                          Employee sees this
-                        </span>
+                        <VisibilityPill />
                       </div>
                       <Textarea
                         id="edit-problem"
@@ -565,9 +504,7 @@ export function ManagerIncidentDialog({
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <Label htmlFor="edit-solution">Proposed solution &amp; deadline</Label>
-                        <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                          Employee sees this
-                        </span>
+                        <VisibilityPill />
                       </div>
                       <Textarea
                         id="edit-solution"
@@ -579,9 +516,7 @@ export function ManagerIncidentDialog({
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <Label htmlFor="edit-notes">Manager&rsquo;s notes</Label>
-                        <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                          Private — employee does NOT see this
-                        </span>
+                        <VisibilityPill private />
                       </div>
                       <Textarea
                         id="edit-notes"
@@ -645,99 +580,15 @@ export function ManagerIncidentDialog({
                     </p>
                   ) : (
                     <ul className="space-y-2">
-                      {editAttachments.map((a) => {
-                        const meta =
-                          a.status === "existing" || a.status === "uploaded" ? a.meta : null;
-                        const mime = meta?.mime ?? (a.status !== "existing" ? a.file.type : "");
-                        const filename = meta?.filename ?? (a.status !== "existing" ? a.file.name : "");
-                        const size = meta?.size ?? (a.status !== "existing" ? a.file.size : 0);
-                        const image = isImageMime(mime);
-                        const previewSrc =
-                          a.status === "existing"
-                            ? `/api/incidents/attachments/${a.meta.path}`
-                            : a.previewUrl;
-                        return (
-                          <li
-                            key={a.id}
-                            className={`flex items-center gap-3 rounded-md border p-2 ${
-                              a.status === "error"
-                                ? "border-destructive/40 bg-destructive/5"
-                                : a.status === "uploaded"
-                                  ? "border-emerald-500/30 bg-emerald-500/5"
-                                  : "bg-background"
-                            }`}
-                          >
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted">
-                              {image && previewSrc ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={previewSrc}
-                                  alt={filename}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <FileKindIcon
-                                  mime={mime}
-                                  className="h-5 w-5 text-muted-foreground"
-                                />
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium" title={filename}>
-                                {filename}
-                              </p>
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className="text-muted-foreground">
-                                  {formatBytes(size)}
-                                </span>
-                                {a.status === "existing" && (
-                                  <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                    Existing
-                                  </span>
-                                )}
-                                {a.status === "uploading" && (
-                                  <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                    Uploading…
-                                  </span>
-                                )}
-                                {a.status === "uploaded" && (
-                                  <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    Newly uploaded
-                                  </span>
-                                )}
-                                {a.status === "error" && (
-                                  <span className="inline-flex items-center gap-1 text-destructive">
-                                    <XCircle className="h-3 w-3" />
-                                    {a.error}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            {a.status === "error" && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => retryEditUpload(a.id)}
-                              >
-                                <RotateCcw className="mr-1 h-3 w-3" />
-                                Retry
-                              </Button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => removeEditAttachment(a.id)}
-                              className="text-muted-foreground hover:text-destructive"
-                              aria-label="Remove attachment"
-                              title="Remove"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </li>
-                        );
-                      })}
+                      {editAttachments.map((a) => (
+                        <UploadRow
+                          key={a.id}
+                          item={a}
+                          variant="edit"
+                          onRetry={() => retryEditUpload(a.id)}
+                          onRemove={() => removeEditAttachment(a.id)}
+                        />
+                      ))}
                     </ul>
                   )}
                 </div>
@@ -750,15 +601,7 @@ export function ManagerIncidentDialog({
                     onClick={() => {
                       setEditing(false);
                       setError(null);
-                      setEditForm({
-                        title: report.title,
-                        severity: report.severity,
-                        category: report.category,
-                        problem: report.problem ?? "",
-                        proposed_solution: report.proposed_solution ?? "",
-                        manager_notes: report.manager_notes ?? "",
-                        document: report.document,
-                      });
+                      setEditForm(formFromReport(report));
                       // Reset attachments to the report's original list;
                       // seedExisting revokes any object URLs from pending
                       // uploads the user was about to add before backing out.
@@ -779,7 +622,7 @@ export function ManagerIncidentDialog({
                   </Button>
                 </div>
               </div>
-            ) : report.problem !== null || report.proposed_solution !== null ? (
+            ) : hasSections(report) ? (
               <>
                 {report.problem && (
                   <div>
@@ -787,9 +630,7 @@ export function ManagerIncidentDialog({
                       <p className="text-xs uppercase tracking-wider text-muted-foreground">
                         Problem
                       </p>
-                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                        Employee sees this
-                      </span>
+                      <VisibilityPill />
                     </div>
                     <div className="rounded-md border bg-background p-4 whitespace-pre-wrap text-sm leading-relaxed">
                       {report.problem}
@@ -802,9 +643,7 @@ export function ManagerIncidentDialog({
                       <p className="text-xs uppercase tracking-wider text-muted-foreground">
                         Proposed solution &amp; deadline
                       </p>
-                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                        Employee sees this
-                      </span>
+                      <VisibilityPill />
                     </div>
                     <div className="rounded-md border bg-background p-4 whitespace-pre-wrap text-sm leading-relaxed">
                       {report.proposed_solution}
@@ -817,9 +656,7 @@ export function ManagerIncidentDialog({
                       <p className="text-xs uppercase tracking-wider text-muted-foreground">
                         Manager&rsquo;s notes
                       </p>
-                      <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                        Private — employee does NOT see this
-                      </span>
+                      <VisibilityPill private />
                     </div>
                     <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-4 whitespace-pre-wrap text-sm leading-relaxed">
                       {report.manager_notes}
@@ -861,48 +698,18 @@ export function ManagerIncidentDialog({
             )}
 
             <div className="grid grid-cols-2 gap-3 border-t pt-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Manager signature</p>
-                {report.manager_signed_at ? (
-                  <>
-                    <p className="font-medium">{report.manager_signature_text}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {fmtDate(report.manager_signed_at)}
-                    </p>
-                    {report.manager_signature_hash && (
-                      <p
-                        className="mt-1 break-all font-mono text-[10px] text-muted-foreground"
-                        title={report.manager_signature_hash}
-                      >
-                        SHA-256: {report.manager_signature_hash}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-muted-foreground italic">Not yet signed</p>
-                )}
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Employee signature</p>
-                {report.employee_signed_at ? (
-                  <>
-                    <p className="font-medium">{report.employee_signature_text}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {fmtDate(report.employee_signed_at)}
-                    </p>
-                    {report.employee_signature_hash && (
-                      <p
-                        className="mt-1 break-all font-mono text-[10px] text-muted-foreground"
-                        title={report.employee_signature_hash}
-                      >
-                        SHA-256: {report.employee_signature_hash}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-muted-foreground italic">Not yet signed</p>
-                )}
-              </div>
+              <SignatureBlock
+                label="Manager signature"
+                signedAt={report.manager_signed_at}
+                text={report.manager_signature_text}
+                hash={report.manager_signature_hash}
+              />
+              <SignatureBlock
+                label="Employee signature"
+                signedAt={report.employee_signed_at}
+                text={report.employee_signature_text}
+                hash={report.employee_signature_hash}
+              />
             </div>
 
             {report.document_hash && (
@@ -980,7 +787,7 @@ export function ManagerIncidentDialog({
                           <p className="text-muted-foreground">
                             {ev.actor?.name || ev.actor?.email || "System"} ·{" "}
                             <span title={fmtDate(ev.created_at)}>
-                              {fmtRelative(ev.created_at)}
+                              {fmtRelative(ev.created_at, fmtDate)}
                             </span>
                             {ev.actor_ip && (
                               <>
@@ -989,12 +796,10 @@ export function ManagerIncidentDialog({
                               </>
                             )}
                           </p>
-                          {ev.details && ev.event_type === "edited" && (
-                            <EditDetails details={ev.details} />
-                          )}
-                          {ev.details && ev.event_type === "admin_override_edit" && (
-                            <EditDetails details={ev.details} />
-                          )}
+                          {ev.details &&
+                            (ev.event_type === "edited" || ev.event_type === "admin_override_edit") && (
+                              <EditDetails details={ev.details} />
+                            )}
                           {ev.details && (ev.event_type === "cancelled" || ev.event_type === "admin_override_delete") && (
                             <CancelDetails details={ev.details} />
                           )}

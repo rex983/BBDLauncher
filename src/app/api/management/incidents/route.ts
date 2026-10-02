@@ -163,11 +163,20 @@ export async function POST(req: NextRequest) {
   // flow. Their signature_text is their on-file name; the hash + IP + UA
   // capture matches the two-step sign endpoint exactly so downstream
   // verification treats them the same.
-  const { data: reporterProfile } = await supabase
-    .from("profiles")
-    .select("full_name")
-    .eq("id", session.user.profileId)
-    .single<{ full_name: string | null }>();
+  // The employee lookup only feeds the Slack payload below, but it's
+  // independent — fetch it alongside the reporter's name.
+  const [{ data: reporterProfile }, { data: employeeProfile }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", session.user.profileId)
+      .single<{ full_name: string | null }>(),
+    supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", parsed.data.employee_profile_id)
+      .single<{ full_name: string | null; email: string | null }>(),
+  ]);
   const signatureText = (reporterProfile?.full_name || "").trim();
   if (!signatureText) {
     return NextResponse.json(
@@ -252,11 +261,6 @@ export async function POST(req: NextRequest) {
   // Slack: identical payload to what the separate sign endpoint fires so
   // HR sees the same notification format regardless of which path a report
   // came in on.
-  const { data: employeeProfile } = await supabase
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", parsed.data.employee_profile_id)
-    .single<{ full_name: string | null; email: string | null }>();
   const slackPayload: IncidentSubmittedPayload = {
     incidentId: data.id,
     employeeName: employeeProfile?.full_name || "Unknown",

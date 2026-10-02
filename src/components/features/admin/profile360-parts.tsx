@@ -29,28 +29,22 @@ import { PUNCH_EVENT_LABEL, type TimePunch } from "@/lib/timesheets/state";
 import {
   formatDays,
   requestDays,
+  TIME_OFF_STATUS_VARIANT,
   TIME_OFF_TYPE_LABEL,
   TIME_OFF_TYPES,
-  type TimeOffType,
 } from "@/lib/timeoff/types";
 import {
   formatIncidentNumber,
   INCIDENT_CATEGORY_LABEL,
   INCIDENT_SEVERITY_LABEL,
   INCIDENT_STATUS_LABEL,
-  type IncidentStatus,
   INCIDENT_SEVERITY_VARIANT,
 } from "@/lib/incidents/types";
 import type { IncidentSummary } from "@/components/features/incidents/IncidentPanel";
 import type { WindowTimeOffRow, YtdBreakdown } from "@/lib/timesheets/detail";
-import {
-  fmtDate,
-  fmtDateTime,
-  fmtRelative,
-  shortenAgent,
-  type AnalyticsPayload,
-} from "./profile360-helpers";
-
+import { fmtDateTimeUS as fmtDateTime, fmtDateUS as fmtDate, fmtRelative } from "@/components/shared/format";
+import { shortenAgent, type AnalyticsPayload } from "./profile360-helpers";
+import { KindBadge } from "./kind-badge";
 
 export function MiniStat({ label, value }: { label: string; value: string }) {
   return (
@@ -116,7 +110,7 @@ export function PunchesTab({
                   <TableCell className="whitespace-nowrap">
                     <div className="text-sm">{fmtDateTime(p.occurred_at)}</div>
                     <div className="text-xs text-muted-foreground">
-                      {fmtRelative(p.occurred_at)}
+                      {fmtRelative(p.occurred_at, fmtDate)}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -159,7 +153,7 @@ export function TimeOffTab({
               <MiniStat
                 key={t.value}
                 label={TIME_OFF_TYPE_LABEL[t.value]}
-                value={`${formatDays(ytd[t.value as TimeOffType] || 0)} d`}
+                value={`${formatDays(ytd[t.value] || 0)} d`}
               />
             ))}
             <MiniStat label="Total" value={`${formatDays(ytd.total)} d`} />
@@ -211,17 +205,7 @@ export function TimeOffTab({
                         : `${r.hours}h`}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          r.status === "approved"
-                            ? "default"
-                            : r.status === "denied"
-                              ? "destructive"
-                              : "outline"
-                        }
-                      >
-                        {r.status}
-                      </Badge>
+                      <Badge variant={TIME_OFF_STATUS_VARIANT[r.status]}>{r.status}</Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-xs">
                       {r.reason || r.decided_note || "—"}
@@ -290,13 +274,13 @@ export function IncidentsTab({ incidents }: { incidents: IncidentSummary[] }) {
                 <TableCell>
                   <Badge
                     variant={
-                      (r.status as IncidentStatus) === "awaiting_employee_sig" ||
-                      (r.status as IncidentStatus) === "awaiting_manager_sig"
+                      r.status === "awaiting_employee_sig" ||
+                      r.status === "awaiting_manager_sig"
                         ? "destructive"
                         : "secondary"
                     }
                   >
-                    {INCIDENT_STATUS_LABEL[r.status as IncidentStatus]}
+                    {INCIDENT_STATUS_LABEL[r.status]}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
@@ -376,12 +360,7 @@ export function AppsTab({
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={d.kind === "app" ? "default" : "outline"}
-                        className="text-[10px]"
-                      >
-                        {d.kind}
-                      </Badge>
+                      <KindBadge kind={d.kind} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {d.count.toLocaleString()}
@@ -390,13 +369,13 @@ export function AppsTab({
                       className="text-muted-foreground text-sm"
                       title={fmtDateTime(d.first_used)}
                     >
-                      {fmtRelative(d.first_used)}
+                      {fmtRelative(d.first_used, fmtDate)}
                     </TableCell>
                     <TableCell
                       className="text-muted-foreground text-sm"
                       title={fmtDateTime(d.last_used)}
                     >
-                      {fmtRelative(d.last_used)}
+                      {fmtRelative(d.last_used, fmtDate)}
                     </TableCell>
                   </TableRow>
                 );
@@ -472,7 +451,7 @@ export function AuditTab({
                       className="text-muted-foreground whitespace-nowrap"
                       title={fmtDateTime(e.created_at)}
                     >
-                      {fmtRelative(e.created_at)}
+                      {fmtRelative(e.created_at, fmtDate)}
                     </TableCell>
                     <TableCell>
                       {href ? (
@@ -484,12 +463,7 @@ export function AuditTab({
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={e.kind === "app" ? "default" : "outline"}
-                        className="text-[10px]"
-                      >
-                        {e.kind}
-                      </Badge>
+                      <KindBadge kind={e.kind} />
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       {e.ip_address ?? "—"}

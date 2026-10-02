@@ -119,7 +119,12 @@ export default function TimeOffShell({
           <TabsTrigger value="summary">Summary</TabsTrigger>
         </TabsList>
         <TabsContent value="queue" className="mt-4">
-          <RequestsQueue onChanged={bump} initialRows={initialQueueRows} />
+          <RequestsQueue
+            onChanged={bump}
+            initialRows={initialQueueRows}
+            canManage={canManage}
+            viewAsOffice={viewAsOffice}
+          />
         </TabsContent>
         <TabsContent value="calendar" className="mt-4">
           <TimeOffCalendar refreshKey={refreshKey} active={tab === "calendar"} />
@@ -149,14 +154,14 @@ function splitBuckets(rows: Row[]): { p: Row[]; a: Row[]; d: Row[] } {
 function RequestsQueue({
   onChanged,
   initialRows,
+  canManage,
+  viewAsOffice,
 }: {
   onChanged: () => void;
   initialRows: Row[];
+  canManage: boolean;
+  viewAsOffice: string | null;
 }) {
-  const { data: session } = useSession();
-  const canManage = canEditTimeData(session?.user?.role);
-  const { viewAsOffice } = useRolePreview();
-
   const initialSplit = useMemo(() => splitBuckets(initialRows), [initialRows]);
   const [pending, setPending] = useState<Row[]>(initialSplit.p);
   const [approved, setApproved] = useState<Row[]>(initialSplit.a);

@@ -5,6 +5,7 @@ import { managerAssignError, managerTargetError } from "@/lib/auth/user-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
+import { USER_COLUMNS } from "@/app/api/_lib/users";
 
 const updateSchema = z.object({
   name: z.string().nullable().optional(),
@@ -15,9 +16,6 @@ const updateSchema = z.object({
   can_offboard: z.boolean().optional(),
   is_active: z.boolean().optional(),
 });
-
-const USER_COLUMNS =
-  "id, email, name:full_name, role, office, department, is_it, can_offboard, is_active, created_at, updated_at";
 
 export async function PUT(
   req: NextRequest,
@@ -60,29 +58,36 @@ export async function PUT(
   const needsPrefetch = !viewerIsAdmin || securityChange;
   const deactivating = parsed.data.is_active === false;
 
+  // The role lookup and the target prefetch are independent — run both at once.
+  const [roleRes, beforeRes] = await Promise.all([
+    parsed.data.role !== undefined
+      ? supabase
+          .from("launcher_roles")
+          .select("name")
+          .eq("name", parsed.data.role)
+          .maybeSingle()
+      : null,
+    needsPrefetch
+      ? supabase
+          .from("profiles")
+          .select("role, office, department, is_active, session_version")
+          .eq("id", id)
+          .single()
+      : null,
+  ]);
+
   // Any assigned role must be an existing entry in launcher_roles. Without
   // this check a manager could stamp a user with an arbitrary string that
   // downstream permission helpers wouldn't recognize.
-  if (parsed.data.role !== undefined) {
-    const { data: roleRow } = await supabase
-      .from("launcher_roles")
-      .select("name")
-      .eq("name", parsed.data.role)
-      .maybeSingle();
-    if (!roleRow) {
-      return NextResponse.json(
-        { error: "Unknown role" },
-        { status: 400 }
-      );
-    }
+  if (roleRes && !roleRes.data) {
+    return NextResponse.json(
+      { error: "Unknown role" },
+      { status: 400 }
+    );
   }
 
-  if (needsPrefetch) {
-    const { data: before } = await supabase
-      .from("profiles")
-      .select("role, office, department, is_active, session_version")
-      .eq("id", id)
-      .single();
+  if (beforeRes) {
+    const before = beforeRes.data;
     if (!before) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     if (!viewerIsAdmin) {

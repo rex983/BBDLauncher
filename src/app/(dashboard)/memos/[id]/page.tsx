@@ -51,27 +51,34 @@ export default async function EmployeeMemoPage({
 
   const supabase = createAdminClient();
 
-  const { data: recipient } = await supabase
-    .from("office_memo_recipients")
-    .select("id, delivered_at, read_at, acknowledged_at, signature_text")
-    .eq("memo_id", id)
-    .eq("profile_id", session.user.profileId)
-    .single();
-  if (!recipient) notFound();
+  const [{ data: recipient }, { data: memo }, { data: profile }] = await Promise.all([
+    supabase
+      .from("office_memo_recipients")
+      .select("id, delivered_at, read_at, acknowledged_at, signature_text")
+      .eq("memo_id", id)
+      .eq("profile_id", session.user.profileId)
+      .single(),
+    supabase
+      .from("office_memos")
+      .select(
+        "id, number, title, body, category, priority, acknowledgement_mode, effective_date, published_at, attachments, author_profile_id, document_hash, author_signature_hash, edit_count, last_edited_at",
+      )
+      .eq("id", id)
+      .eq("status", "published")
+      .single(),
+    supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", session.user.profileId)
+      .single(),
+  ]);
+  // Only recipients of a published memo can open it.
+  if (!recipient || !memo) notFound();
 
-  const { data: memo } = await supabase
-    .from("office_memos")
-    .select(
-      "id, number, title, body, category, priority, acknowledgement_mode, effective_date, published_at, attachments, author_profile_id, document_hash, author_signature_hash, edit_count, last_edited_at",
-    )
-    .eq("id", id)
-    .eq("status", "published")
-    .single();
-  if (!memo) notFound();
-
-  // Stamp read_at on first view. Informational memos skip this — no
-  // receipt required for those.
-  if (!recipient.read_at && memo.acknowledgement_mode !== "informational") {
+  // Stamp read_at on first view (in parallel with the author lookup).
+  // Informational memos skip this — no receipt required for those.
+  const stampRead = async () => {
+    if (recipient.read_at || memo.acknowledgement_mode === "informational") return;
     const now = new Date().toISOString();
     await supabase
       .from("office_memo_recipients")
@@ -85,21 +92,18 @@ export default async function EmployeeMemoPage({
       actorUa: "page-view",
     }).catch(() => undefined);
     recipient.read_at = now;
-  }
+  };
 
-  const { data: author } = memo.author_profile_id
-    ? await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .eq("id", memo.author_profile_id)
-        .single()
-    : { data: null };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name")
-    .eq("id", session.user.profileId)
-    .single();
+  const [{ data: author }] = await Promise.all([
+    memo.author_profile_id
+      ? supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", memo.author_profile_id)
+          .single()
+      : Promise.resolve({ data: null }),
+    stampRead(),
+  ]);
 
   const data: EmployeeMemoPageData = {
     ...memo,

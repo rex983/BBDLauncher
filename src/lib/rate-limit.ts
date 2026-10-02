@@ -12,7 +12,7 @@ type Bucket = { hits: number[] };
 const buckets = new Map<string, Bucket>();
 const MAX_KEYS = 10_000;
 
-function prune(now: number) {
+function prune() {
   if (buckets.size <= MAX_KEYS) return;
   // Drop the oldest half when we exceed the cap so the map can't grow
   // unbounded from unique-key attacks.
@@ -24,7 +24,6 @@ function prune(now: number) {
   });
   const toDelete = Math.floor(entries.length / 2);
   for (let i = 0; i < toDelete; i++) buckets.delete(entries[i][0]);
-  void now;
 }
 
 export interface RateLimitResult {
@@ -44,7 +43,7 @@ export function rateLimit(
   if (!bucket) {
     bucket = { hits: [] };
     buckets.set(key, bucket);
-    prune(now);
+    prune();
   }
   // Drop hits outside the window
   bucket.hits = bucket.hits.filter((t) => t > cutoff);

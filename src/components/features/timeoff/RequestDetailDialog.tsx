@@ -23,6 +23,7 @@ import {
   type TimeOffType,
 } from "@/lib/timeoff/types";
 import { formatBytes } from "@/components/shared/AttachmentPreview";
+import { fmtWhen as fmtDateTime } from "@/components/shared/format";
 import { Check, Paperclip, Pencil, Trash2, X } from "lucide-react";
 
 // Everything the dialog needs to render + edit. Callers assemble this
@@ -61,12 +62,6 @@ function fmtDate(d: string) {
   // wrapping on narrower dialogs.
   return new Date(d + "T00:00:00").toLocaleDateString([], {
     weekday: "short", month: "short", day: "numeric", year: "numeric",
-  });
-}
-function fmtDateTime(iso: string) {
-  return new Date(iso).toLocaleString([], {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
   });
 }
 export function RequestDetailDialog({ row, onClose, canDecide, canEdit, onChanged }: Props) {

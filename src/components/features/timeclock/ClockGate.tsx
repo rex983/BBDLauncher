@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { CalendarCheck, Clock, LogIn, LogOut } from "lucide-react";
 import type { LiveState, PunchEventType } from "@/lib/timesheets/state";
 import {
   TIME_OFF_TYPE_LABEL,
+  todayISO,
   type TimeOffStatus,
   type TimeOffType,
 } from "@/lib/timeoff/types";
@@ -144,9 +146,10 @@ export function ClockGate({
   };
 
   const locked = !loading && (state === null || state.status === "clocked_out");
+  const ctx = useMemo(() => ({ state, loading, punch }), [state, loading, punch]);
 
   return (
-    <TimeClockContext.Provider value={{ state, loading, punch }}>
+    <TimeClockContext.Provider value={ctx}>
       {children}
       {locked && (
         <div
@@ -189,11 +192,6 @@ export function ClockGate({
       )}
     </TimeClockContext.Provider>
   );
-}
-
-function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function fmtRange(start: string, end: string) {

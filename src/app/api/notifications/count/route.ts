@@ -13,13 +13,13 @@ export async function GET() {
   }
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase
+  const { count, error } = await supabase
     .from("notifications")
-    .select("id")
+    .select("id", { count: "exact", head: true })
     .eq("user_id", session.user.profileId)
     .is("dismissed_at", null)
     .is("read_at", null);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ count: data?.length ?? 0 });
+  return NextResponse.json({ count: count ?? 0 });
 }

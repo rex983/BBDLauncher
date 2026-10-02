@@ -8,9 +8,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { fmtTime } from "@/components/shared/format";
 import { useTimeClock } from "./ClockGate";
 
-interface ScheduleData {
+export interface ScheduleData {
   scheduled: boolean;
   end_of_day_iso: string | null;
   extension_until_iso: string | null;
@@ -20,10 +21,6 @@ interface ScheduleData {
 const PROMPT_LEAD_MS = 5 * 60_000;
 const EXTENSION_OPTIONS = [15, 30, 60];
 const DISMISSED_KEY = "bbd-shift-prompt-dismissed";
-
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
 
 // Renders the T-5 min "you're about to be clocked out" prompt at the layout
 // level so it appears on every page of the launcher, not just /dashboard.

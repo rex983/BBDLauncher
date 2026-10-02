@@ -35,18 +35,19 @@ export async function POST(
 
   // Recipient count snapshot for the Slack payload — after the delete
   // the roster is gone.
-  const { count: recipientCount } = await supabase
-    .from("office_memo_recipients")
-    .select("id", { count: "exact", head: true })
-    .eq("memo_id", id);
-
-  const { data: author } = memo.author_profile_id
-    ? await supabase
-        .from("profiles")
-        .select("full_name, email")
-        .eq("id", memo.author_profile_id)
-        .single()
-    : { data: null };
+  const [{ count: recipientCount }, { data: author }] = await Promise.all([
+    supabase
+      .from("office_memo_recipients")
+      .select("id", { count: "exact", head: true })
+      .eq("memo_id", id),
+    memo.author_profile_id
+      ? supabase
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", memo.author_profile_id)
+          .single()
+      : Promise.resolve({ data: null }),
+  ]);
 
   const numberLabel = formatMemoNumber(memo.number);
   const attachmentPaths = Array.isArray(memo.attachments)
@@ -65,25 +66,27 @@ export async function POST(
     priorStatus: memo.status,
   }).catch(() => undefined);
 
-  if (attachmentPaths.length > 0) {
-    const { error: storageErr } = await supabase.storage
-      .from("office-memo-attachments")
-      .remove(attachmentPaths);
-    if (storageErr) {
-      console.error(
-        "[memo-purge] storage cleanup failed:",
-        id,
-        attachmentPaths,
-        storageErr.message,
-      );
-    }
-  }
-
-  await supabase
-    .from("notifications")
-    .delete()
-    .eq("reference_type", "office_memo")
-    .eq("reference_id", id);
+  await Promise.all([
+    attachmentPaths.length > 0 &&
+      supabase.storage
+        .from("office-memo-attachments")
+        .remove(attachmentPaths)
+        .then(({ error: storageErr }) => {
+          if (storageErr) {
+            console.error(
+              "[memo-purge] storage cleanup failed:",
+              id,
+              attachmentPaths,
+              storageErr.message,
+            );
+          }
+        }),
+    supabase
+      .from("notifications")
+      .delete()
+      .eq("reference_type", "office_memo")
+      .eq("reference_id", id),
+  ]);
 
   const { error: deleteErr } = await supabase
     .from("office_memos")

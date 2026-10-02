@@ -13,8 +13,10 @@ import {
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { TimeOffLedgerDialog } from "@/components/features/timeoff/TimeOffLedgerDialog";
 import {
+  emptyTimeOffByType,
   requestDays,
   TIME_OFF_TYPE_LABEL,
+  TIME_OFF_TYPES,
   type TimeOffStatus,
   type TimeOffType,
 } from "@/lib/timeoff/types";
@@ -40,7 +42,7 @@ interface Request {
   reason: string | null;
 }
 
-const TYPES: TimeOffType[] = ["vacation", "sick", "personal", "parental", "other"];
+const TYPES = TIME_OFF_TYPES.map((t) => t.value);
 
 // Compact date-range label: "Sep 25", "Sep 25 – Oct 2", or "Dec 30, 2026 –
 // Jan 3, 2027" when the range straddles years. Kept short so three upcoming
@@ -147,7 +149,7 @@ export function TimeOffSummary({
     for (const p of profiles) {
       byId.set(p.id, {
         profile: p,
-        approvedByType: { vacation: 0, sick: 0, personal: 0, parental: 0, other: 0 },
+        approvedByType: emptyTimeOffByType(),
         pending: 0,
         denied: 0,
         totalApproved: 0,
@@ -198,9 +200,7 @@ export function TimeOffSummary({
 
   const totals = useMemo(() => {
     let approved = 0, pending = 0, denied = 0;
-    const byType: Record<TimeOffType, number> = {
-      vacation: 0, sick: 0, personal: 0, parental: 0, other: 0,
-    };
+    const byType = emptyTimeOffByType();
     for (const r of rows) {
       approved += r.totalApproved;
       pending += r.pending;
@@ -358,7 +358,7 @@ function TotalCard({ label, value, sub }: { label: string; value: number; sub?: 
     <div className="rounded-md border bg-card p-3">
       <div className="text-xs text-muted-foreground uppercase tracking-wider">{label}</div>
       <div className="text-2xl font-semibold mt-1 tabular-nums">
-        {typeof value === "number" ? value.toFixed(1) : value}
+        {value.toFixed(1)}
       </div>
       {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
     </div>

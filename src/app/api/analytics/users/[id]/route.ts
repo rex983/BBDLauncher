@@ -3,6 +3,7 @@ import { analyticsScope } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { sinceIsoForRange } from "@/lib/analytics/ranges";
+import { fetchAllPages } from "@/app/api/_lib/paged";
 
 type AuditRow = {
   id: string;
@@ -47,28 +48,21 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    // PostgREST silently caps rows (Supabase default 1000), so paginate.
-    const PAGE_SIZE = 1000;
-    const MAX_ROWS = 200_000;
-    const events: AuditRow[] = [];
-    for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
+    const paged = await fetchAllPages<AuditRow>((from, to) => {
       let query = supabase
         .from("launcher_sso_audit_log")
         .select("id, app_id, link_id, event_type, created_at, ip_address, user_agent")
         .eq("user_id", id)
         .in("event_type", ["app_launch", "link_click"])
         .order("created_at", { ascending: false })
-        .range(from, from + PAGE_SIZE - 1);
+        .range(from, to);
       if (sinceIso) query = query.gte("created_at", sinceIso);
-
-      const { data: pageRaw, error: pageErr } = await query;
-      if (pageErr) {
-        return NextResponse.json({ error: pageErr.message }, { status: 500 });
-      }
-      const page = (pageRaw ?? []) as AuditRow[];
-      events.push(...page);
-      if (page.length < PAGE_SIZE) break;
+      return query;
+    });
+    if (paged.error) {
+      return NextResponse.json({ error: paged.error }, { status: 500 });
     }
+    const events = paged.data;
 
     const appIds = [
       ...new Set(events.map((e) => e.app_id).filter((v): v is string => !!v)),

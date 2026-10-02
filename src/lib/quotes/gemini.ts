@@ -1,6 +1,6 @@
 // Gemini quote-generation helper.
 //
-// Calls Google's Generative Language API (Gemini 2.5 Flash) to produce a
+// Calls Google's Generative Language API (Gemini Flash) to produce a
 // single professional motivational quote by a real, famous person.
 // Callers pass the last N author+quote pairs so the model can avoid
 // duplicating what's already in the rotation.

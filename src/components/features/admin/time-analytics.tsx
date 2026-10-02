@@ -104,6 +104,29 @@ const TIME_OFF_YTD_COLUMNS: ExportColumn<Row>[] = [
   { key: "time_off_total_ytd", label: "Time off (YTD, days)", get: (r) => r.time_off.total },
 ];
 
+// Per-employee summary columns: the table export (plus per-week columns)
+// and the single-employee dialog export.
+const ROW_SUMMARY_COLUMNS: ExportColumn<Row>[] = [
+  { key: "name", label: "Name", get: (r) => r.profile.name ?? "" },
+  { key: "email", label: "Email", get: (r) => r.profile.email },
+  { key: "office", label: "Office", get: (r) => r.profile.office ?? "" },
+  { key: "department", label: "Department", get: (r) => r.profile.department ?? "" },
+  { key: "total_hours", label: "Total hours", get: (r) => msToHours(r.total_ms) },
+  { key: "overtime_hours", label: "Overtime hours", get: (r) => msToHours(r.overtime_ms) },
+  { key: "overtime_weeks", label: "Weeks over 40h", get: (r) => r.overtime_weeks },
+  { key: "lunch_hours", label: "Lunch hours", get: (r) => msToHours(r.lunch_ms) },
+  { key: "break_hours", label: "Break hours", get: (r) => msToHours(r.break_ms) },
+  ...YTD_OVERTIME_COLUMNS,
+  ...TIME_OFF_YTD_COLUMNS,
+];
+
+type WeekExportRow = { week_start: string; worked_ms: number; overtime_ms: number };
+const EMPLOYEE_WEEK_COLUMNS: ExportColumn<WeekExportRow>[] = [
+  { key: "week_start", label: "Week starting", get: (w) => w.week_start },
+  { key: "worked_hours", label: "Worked hours", get: (w) => msToHours(w.worked_ms) },
+  { key: "overtime_hours", label: "Overtime hours", get: (w) => msToHours(w.overtime_ms) },
+];
+
 const TEAM_WEEK_COLUMNS: ExportColumn<TeamWeek>[] = [
   { key: "week_start", label: "Week starting", get: (w) => w.week_start },
   { key: "worked_hours", label: "Team hours", get: (w) => msToHours(w.worked_ms) },
@@ -122,6 +145,20 @@ const RANGE_OPTIONS: { value: number; label: string }[] = [
 type SortKey =
   | "name" | "office" | "department" | "total" | "overtime" | "ytd_overtime"
   | "lunch" | "break" | "time_off";
+
+// Module scope so useSortableRows' memo stays stable across renders.
+const ROW_SORT: Record<SortKey, (r: Row) => string | number> = {
+  name: (r) => (r.profile.name || r.profile.email).toLowerCase(),
+  office: (r) => r.profile.office ?? "",
+  department: (r) => r.profile.department ?? "",
+  total: (r) => r.total_ms,
+  overtime: (r) => r.overtime_ms,
+  ytd_overtime: (r) => r.ytd_overtime_ms,
+  lunch: (r) => r.lunch_ms,
+  break: (r) => r.break_ms,
+  time_off: (r) => r.time_off.total,
+};
+const NO_ROWS: Row[] = [];
 
 // Time-data analytics widget. Rendered inside /admin/analytics as its own
 // tab; sources data from /api/management/analytics/time. Scope is enforced
@@ -162,21 +199,10 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
       .finally(() => setLoading(false));
   }, [active, weeks, office, department, includeInactive, isAdmin]);
 
-  const rowSort = useSortableRows<Row, SortKey>(
-    data?.rows ?? [],
-    {
-      name: (r) => (r.profile.name || r.profile.email).toLowerCase(),
-      office: (r) => r.profile.office ?? "",
-      department: (r) => r.profile.department ?? "",
-      total: (r) => r.total_ms,
-      overtime: (r) => r.overtime_ms,
-      ytd_overtime: (r) => r.ytd_overtime_ms,
-      lunch: (r) => r.lunch_ms,
-      break: (r) => r.break_ms,
-      time_off: (r) => r.time_off.total,
-    },
-    { key: "total", direction: "desc" },
-  );
+  const rowSort = useSortableRows<Row, SortKey>(data?.rows ?? NO_ROWS, ROW_SORT, {
+    key: "total",
+    direction: "desc",
+  });
 
   // Filename baked from current filter selection so the download reflects
   // exactly what the manager is looking at.
@@ -189,19 +215,7 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
   }, [office, department, weeks]);
 
   const rowColumns = useMemo<ExportColumn<Row>[]>(() => {
-    const base: ExportColumn<Row>[] = [
-      { key: "name", label: "Name", get: (r) => r.profile.name ?? "" },
-      { key: "email", label: "Email", get: (r) => r.profile.email },
-      { key: "office", label: "Office", get: (r) => r.profile.office ?? "" },
-      { key: "department", label: "Department", get: (r) => r.profile.department ?? "" },
-      { key: "total_hours", label: "Total hours", get: (r) => msToHours(r.total_ms) },
-      { key: "overtime_hours", label: "Overtime hours", get: (r) => msToHours(r.overtime_ms) },
-      { key: "overtime_weeks", label: "Weeks over 40h", get: (r) => r.overtime_weeks },
-      { key: "lunch_hours", label: "Lunch hours", get: (r) => msToHours(r.lunch_ms) },
-      { key: "break_hours", label: "Break hours", get: (r) => msToHours(r.break_ms) },
-      ...YTD_OVERTIME_COLUMNS,
-      ...TIME_OFF_YTD_COLUMNS,
-    ];
+    const base = [...ROW_SUMMARY_COLUMNS];
     for (const ws of data?.week_starts ?? []) {
       base.push({
         key: `wk_${ws}_hours`,
@@ -532,35 +546,6 @@ function EmployeeTimeStatsDialog({
 }) {
   const open = row !== null;
 
-  // Build a single-row summary export for the dialog (same shape a manager
-  // would want on-screen). Weekly breakdown gets its own export below.
-  const summaryColumns = useMemo<ExportColumn<Row>[]>(
-    () => [
-      { key: "name", label: "Name", get: (r) => r.profile.name ?? "" },
-      { key: "email", label: "Email", get: (r) => r.profile.email },
-      { key: "office", label: "Office", get: (r) => r.profile.office ?? "" },
-      { key: "department", label: "Department", get: (r) => r.profile.department ?? "" },
-      { key: "total_hours", label: "Total hours", get: (r) => msToHours(r.total_ms) },
-      { key: "overtime_hours", label: "Overtime hours", get: (r) => msToHours(r.overtime_ms) },
-      { key: "overtime_weeks", label: "Weeks over 40h", get: (r) => r.overtime_weeks },
-      { key: "lunch_hours", label: "Lunch hours", get: (r) => msToHours(r.lunch_ms) },
-      { key: "break_hours", label: "Break hours", get: (r) => msToHours(r.break_ms) },
-      ...YTD_OVERTIME_COLUMNS,
-      ...TIME_OFF_YTD_COLUMNS,
-    ],
-    [],
-  );
-
-  type WeekExportRow = { week_start: string; worked_ms: number; overtime_ms: number };
-  const weekColumns = useMemo<ExportColumn<WeekExportRow>[]>(
-    () => [
-      { key: "week_start", label: "Week starting", get: (w) => w.week_start },
-      { key: "worked_hours", label: "Worked hours", get: (w) => msToHours(w.worked_ms) },
-      { key: "overtime_hours", label: "Overtime hours", get: (w) => msToHours(w.overtime_ms) },
-    ],
-    [],
-  );
-
   const employeeSlug = row
     ? (row.profile.name || row.profile.email).toLowerCase().replace(/[^a-z0-9]+/g, "-")
     : "";
@@ -590,7 +575,7 @@ function EmployeeTimeStatsDialog({
               <ExportMenu
                 filename={`time-stats-${employeeSlug}-${weeks}w`}
                 rows={[row]}
-                columns={summaryColumns}
+                columns={ROW_SUMMARY_COLUMNS}
               />
             )}
           </div>
@@ -658,7 +643,7 @@ function EmployeeTimeStatsDialog({
                       worked_ms: w.worked_ms,
                       overtime_ms: w.overtime_ms,
                     }))}
-                    columns={weekColumns}
+                    columns={EMPLOYEE_WEEK_COLUMNS}
                     size="sm"
                   />
                 </div>

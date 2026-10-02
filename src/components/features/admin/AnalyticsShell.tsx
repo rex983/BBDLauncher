@@ -25,10 +25,12 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExportMenu } from "@/components/ui/export-menu";
 import { SortHeader } from "@/components/ui/sort-header";
-import { useSortableRows } from "@/lib/hooks/use-sortable-rows";
+import { useSortableRows, type SortState } from "@/lib/hooks/use-sortable-rows";
 import type { ExportColumn } from "@/lib/export/csv";
 import type { AnalyticsData } from "@/lib/analytics/server";
 import { ANALYTICS_RANGE_OPTIONS, type AnalyticsRange } from "@/lib/analytics/ranges";
+import { fmtDateTimeUS as formatDateTime, fmtRelative } from "@/components/shared/format";
+import { KindBadge } from "./kind-badge";
 
 // Lazy-load the three heavy tabs so the initial /admin/analytics bundle
 // doesn't ship the calendar grid, aggregation table, or dialog with the
@@ -58,29 +60,8 @@ function TabLoading() {
 type DestStat = AnalyticsData["apps"][number];
 type UserStat = AnalyticsData["users"][number];
 type RecentEvent = AnalyticsData["recent"][number];
-type AnalyticsResponse = AnalyticsData;
 
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatRelative(iso: string) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diffMs / 60_000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return formatDateTime(iso);
-}
+const formatRelative = (iso: string) => fmtRelative(iso, formatDateTime);
 
 // Export column sets — kept next to the shell so the labels here match
 // what the user sees in the on-screen table (any relabel touches both).
@@ -122,8 +103,30 @@ const RECENT_COLUMNS: ExportColumn<RecentEvent>[] = [
 ];
 
 type DestSortKey = "name" | "count" | "unique_users" | "last_used";
+// Sort getters live at module scope so useSortableRows' memo stays stable.
+const DEST_SORT = {
+  name: (r: DestStat) => r.name.toLowerCase(),
+  count: (r: DestStat) => r.launches,
+  unique_users: (r: DestStat) => r.unique_users,
+  last_used: (r: DestStat) => new Date(r.last_launch),
+};
 type UserSortKey = "name" | "role" | "office" | "clicks" | "top" | "last_active";
 type RecentSortKey = "when" | "name" | "destination" | "type";
+const USER_SORT = {
+  name: (u: UserStat) => (u.name || u.email).toLowerCase(),
+  role: (u: UserStat) => u.role,
+  office: (u: UserStat) => u.office ?? "",
+  clicks: (u: UserStat) => u.launches,
+  top: (u: UserStat) => u.top_destination_launches ?? 0,
+  last_active: (u: UserStat) => new Date(u.last_launch),
+};
+const RECENT_SORT = {
+  when: (e: RecentEvent) => new Date(e.created_at),
+  name: (e: RecentEvent) => (e.name || e.email).toLowerCase(),
+  destination: (e: RecentEvent) => e.destination.toLowerCase(),
+  type: (e: RecentEvent) => e.kind,
+};
+const NO_RECENT: RecentEvent[] = [];
 
 export default function AnalyticsShell({
   initialData,
@@ -135,7 +138,7 @@ export default function AnalyticsShell({
   initialError: string | null;
 }) {
   const [range, setRange] = useState<AnalyticsRange>(initialRange);
-  const [data, setData] = useState<AnalyticsResponse | null>(initialData);
+  const [data, setData] = useState<AnalyticsData | null>(initialData);
   const [loading, setLoading] = useState(initialData === null && initialError === null);
   const [error, setError] = useState<string | null>(initialError);
   const [appQuery, setAppQuery] = useState("");
@@ -164,7 +167,7 @@ export default function AnalyticsShell({
         if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load");
         return r.json();
       })
-      .then((json: AnalyticsResponse) => {
+      .then((json: AnalyticsData) => {
         if (!cancelled) setData(json);
       })
       .catch((e: Error) => {
@@ -201,50 +204,22 @@ export default function AnalyticsShell({
     );
   }, [data, userQuery]);
 
-  const appSort = useSortableRows<DestStat, DestSortKey>(
-    filteredApps,
-    {
-      name: (r) => r.name.toLowerCase(),
-      count: (r) => r.launches,
-      unique_users: (r) => r.unique_users,
-      last_used: (r) => new Date(r.last_launch),
-    },
-    { key: "count", direction: "desc" },
-  );
+  const appSort = useSortableRows<DestStat, DestSortKey>(filteredApps, DEST_SORT, {
+    key: "count",
+    direction: "desc",
+  });
+  const linkSort = useSortableRows<DestStat, DestSortKey>(filteredLinks, DEST_SORT, {
+    key: "count",
+    direction: "desc",
+  });
 
-  const linkSort = useSortableRows<DestStat, DestSortKey>(
-    filteredLinks,
-    {
-      name: (r) => r.name.toLowerCase(),
-      count: (r) => r.launches,
-      unique_users: (r) => r.unique_users,
-      last_used: (r) => new Date(r.last_launch),
-    },
-    { key: "count", direction: "desc" },
-  );
-
-  const userSort = useSortableRows<UserStat, UserSortKey>(
-    filteredUsers,
-    {
-      name: (u) => (u.name || u.email).toLowerCase(),
-      role: (u) => u.role,
-      office: (u) => u.office ?? "",
-      clicks: (u) => u.launches,
-      top: (u) => u.top_destination_launches ?? 0,
-      last_active: (u) => new Date(u.last_launch),
-    },
-    { key: "clicks", direction: "desc" },
-  );
-
-  const recentRows = data?.recent ?? [];
+  const userSort = useSortableRows<UserStat, UserSortKey>(filteredUsers, USER_SORT, {
+    key: "clicks",
+    direction: "desc",
+  });
   const recentSort = useSortableRows<RecentEvent, RecentSortKey>(
-    recentRows,
-    {
-      when: (e) => new Date(e.created_at),
-      name: (e) => (e.name || e.email).toLowerCase(),
-      destination: (e) => e.destination.toLowerCase(),
-      type: (e) => e.kind,
-    },
+    data?.recent ?? NO_RECENT,
+    RECENT_SORT,
     { key: "when", direction: "desc" },
   );
 
@@ -608,7 +583,7 @@ function DestinationTable({
   countHeader: string;
   hrefKind: "apps" | "links";
   range: string;
-  sort: import("@/lib/hooks/use-sortable-rows").SortState<DestSortKey>;
+  sort: SortState<DestSortKey>;
   onToggle: (key: DestSortKey) => void;
 }) {
   return (
@@ -705,14 +680,6 @@ function DestinationTable({
         )}
       </TableBody>
     </Table>
-  );
-}
-
-function KindBadge({ kind }: { kind: "app" | "link" }) {
-  return (
-    <Badge variant={kind === "app" ? "default" : "outline"} className="text-[10px]">
-      {kind}
-    </Badge>
   );
 }
 

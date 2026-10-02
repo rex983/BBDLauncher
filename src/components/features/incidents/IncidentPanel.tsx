@@ -24,6 +24,7 @@ import {
   INCIDENT_SEVERITY_VARIANT,
 } from "@/lib/incidents/types";
 import { useSearchParams } from "next/navigation";
+import { fmtDateUS as fmtDate } from "@/components/shared/format";
 import { EmployeeIncidentDialog } from "./EmployeeIncidentDialog";
 
 export interface IncidentSummary {
@@ -38,15 +39,6 @@ export interface IncidentSummary {
   employee_signed_at: string | null;
   attachments: IncidentAttachment[] | null;
   created_at: string;
-}
-
-function fmtDate(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 // Employee-facing incident report card. Shows a row per report awaiting

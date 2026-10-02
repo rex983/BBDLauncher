@@ -132,8 +132,6 @@ export const TIME_OFF_MANAGER_REASONS = [
   "Other",
 ] as const;
 
-export type TimeOffManagerReason = (typeof TIME_OFF_MANAGER_REASONS)[number];
-
 // Business-day counter used by the manager summary. Excludes Sat/Sun so a
 // Friday–Monday request counts as 2 days, not 4. For partial-day requests
 // we credit `hours / 8` days rounded to one decimal.

@@ -111,7 +111,13 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [viewType, setViewType] = useState<ViewType>("cards");
   // Admin-only local working copy of apps so drag-drop feels instant.
+  // Re-seeded during render whenever the server sends a new `apps` list.
   const [workingApps, setWorkingApps] = useState<LauncherApp[]>(apps);
+  const [seededFrom, setSeededFrom] = useState(apps);
+  if (seededFrom !== apps) {
+    setSeededFrom(apps);
+    setWorkingApps(apps);
+  }
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -120,10 +126,6 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
     const savedView = readJSON<ViewType>(VIEW_TYPE_KEY, "cards");
     setViewType(savedView === "list" ? "list" : "cards");
   }, []);
-
-  useEffect(() => {
-    setWorkingApps(apps);
-  }, [apps]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })

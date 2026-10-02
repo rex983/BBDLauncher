@@ -130,11 +130,16 @@ export function ComposeMemoForm({
   const [preview, setPreview] = useState<AudiencePreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
 
+  // Revoke image preview URLs on unmount. Read through a ref — closing over
+  // `uploads` here would only ever see the empty first-render list.
+  const uploadsRef = useRef(uploads);
+  useEffect(() => {
+    uploadsRef.current = uploads;
+  }, [uploads]);
   useEffect(() => {
     return () => {
-      uploads.forEach((u) => u.previewUrl && URL.revokeObjectURL(u.previewUrl));
+      uploadsRef.current.forEach((u) => u.previewUrl && URL.revokeObjectURL(u.previewUrl));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch employee roster when custom scope is active.

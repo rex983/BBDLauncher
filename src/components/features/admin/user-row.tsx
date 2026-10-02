@@ -13,6 +13,7 @@ import {
 import { Pencil, Trash2, UserCheck, UserX } from "lucide-react";
 import type { UserProfile, UserRole } from "@/types/auth";
 import type { LauncherRole } from "./user-form-dialog";
+import { fmtDateUS } from "@/components/shared/format";
 
 interface UserRowProps {
   user: UserProfile;
@@ -91,11 +92,7 @@ export function UserRow({
         </div>
       </TableCell>
       <TableCell className="whitespace-nowrap text-muted-foreground">
-        {new Date(user.created_at).toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-        })}
+        {fmtDateUS(user.created_at)}
       </TableCell>
       <TableCell>
         <Select

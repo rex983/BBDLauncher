@@ -24,44 +24,44 @@ export async function checkAppLaunch(
 ): Promise<{ ok: true; app: LaunchApp } | { ok: false; reason: LaunchDenied }> {
   const isAdmin = session.user.role === "admin";
 
+  // The reads are independent, so fetch them together; the checks below
+  // still run in the same order with the same outcomes.
+  const [{ data: viewer }, clockedIn, { data: accessRows }, personal, { data: app }] = await Promise.all([
+    supabase.from("profiles").select("is_active").eq("id", session.user.profileId).single(),
+    // Clock gate: admins bypass so they can debug apps outside work hours.
+    isAdmin ? true : isClockedIn(session.user.profileId),
+    supabase
+      .from("launcher_role_app_access")
+      .select("*")
+      .eq("app_id", appId)
+      .eq("role_name", session.user.role),
+    hasPersonalAppGrant(session.user.profileId, appId),
+    supabase
+      .from("launcher_apps")
+      .select("id, name, url, sso_type, offices")
+      .eq("id", appId)
+      .eq("status", "active")
+      .single<LaunchApp>(),
+  ]);
+
   // An inactive user shouldn't mint fresh tokens even if their launcher JWT
   // hasn't ticked over yet. The jwt callback also ejects them.
-  const { data: viewer } = await supabase
-    .from("profiles")
-    .select("is_active")
-    .eq("id", session.user.profileId)
-    .single();
   if (viewer?.is_active === false) return { ok: false, reason: "deactivated" };
 
-  // Clock gate: admins bypass so they can debug apps outside work hours.
-  if (!isAdmin && !(await isClockedIn(session.user.profileId))) {
-    return { ok: false, reason: "clock_required" };
-  }
+  if (!clockedIn) return { ok: false, reason: "clock_required" };
 
   // Office × role grid (migration 034): the user's role must be allowed from
   // their office. Admins still need an admin row but aren't limited by office.
-  const { data: accessRows } = await supabase
-    .from("launcher_role_app_access")
-    .select("*")
-    .eq("app_id", appId)
-    .eq("role_name", session.user.role);
   const rows = ((accessRows || []) as Array<{ role_name: string; app_id: string; office?: string | null }>).map((r) => ({
     ...r,
     office: r.office ?? null,
   }));
 
   // People added to the app by name (migration 040) skip both office gates.
-  const personal = await hasPersonalAppGrant(session.user.profileId, appId);
   if (!personal && !rowsAllow(rows, session.user.role, session.user.office, isAdmin)) {
     return { ok: false, reason: "forbidden" };
   }
 
-  const { data: app } = await supabase
-    .from("launcher_apps")
-    .select("id, name, url, sso_type, offices")
-    .eq("id", appId)
-    .eq("status", "active")
-    .single<LaunchApp>();
   if (!app) return { ok: false, reason: "not_found" };
 
   // Legacy office gate: the grid already encodes each app's office list (migration

@@ -186,8 +186,9 @@ export function TimeOffCalendar({
   // shows up in each week clipped to that week's bounds.
   const weekEvents = useMemo(() => {
     return weeks.map((week) => {
-      const weekStartISO = isoDate(week[0]);
-      const weekEndISO = isoDate(week[6]);
+      const dayISOs = week.map(isoDate);
+      const weekStartISO = dayISOs[0];
+      const weekEndISO = dayISOs[6];
       const raw: Omit<WeekEvent, "row">[] = [];
       for (const r of requests) {
         if (!overlaps(r.start_date, r.end_date, weekStartISO, weekEndISO)) continue;
@@ -196,8 +197,8 @@ export function TimeOffCalendar({
         const clippedRight = r.end_date > weekEndISO;
         const startClipped = clippedLeft ? weekStartISO : r.start_date;
         const endClipped = clippedRight ? weekEndISO : r.end_date;
-        const colStart = week.findIndex((d) => isoDate(d) === startClipped);
-        const colEnd = week.findIndex((d) => isoDate(d) === endClipped);
+        const colStart = dayISOs.indexOf(startClipped);
+        const colEnd = dayISOs.indexOf(endClipped);
         if (colStart < 0 || colEnd < 0) continue;
         raw.push({
           request: r,
@@ -317,9 +318,7 @@ export function TimeOffCalendar({
                   type="button"
                   onClick={() => setExpandedWeek(wi)}
                   className="absolute right-1 text-[10px] text-muted-foreground hover:text-foreground underline"
-                  style={{
-                    bottom: 2,
-                  }}
+                  style={{ bottom: 2 }}
                 >
                   +{overflowCount} more
                 </button>

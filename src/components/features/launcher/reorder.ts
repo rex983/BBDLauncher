@@ -1,7 +1,7 @@
 import { arrayMove } from "@dnd-kit/sortable";
 import type { LauncherApp } from "@/types/app";
 
-export interface ReorderUpdate {
+interface ReorderUpdate {
   id: string;
   section_id: string | null;
   display_order: number;

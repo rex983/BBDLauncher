@@ -23,6 +23,7 @@ import {
   type MemoPriority,
   MEMO_PRIORITY_VARIANT,
 } from "@/lib/memos/types";
+import { fmtDateUS as fmtDate } from "@/components/shared/format";
 
 export interface EmployeeMemoRow {
   memo_id: string;
@@ -38,15 +39,6 @@ export interface EmployeeMemoRow {
   effective_date: string | null;
   published_at: string | null;
   author_name: string | null;
-}
-
-function fmtDate(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 // Employee-facing memo list. Rows navigate to /memos/[id] — the memo

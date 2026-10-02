@@ -5,6 +5,7 @@ import { managerAssignError } from "@/lib/auth/user-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
+import { USER_COLUMNS } from "@/app/api/_lib/users";
 
 const createSchema = z.object({
   email: z.string().email().transform((e) => e.toLowerCase()),
@@ -15,9 +16,6 @@ const createSchema = z.object({
   is_it: z.boolean().optional(),
   can_offboard: z.boolean().optional(),
 });
-
-const USER_COLUMNS =
-  "id, email, name:full_name, role, office, department, is_it, can_offboard, is_active, created_at, updated_at";
 
 export async function GET(req: NextRequest) {
   const session = await requireSession(canManageContent);

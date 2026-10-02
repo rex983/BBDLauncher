@@ -65,11 +65,6 @@ export function RolePreviewProvider({ children }: { children: React.ReactNode })
     router.replace(qs ? `${pathname}?${qs}` : pathname);
   }, [viewAs, viewAsOffice, pathname, searchParams, router]);
 
-  const setViewAs = useCallback((role: string | null) => setViewAsState(role), []);
-  const setViewAsOffice = useCallback(
-    (office: string | null) => setViewAsOfficeState(office),
-    []
-  );
   const exitPreview = useCallback(() => {
     setViewAsState(null);
     setViewAsOfficeState(null);
@@ -77,8 +72,14 @@ export function RolePreviewProvider({ children }: { children: React.ReactNode })
   }, [router]);
 
   const value = useMemo(
-    () => ({ viewAs, viewAsOffice, setViewAs, setViewAsOffice, exitPreview }),
-    [viewAs, viewAsOffice, setViewAs, setViewAsOffice, exitPreview]
+    () => ({
+      viewAs,
+      viewAsOffice,
+      setViewAs: setViewAsState,
+      setViewAsOffice: setViewAsOfficeState,
+      exitPreview,
+    }),
+    [viewAs, viewAsOffice, exitPreview]
   );
 
   return (

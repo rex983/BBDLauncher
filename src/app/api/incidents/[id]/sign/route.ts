@@ -34,23 +34,31 @@ export async function POST(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  // The report and the signer's on-file name are independent — one round-trip.
   const supabase = createAdminClient();
-  const { data: row } = await supabase
-    .from("incident_reports")
-    .select(
-      "id, employee_profile_id, title, severity, status, document, document_hash, manager_signature_hash",
-    )
-    .eq("id", id)
-    .single<{
-      id: string;
-      employee_profile_id: string;
-      title: string;
-      severity: string;
-      status: string;
-      document: string;
-      document_hash: string | null;
-      manager_signature_hash: string | null;
-    }>();
+  const [{ data: row }, { data: profile }] = await Promise.all([
+    supabase
+      .from("incident_reports")
+      .select(
+        "id, employee_profile_id, title, severity, status, document, document_hash, manager_signature_hash",
+      )
+      .eq("id", id)
+      .single<{
+        id: string;
+        employee_profile_id: string;
+        title: string;
+        severity: string;
+        status: string;
+        document: string;
+        document_hash: string | null;
+        manager_signature_hash: string | null;
+      }>(),
+    supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", session.user.profileId)
+      .single<{ full_name: string | null }>(),
+  ]);
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (row.employee_profile_id !== session.user.profileId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -82,11 +90,6 @@ export async function POST(
 
   // Typed name must match the employee's on-file name (whitespace-collapsed,
   // case-insensitive). Same policy as the manager sign flow.
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name")
-    .eq("id", session.user.profileId)
-    .single<{ full_name: string | null }>();
   const expected = (profile?.full_name || "").trim().toLowerCase().replace(/\s+/g, " ");
   const provided = parsed.data.signature_text.trim().toLowerCase().replace(/\s+/g, " ");
   if (!expected || provided !== expected) {

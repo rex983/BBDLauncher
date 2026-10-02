@@ -35,7 +35,6 @@ import {
   formatDays,
   TIME_OFF_TYPE_LABEL,
   TIME_OFF_TYPES,
-  type TimeOffType,
 } from "@/lib/timeoff/types";
 import type { IncidentSummary } from "@/components/features/incidents/IncidentPanel";
 import type {
@@ -43,13 +42,8 @@ import type {
   WindowTimeOffRow,
   YtdBreakdown,
 } from "@/lib/timesheets/detail";
-import {
-  fmtDate,
-  fmtDateTime,
-  fmtRelative,
-  rangeToDays,
-  type AnalyticsPayload,
-} from "./profile360-helpers";
+import { fmtDateTimeUS as fmtDateTime, fmtDateUS as fmtDate, fmtRelative } from "@/components/shared/format";
+import { rangeToDays, type AnalyticsPayload } from "./profile360-helpers";
 import { aggregatePunches } from "@/lib/timesheets/weekly";
 import {
   buildWeekView,
@@ -93,7 +87,7 @@ export function UserProfile360Shell({
   timeData,
   timeDataError,
   workSchedule,
-  incidents: initialIncidents,
+  incidents,
 }: {
   userId: string;
   initialRange: string;
@@ -122,10 +116,9 @@ export function UserProfile360Shell({
     timeData?.time_off.ytd ?? emptyTimeOffTotals(),
   );
   const [timeLoading, setTimeLoading] = useState(false);
-  // Incidents are hydrated server-side — this page doesn't poll. Filed or
+  // `incidents` is hydrated server-side — this page doesn't poll. Filed or
   // signed incidents show on a hard refresh; /management/incidents is the
   // live queue.
-  const incidents = initialIncidents;
 
   useEffect(() => {
     let cancelled = false;
@@ -390,7 +383,7 @@ export function UserProfile360Shell({
                       <MiniStat
                         key={t.value}
                         label={TIME_OFF_TYPE_LABEL[t.value]}
-                        value={`${formatDays(timeOffYtd[t.value as TimeOffType] || 0)} d`}
+                        value={`${formatDays(timeOffYtd[t.value] || 0)} d`}
                       />
                     ))}
                     <MiniStat
@@ -423,7 +416,7 @@ export function UserProfile360Shell({
                 </div>
                 <div className="text-sm mt-1">
                   {analytics?.totals.last_event
-                    ? `${fmtRelative(analytics.totals.last_event)} — ${fmtDateTime(analytics.totals.last_event)}`
+                    ? `${fmtRelative(analytics.totals.last_event, fmtDate)} — ${fmtDateTime(analytics.totals.last_event)}`
                     : "—"}
                 </div>
               </div>

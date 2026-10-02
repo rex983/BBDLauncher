@@ -52,7 +52,6 @@ export function AppGrid({
               app={app}
               isFavorite={favorites.includes(app.id)}
               onToggleFavorite={onToggleFavorite}
-              sortable={sortable}
             />
           ))}
         </div>

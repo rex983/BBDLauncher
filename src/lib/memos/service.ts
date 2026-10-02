@@ -7,7 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveMemoAudience } from "@/lib/memos/audience";
 import { logMemoEvent } from "@/lib/memos/audit";
-import { createNotification } from "@/lib/notifications/service";
+import { createNotification, createNotifications } from "@/lib/notifications/service";
 import { notifyMemoPublished } from "@/lib/slack/notify";
 import {
   formatMemoNumber,
@@ -22,18 +22,13 @@ interface MemoRow {
   number: number | null;
   author_profile_id: string | null;
   title: string;
-  body: string;
   category: MemoCategory;
   priority: MemoPriority;
   acknowledgement_mode: MemoAcknowledgementMode;
   audience_scope: MemoAudienceScope;
   audience_office: string | null;
   audience_department: string | null;
-  attachments: unknown;
   status: string;
-  published_at: string | null;
-  document_hash: string | null;
-  author_signature_hash: string | null;
 }
 
 export interface PublishResult {
@@ -55,7 +50,7 @@ export async function publishMemo(params: {
   const { data: memo, error: fetchErr } = await supabase
     .from("office_memos")
     .select(
-      "id, number, author_profile_id, title, body, category, priority, acknowledgement_mode, audience_scope, audience_office, audience_department, attachments, status, published_at, document_hash, author_signature_hash",
+      "id, number, author_profile_id, title, category, priority, acknowledgement_mode, audience_scope, audience_office, audience_department, status",
     )
     .eq("id", memoId)
     .single<MemoRow>();
@@ -75,13 +70,25 @@ export async function publishMemo(params: {
     };
   }
 
-  const { profileIds, audienceLabel } = await resolveMemoAudience({
-    supabase,
-    scope: memo.audience_scope,
-    office: memo.audience_office,
-    department: memo.audience_department,
-    customProfileIds: params.customProfileIds ?? [],
-  });
+  // The author's name (for Slack) is independent of the audience, so look it
+  // up alongside.
+  const [{ profileIds, audienceLabel }, authorName] = await Promise.all([
+    resolveMemoAudience({
+      supabase,
+      scope: memo.audience_scope,
+      office: memo.audience_office,
+      department: memo.audience_department,
+      customProfileIds: params.customProfileIds ?? [],
+    }),
+    memo.author_profile_id
+      ? supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", memo.author_profile_id)
+          .single<{ full_name: string | null }>()
+          .then(({ data }) => data?.full_name ?? null)
+      : null,
+  ]);
 
   const now = new Date().toISOString();
 
@@ -119,23 +126,18 @@ export async function publishMemo(params: {
     },
   }).catch(() => undefined);
 
-  // Bell notifications — one per recipient. Fire-and-forget, batched
-  // through the same createNotification helper the incident flow uses.
+  // Bell notifications — one per recipient, in a single insert.
+  // Fire-and-forget: a failure is logged, never thrown.
   const numberLabel = formatMemoNumber(memo.number);
   const bodyLine = numberLabel ? `${numberLabel} · ${memo.title}` : memo.title;
-  await Promise.all(
-    profileIds.map((profileId) =>
-      createNotification({
-        userId: profileId,
-        type: "office_memo_published",
-        title: "New memo from BBD management.",
-        body: bodyLine,
-        href: `/memos/${memoId}`,
-        referenceType: "office_memo",
-        referenceId: memoId,
-      }).catch(() => undefined),
-    ),
-  );
+  await createNotifications(profileIds, {
+    type: "office_memo_published",
+    title: "New memo from BBD management.",
+    body: bodyLine,
+    href: `/memos/${memoId}`,
+    referenceType: "office_memo",
+    referenceId: memoId,
+  }).catch(() => undefined);
 
   // Confirmation ping for the author so they see the publish landed
   // even when they're not in the recipient list (e.g., publishing to
@@ -162,15 +164,6 @@ export async function publishMemo(params: {
   }
 
   // Slack: fire-and-forget notification with author + audience summary.
-  let authorName: string | null = null;
-  if (memo.author_profile_id) {
-    const { data: authorRow } = await supabase
-      .from("profiles")
-      .select("full_name")
-      .eq("id", memo.author_profile_id)
-      .single<{ full_name: string | null }>();
-    authorName = authorRow?.full_name ?? null;
-  }
   notifyMemoPublished({
     memoId,
     numberLabel,

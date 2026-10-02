@@ -10,6 +10,10 @@ const sectionSchema = z.object({
   display_order: z.number().int().optional(),
 });
 
+const reorderSchema = z.object({
+  orders: z.array(z.object({ id: z.string().uuid(), display_order: z.number().int() })),
+});
+
 export async function GET() {
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
@@ -69,10 +73,7 @@ export async function PUT(req: NextRequest) {
   if (session instanceof NextResponse) return session;
 
   const body = await req.json();
-  const schema = z.object({
-    orders: z.array(z.object({ id: z.string().uuid(), display_order: z.number().int() })),
-  });
-  const parsed = schema.safeParse(body);
+  const parsed = reorderSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }

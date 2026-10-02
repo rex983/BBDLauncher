@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -32,6 +32,21 @@ interface TodayRow {
   profile: EmployeeOption;
 }
 
+function blankForm() {
+  const today = todayISO();
+  return {
+    profile_id: "",
+    type: "sick" as TimeOffType,
+    subcategory: "",
+    start_date: today,
+    end_date: today,
+    full_day: true,
+    hours: "",
+    reason_preset: "Sick day" as string,
+    reason_custom: "",
+  };
+}
+
 interface Props {
   onCreated?: () => void;
   viewAsOffice?: string | null;
@@ -44,34 +59,12 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const today = todayISO();
-  const [form, setForm] = useState({
-    profile_id: "",
-    type: "sick" as TimeOffType,
-    subcategory: "",
-    start_date: today,
-    end_date: today,
-    full_day: true,
-    hours: "",
-    reason_preset: "Sick day" as string,
-    reason_custom: "",
-  });
+  const [form, setForm] = useState(blankForm);
 
-  const resetForm = useCallback(() => {
-    const t = todayISO();
-    setForm({
-      profile_id: "",
-      type: "sick",
-      subcategory: "",
-      start_date: t,
-      end_date: t,
-      full_day: true,
-      hours: "",
-      reason_preset: "Sick day",
-      reason_custom: "",
-    });
+  const resetForm = () => {
+    setForm(blankForm());
     setError(null);
-  }, []);
+  };
 
   // Load the scoped employee list only when the dialog opens — no need
   // to hold every profile in memory the whole page-view.
@@ -106,7 +99,7 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
     };
   }, [open, viewAsOffice]);
 
-  const subOptions = useMemo(() => TIME_OFF_SUBCATEGORIES[form.type], [form.type]);
+  const subOptions = TIME_OFF_SUBCATEGORIES[form.type];
 
   const changeType = (t: TimeOffType) => {
     setForm((f) => ({ ...f, type: t, subcategory: "" }));

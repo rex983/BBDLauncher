@@ -3,23 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Clock, Coffee, LogOut } from "lucide-react";
+import { fmtTime } from "@/components/shared/format";
 import { useTimeClock } from "./ClockGate";
-
-interface ScheduleData {
-  scheduled: boolean;
-  end_of_day_iso: string | null;
-  extension_until_iso: string | null;
-  effective_end_iso: string | null;
-}
+import type { ScheduleData } from "./ShiftEndPrompt";
 
 interface Props {
   children: React.ReactNode;
   // Server-fetched so the "Scheduled until" label paints on the first frame.
   initialSchedule?: ScheduleData | null;
-}
-
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 // Dashboard status bar: current clock status + break / clock-out buttons.

@@ -19,8 +19,8 @@ export async function GET(
   if (!path || path.length < 2) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
-  const [authorId, ...rest] = path;
-  const objectPath = [authorId, ...rest].join("/");
+  const [authorId] = path;
+  const objectPath = path.join("/");
 
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
@@ -37,7 +37,7 @@ export async function GET(
     // scan to that author's memos, then look for a matching path.
     const { data: candidateMemos } = await supabase
       .from("office_memos")
-      .select("id, audience_scope, audience_office, audience_department, attachments, status")
+      .select("id, audience_scope, audience_office, audience_department, attachments")
       .eq("author_profile_id", authorId)
       .eq("status", "published");
     const referencingMemos = (candidateMemos || []).filter((m) => {

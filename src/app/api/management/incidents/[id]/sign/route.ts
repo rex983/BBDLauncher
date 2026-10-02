@@ -62,13 +62,28 @@ export async function POST(
     );
   }
 
+  // Subject employee (scope check + Slack payload) and the signer's on-file
+  // name are independent lookups — fetch both in one round-trip.
+  const [{ data: emp }, { data: reporterProfile }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("department, office, full_name, email")
+      .eq("id", row.employee_profile_id)
+      .single<{
+        department: string | null;
+        office: string | null;
+        full_name: string | null;
+        email: string | null;
+      }>(),
+    supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", session.user.profileId)
+      .single<{ full_name: string | null }>(),
+  ]);
+
   // Scope check on the subject employee.
   if (!viewerIsAdmin) {
-    const { data: emp } = await supabase
-      .from("profiles")
-      .select("department, office")
-      .eq("id", row.employee_profile_id)
-      .single();
     if (!emp) return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (scope.department && emp.department !== scope.department) {
       return NextResponse.json({ error: "Out of scope" }, { status: 403 });
@@ -94,11 +109,6 @@ export async function POST(
   // Confirm the typed name matches the manager's on-file full_name. Case-
   // insensitive because employees type "brandyn brumfield" as much as
   // "Brandyn Brumfield" — but whitespace must collapse identically.
-  const { data: reporterProfile } = await supabase
-    .from("profiles")
-    .select("full_name")
-    .eq("id", session.user.profileId)
-    .single<{ full_name: string | null }>();
   const expected = (reporterProfile?.full_name || "").trim().toLowerCase().replace(/\s+/g, " ");
   const provided = parsed.data.signature_text.trim().toLowerCase().replace(/\s+/g, " ");
   if (!expected || provided !== expected) {
@@ -148,16 +158,11 @@ export async function POST(
 
   // Notify HR channel. Fire-and-forget — if slack is down or the webhook is
   // misconfigured, the sign action still succeeds.
-  const { data: employee } = await supabase
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", row.employee_profile_id)
-    .single<{ full_name: string | null; email: string | null }>();
   const attachments = Array.isArray(row.attachments) ? row.attachments : [];
   const payload: IncidentSubmittedPayload = {
     incidentId: row.id,
-    employeeName: employee?.full_name || "Unknown",
-    employeeEmail: employee?.email || "",
+    employeeName: emp?.full_name || "Unknown",
+    employeeEmail: emp?.email || "",
     reporterName: reporterProfile?.full_name || "Unknown",
     title: row.title,
     severity: row.severity as IncidentSeverity,

@@ -1,6 +1,9 @@
 import {
+  isOwnRecord,
+  isTargetInScope,
+  ownRecordResponse,
   requireTimeDataAccess,
-  requireTimeDataAccessWithProfile,
+  type ScopedProfile,
 } from "@/lib/auth/scope-check";
 import { TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
@@ -25,32 +28,38 @@ const editSchema = z.object({
   reason: z.string().max(2000).nullable().optional(),
 });
 
-// Scope + row-fetch helper shared by PATCH and DELETE. Two-phase gate:
-// (1) session/role check via requireTimeDataAccess so we have an admin
-// client, (2) load the request row to learn its profile_id, (3) re-gate
-// through requireTimeDataAccessWithProfile so the scope check on that
-// target is contractual and shared with the rest of the time-off routes.
+// Scope + row-fetch helper shared by PATCH and DELETE. Gate the session
+// via requireTimeDataAccess, then load the request row with its owner's
+// scope columns embedded (one round-trip) and apply the same own-record +
+// scope rules requireTimeDataAccessWithProfile enforces. The embed names
+// the FK explicitly — the table has two FKs to profiles (profile_id and
+// decided_by).
 async function loadRowWithScope(id: string) {
-  const initial = await requireTimeDataAccess(null, "edit");
-  if (!initial.ok) return { fail: initial.response };
+  const gate = await requireTimeDataAccess(null, "edit");
+  if (!gate.ok) return { fail: gate.response };
 
-  // Split fetch to avoid the ambiguous profiles!inner(...) join — the table
-  // has two FKs to profiles (profile_id and decided_by).
-  const { data: reqRow } = await initial.supabase
+  const { data: reqRow } = await gate.supabase
     .from("time_off_requests")
-    .select("profile_id, status")
+    .select("profile_id, status, type, profile:profiles!profile_id(department, office, is_active)")
     .eq("id", id)
-    .single<{ profile_id: string; status: string }>();
+    .single<{
+      profile_id: string;
+      status: string;
+      type: keyof typeof TIME_OFF_SUBCATEGORIES;
+      profile: ScopedProfile | null;
+    }>();
   if (!reqRow) {
     return { fail: NextResponse.json({ error: "Not found" }, { status: 404 }) };
   }
-
-  const gate = await requireTimeDataAccessWithProfile<{
-    department: string | null;
-    office: string | null;
-    is_active: boolean;
-  }>(reqRow.profile_id, "edit", "department, office, is_active");
-  if (!gate.ok) return { fail: gate.response };
+  if (isOwnRecord(gate.viewerIsAdmin, gate.session, reqRow.profile_id)) {
+    return { fail: ownRecordResponse() };
+  }
+  if (!reqRow.profile) {
+    return { fail: NextResponse.json({ error: "Not found" }, { status: 404 }) };
+  }
+  if (!gate.viewerIsAdmin && !isTargetInScope(gate.scope, reqRow.profile)) {
+    return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
+  }
 
   return { row: reqRow, gate };
 }
@@ -128,19 +137,10 @@ export async function PATCH(
     );
   }
 
-  // Subcategory must belong to the (possibly new) type. If the type isn't
-  // being changed, we can't validate against the old type without a
-  // re-read; fetch it lazily only when needed.
+  // Subcategory must belong to the (possibly new) type; falls back to the
+  // row's current type when the type isn't being changed.
   if (edits.subcategory) {
-    let effectiveType = edits.type;
-    if (!effectiveType) {
-      const { data: current } = await supabase
-        .from("time_off_requests")
-        .select("type")
-        .eq("id", id)
-        .single<{ type: keyof typeof TIME_OFF_SUBCATEGORIES }>();
-      effectiveType = current?.type;
-    }
+    const effectiveType = edits.type ?? reqRow.type;
     if (effectiveType) {
       const allowed = TIME_OFF_SUBCATEGORIES[effectiveType];
       if (!allowed.includes(edits.subcategory)) {

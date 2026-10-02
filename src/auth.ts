@@ -1,3 +1,4 @@
+import { cache } from "react";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
@@ -18,6 +19,20 @@ function applyOrgClaims(token: JWT, row: Record<string, unknown>) {
   token.is_it = (row.is_it as boolean | null) ?? false;
   token.can_offboard = (row.can_offboard as boolean | null) ?? false;
 }
+
+// The jwt callback runs on every auth() call, and a single render calls auth()
+// from several layouts/pages. React's per-request cache collapses those into
+// one profiles read per request; outside a React render (e.g. middleware) it
+// calls straight through. Either way every request reads fresh is_active /
+// signed_out_at / session_version values.
+const loadSessionProfile = cache(async (profileId: string) => {
+  const { data } = await createAdminClient()
+    .from("profiles")
+    .select("role, office, department, is_it, can_offboard, is_active, session_version, signed_out_at")
+    .eq("id", profileId)
+    .single();
+  return data;
+});
 
 // Dev bypass ONLY in actual development, never via env var in production.
 // Belt-and-suspenders: also refuse when running under Vercel (preview or
@@ -255,12 +270,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         profileId !== "admin-001" &&
         !profileId.startsWith("dev-")
       ) {
-        const supabase = createAdminClient();
-        const { data: current } = await supabase
-          .from("profiles")
-          .select("role, office, department, is_it, can_offboard, is_active, session_version, signed_out_at")
-          .eq("id", profileId)
-          .single();
+        const current = await loadSessionProfile(profileId);
         if (current) {
           // Deactivated: eject the session immediately. Returning null makes
           // the middleware bounce them to /login on the next request.
@@ -290,7 +300,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async session({ session, token }) {
       if (token) {
-        session.user.role = token.role as import("@/types/auth").UserRole;
+        session.user.role = token.role as UserRole;
         session.user.profileId = token.profileId as string;
         session.user.office = (token.office as Office | null) ?? null;
         session.user.department = (token.department as Department | null) ?? null;

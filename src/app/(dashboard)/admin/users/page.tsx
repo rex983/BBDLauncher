@@ -10,7 +10,7 @@ import { UserSection } from "@/components/features/admin/user-section";
 import type { UserProfile, UserRole as UserRoleType } from "@/types/auth";
 
 export default function AdminUsersPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const currentProfileId = session?.user?.profileId;
   const viewerIsAdmin = session?.user?.role === "admin";
 
@@ -29,16 +29,19 @@ export default function AdminUsersPage() {
     if (res.ok) setUsers(await res.json());
   };
 
-  const fetchRoles = async () => {
-    const res = await fetch("/api/roles");
-    if (res.ok) setRoles(await res.json());
-  };
-
   useEffect(() => {
+    fetch("/api/roles").then(async (res) => {
+      if (res.ok) setRoles(await res.json());
+    });
+  }, []);
+
+  // Wait for the session so admins don't fetch the active-only list first
+  // and then refetch the full one once their role resolves.
+  useEffect(() => {
+    if (status === "loading") return;
     fetchUsers();
-    fetchRoles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewerIsAdmin]);
+  }, [status, viewerIsAdmin]);
 
   const openNew = () => {
     setEditing(null);

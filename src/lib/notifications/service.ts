@@ -29,9 +29,8 @@ export interface CreateNotificationParams {
   metadata?: Record<string, unknown>;
 }
 
-export async function createNotification(params: CreateNotificationParams): Promise<void> {
-  const supabase = createAdminClient();
-  const { error } = await supabase.from("notifications").insert({
+function toRow(params: CreateNotificationParams) {
+  return {
     user_id: params.userId,
     type: params.type,
     title: params.title,
@@ -40,7 +39,27 @@ export async function createNotification(params: CreateNotificationParams): Prom
     reference_type: params.referenceType ?? null,
     reference_id: params.referenceId ?? null,
     metadata: params.metadata ?? null,
-  });
+  };
+}
+
+export async function createNotification(params: CreateNotificationParams): Promise<void> {
+  const supabase = createAdminClient();
+  const { error } = await supabase.from("notifications").insert(toRow(params));
+  if (error) {
+    console.error("[notifications] create failed:", error.message);
+  }
+}
+
+// Same bell for many people in one insert instead of one round-trip each.
+export async function createNotifications(
+  userIds: string[],
+  params: Omit<CreateNotificationParams, "userId">,
+): Promise<void> {
+  if (userIds.length === 0) return;
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("notifications")
+    .insert(userIds.map((userId) => toRow({ ...params, userId })));
   if (error) {
     console.error("[notifications] create failed:", error.message);
   }

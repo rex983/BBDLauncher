@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { X } from "lucide-react";
 
-export interface AccessPerson {
+interface AccessPerson {
   id: string;
   email: string;
   name: string | null;

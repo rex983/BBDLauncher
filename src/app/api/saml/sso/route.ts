@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSamlAssertion, generateAutoSubmitForm } from "@/lib/saml/idp";
 import { checkAppLaunch } from "@/lib/launcher/launch-gate";
+import { applyAttributeMapping } from "@/app/api/_lib/saml-attributes";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -90,22 +91,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Build attributes from mapping. userField is admin-configured, but
-  // whitelist to the identity claims we intend to expose — this way a
-  // future addition to session.user (e.g. an internal token) can't leak
-  // via a stale mapping row.
-  const ALLOWED_USER_FIELDS = new Set([
-    "email", "name", "role", "office", "department", "is_it", "profileId",
-  ]);
-  const attributes: Record<string, string> = {};
-  if (ssoConfig.attribute_mapping) {
-    const mapping = ssoConfig.attribute_mapping as Record<string, string>;
-    for (const [samlAttr, userField] of Object.entries(mapping)) {
-      if (!ALLOWED_USER_FIELDS.has(userField)) continue;
-      const value = (session.user as Record<string, unknown>)[userField];
-      if (value) attributes[samlAttr] = String(value);
-    }
-  }
+  // Build attributes from the (whitelisted) mapping.
+  const attributes = applyAttributeMapping({}, ssoConfig.attribute_mapping, session.user);
 
   // Generate assertion — use trusted ACS URL
   const samlResponse = generateSamlAssertion({

@@ -140,28 +140,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error?.message || "Failed to create app" }, { status: 500 });
     }
 
-    // Set access: the grid if sent, otherwise the older role list (every office).
+    // Access grid (or the older role list, every office), people, and SSO
+    // config are independent child rows — write them together. Failures are
+    // logged, not returned: the app itself already exists.
     const accessRows = access
       ? rowsFromCells(app.id, access)
       : (roles || []).map((role_name) => ({ role_name, app_id: app.id, office: null }));
-    if (accessRows.length) {
-      const { error: roleError } = await supabase.from("launcher_role_app_access").insert(accessRows);
-      if (roleError) console.error("Role access insert error:", roleError.message);
-    }
-
-    if (user_ids?.length) {
-      const userError = await setUserIds("app_id", app.id, user_ids);
-      if (userError) console.error("User access insert error:", userError);
-    }
-
-    // Set SSO config
-    if (sso_config && (appData.sso_type === "saml" || appData.sso_type === "oauth" || appData.sso_type === "jwt")) {
-      const { error: ssoError } = await supabase.from("launcher_sso_configs").insert({
-        app_id: app.id,
-        ...sso_config,
-      });
-      if (ssoError) console.error("SSO config insert error:", ssoError.message);
-    }
+    await Promise.all([
+      accessRows.length > 0 &&
+        supabase
+          .from("launcher_role_app_access")
+          .insert(accessRows)
+          .then(({ error: roleError }) => {
+            if (roleError) console.error("Role access insert error:", roleError.message);
+          }),
+      user_ids?.length &&
+        setUserIds("app_id", app.id, user_ids).then((userError) => {
+          if (userError) console.error("User access insert error:", userError);
+        }),
+      sso_config &&
+        (appData.sso_type === "saml" || appData.sso_type === "oauth" || appData.sso_type === "jwt") &&
+        supabase
+          .from("launcher_sso_configs")
+          .insert({ app_id: app.id, ...sso_config })
+          .then(({ error: ssoError }) => {
+            if (ssoError) console.error("SSO config insert error:", ssoError.message);
+          }),
+    ]);
 
     bustLauncherCache("apps");
     return NextResponse.json(app, { status: 201 });

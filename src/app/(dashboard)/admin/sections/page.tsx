@@ -108,17 +108,11 @@ export default function AdminSectionsPage() {
     e.preventDefault();
     if (!name.trim()) return;
     setSaving(true);
-    const res = editing
-      ? await fetch(`/api/sections/${editing.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: name.trim() }),
-        })
-      : await fetch("/api/sections", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: name.trim() }),
-        });
+    const res = await fetch(editing ? `/api/sections/${editing.id}` : "/api/sections", {
+      method: editing ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim() }),
+    });
     setSaving(false);
     if (res.ok) {
       setDialogOpen(false);

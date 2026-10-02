@@ -35,16 +35,15 @@ const ALLOWED_WEEK_COUNTS = new Set([1, 2, 4, 12]);
 export async function GET(req: NextRequest) {
   const gate = await requireTimeDataAccess(null, "view");
   if (!gate.ok) return gate.response;
-  const { session, supabase, scope } = gate;
+  const { supabase, scope, viewerIsAdmin } = gate;
 
   const url = new URL(req.url);
   const weeksParam = Number(url.searchParams.get("weeks") ?? "4");
   const weeks = ALLOWED_WEEK_COUNTS.has(weeksParam) ? weeksParam : 4;
   const officeFilter = url.searchParams.get("office");
   const departmentFilter = url.searchParams.get("department");
-  const isAdmin = session.user.role === "admin";
   const includeInactive =
-    isAdmin && url.searchParams.get("includeInactive") === "1";
+    viewerIsAdmin && url.searchParams.get("includeInactive") === "1";
 
   const now = new Date();
   // One zone-local week list covering both the selected range and YTD

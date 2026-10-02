@@ -107,6 +107,15 @@ function usePendingCount(
   return count;
 }
 
+function navLinkClass(active: boolean) {
+  return cn(
+    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+    active
+      ? "bg-accent text-accent-foreground"
+      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
@@ -153,12 +162,7 @@ export function Sidebar() {
           <Link
             key={item.href}
             href={buildPreviewHref(item.href, preview)}
-            className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              pathname === item.href
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
+            className={navLinkClass(pathname === item.href)}
           >
             <item.icon className="h-4 w-4" />
             {item.label}
@@ -174,12 +178,7 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={buildPreviewHref(item.href, preview)}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  pathname.startsWith(item.href)
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
+                className={navLinkClass(pathname.startsWith(item.href))}
               >
                 <item.icon className="h-4 w-4" />
                 <span className="flex-1">{item.label}</span>
@@ -205,12 +204,7 @@ export function Sidebar() {
             </div>
             <Link
               href="/offboarding"
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                pathname.startsWith("/offboarding")
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              )}
+              className={navLinkClass(pathname.startsWith("/offboarding"))}
             >
               <UserMinus className="h-4 w-4" />
               Offboarding
@@ -227,12 +221,7 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={buildPreviewHref(item.href, preview)}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  pathname.startsWith(item.href)
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
+                className={navLinkClass(pathname.startsWith(item.href))}
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}

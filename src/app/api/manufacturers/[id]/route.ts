@@ -45,7 +45,7 @@ export async function PUT(
   const supabase = createAdminClient();
   const { data: current } = await supabase
     .from("manufacturer_config")
-    .select("*")
+    .select("name, sku, sign_now_template_id, deposit_percent, deposit_tiers, active")
     .eq("id", id)
     .single();
 
@@ -96,7 +96,7 @@ export async function DELETE(
 
   const { data: current } = await supabase
     .from("manufacturer_config")
-    .select("*")
+    .select("name, sku, sign_now_template_id, active")
     .eq("id", id)
     .single();
 

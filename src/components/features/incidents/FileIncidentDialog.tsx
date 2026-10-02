@@ -27,29 +27,13 @@ import {
   type IncidentCategory,
   type IncidentSeverity,
 } from "@/lib/incidents/types";
-import {
-  FileKindIcon,
-  formatBytes,
-  isImageMime,
-} from "@/components/shared/AttachmentPreview";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Loader2,
-  RotateCcw,
-  X,
-  XCircle,
-} from "lucide-react";
+import { toLocalInputValue } from "@/components/shared/format";
+import { AlertTriangle } from "lucide-react";
 import { useIncidentAttachmentUploads } from "./useIncidentAttachmentUploads";
+import { UploadRow, VisibilityPill } from "./incident-parts";
 
-// Value shape a <input type="datetime-local"> expects: local wall-clock
-// time as YYYY-MM-DDTHH:MM (no timezone suffix). Used to prefill the field
-// with "right now" every time the dialog opens.
-function nowLocal(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+// Prefills the datetime-local field with "right now" every time the dialog opens.
+const nowLocal = () => toLocalInputValue(new Date());
 
 interface EmployeeOption {
   id: string;
@@ -63,7 +47,7 @@ interface TodayRow {
   profile: EmployeeOption;
 }
 
-export interface FileIncidentDialogProps {
+interface FileIncidentDialogProps {
   // Preselected employee when opened from that employee's timesheet page.
   // When omitted, the dialog shows an employee-picker as the first field
   // (used from /management/incidents where no employee context exists).
@@ -143,10 +127,9 @@ export function FileIncidentDialog({
   }, [open, needsPicker]);
 
   const employeeProfileId = needsPicker ? selectedId : (preselectedId as string);
+  const picked = needsPicker ? employees.find((e) => e.id === selectedId) : undefined;
   const employeeName = needsPicker
-    ? employees.find((e) => e.id === selectedId)?.name ||
-      employees.find((e) => e.id === selectedId)?.email ||
-      "employee"
+    ? picked?.name || picked?.email || "employee"
     : (preselectedName as string);
 
   const reset = () => {
@@ -362,9 +345,7 @@ export function FileIncidentDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="i-problem">Problem</Label>
-              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                Employee sees this
-              </span>
+              <VisibilityPill />
             </div>
             <Textarea
               id="i-problem"
@@ -378,9 +359,7 @@ export function FileIncidentDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="i-solution">Proposed solution &amp; deadline</Label>
-              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                Employee sees this
-              </span>
+              <VisibilityPill />
             </div>
             <Textarea
               id="i-solution"
@@ -394,9 +373,7 @@ export function FileIncidentDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="i-notes">Manager&rsquo;s notes</Label>
-              <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                Private — employee does NOT see this
-              </span>
+              <VisibilityPill private />
             </div>
             <Textarea
               id="i-notes"
@@ -444,99 +421,15 @@ export function FileIncidentDialog({
             />
             {uploadCount > 0 && (
               <ul className="space-y-2">
-                {uploads.map((u) => {
-                  // FileIncidentDialog never seeds `existing` — the hook still
-                  // includes it in the union so we skip defensively.
-                  if (u.status === "existing") return null;
-                  const image = isImageMime(u.file.type);
-                  return (
-                    <li
-                      key={u.id}
-                      className={`flex items-center gap-3 rounded-md border p-2 ${
-                        u.status === "error"
-                          ? "border-destructive/40 bg-destructive/5"
-                          : u.status === "uploaded"
-                            ? "border-emerald-500/30 bg-emerald-500/5"
-                            : "bg-background"
-                      }`}
-                    >
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted">
-                        {image && u.previewUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={u.previewUrl}
-                            alt={u.file.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <FileKindIcon
-                            mime={u.file.type}
-                            className="h-5 w-5 text-muted-foreground"
-                          />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        {u.status === "uploaded" ? (
-                          <a
-                            href={`/api/incidents/attachments/${u.meta.path}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="truncate block text-sm font-medium hover:underline"
-                            title={u.file.name}
-                          >
-                            {u.file.name}
-                          </a>
-                        ) : (
-                          <p className="truncate text-sm font-medium" title={u.file.name}>
-                            {u.file.name}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">
-                            {formatBytes(u.file.size)}
-                          </span>
-                          {u.status === "uploading" && (
-                            <span className="inline-flex items-center gap-1 text-muted-foreground">
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              Uploading…
-                            </span>
-                          )}
-                          {u.status === "uploaded" && (
-                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                              <CheckCircle2 className="h-3 w-3" />
-                              Uploaded
-                            </span>
-                          )}
-                          {u.status === "error" && (
-                            <span className="inline-flex items-center gap-1 text-destructive">
-                              <XCircle className="h-3 w-3" />
-                              {u.error}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {u.status === "error" && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => retryUpload(u.id, employeeProfileId)}
-                        >
-                          <RotateCcw className="mr-1 h-3 w-3" />
-                          Retry
-                        </Button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => removeUpload(u.id)}
-                        className="text-muted-foreground hover:text-destructive"
-                        aria-label="Remove attachment"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </li>
-                  );
-                })}
+                {uploads.map((u) => (
+                  <UploadRow
+                    key={u.id}
+                    item={u}
+                    variant="new"
+                    onRetry={() => retryUpload(u.id, employeeProfileId)}
+                    onRemove={() => removeUpload(u.id)}
+                  />
+                ))}
               </ul>
             )}
             <p className="text-xs text-muted-foreground">

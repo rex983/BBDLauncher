@@ -10,7 +10,7 @@ import {
 // Shared attachment metadata — same shape used by both incident_reports
 // and office_memos. Kept structural so either module's typed attachment
 // can be passed in without a cast.
-export interface AttachmentMeta {
+interface AttachmentMeta {
   path: string;
   filename: string;
   size: number;

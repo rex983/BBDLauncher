@@ -22,7 +22,6 @@ export const maxDuration = 60;
 // row in time_extensions; this cron reads it. If they dismiss or ignore,
 // we clock them out.
 
-
 async function handle() {
   const supabase = createAdminClient();
   const now = new Date();
@@ -50,16 +49,12 @@ async function handle() {
     return NextResponse.json({ ok: true, clocked_out: 0, ran_at: now.toISOString() });
   }
 
-  // Fetch schedules + extensions for the on-clock cohort in parallel.
-  const [schedRes, hasAnySchedRes, extRes] = await Promise.all([
+  // Fetch schedules (every weekday — today's row gives the end time, any
+  // row at all marks an override) + extensions for the on-clock cohort.
+  const [schedRes, extRes] = await Promise.all([
     supabase
       .from("work_schedules")
-      .select("profile_id, end_time")
-      .in("profile_id", onClock)
-      .eq("weekday", weekday),
-    supabase
-      .from("work_schedules")
-      .select("profile_id")
+      .select("profile_id, weekday, end_time")
       .in("profile_id", onClock),
     supabase
       .from("time_extensions")
@@ -68,10 +63,12 @@ async function handle() {
       .eq("local_date", localDate),
   ]);
 
-  const schedEndByProfile = new Map<string, string>(
-    (schedRes.data || []).map((r) => [r.profile_id, r.end_time as string]),
-  );
-  const hasAnyOverride = new Set<string>((hasAnySchedRes.data || []).map((r) => r.profile_id));
+  const schedEndByProfile = new Map<string, string>();
+  const hasAnyOverride = new Set<string>();
+  for (const r of schedRes.data || []) {
+    hasAnyOverride.add(r.profile_id);
+    if (r.weekday === weekday) schedEndByProfile.set(r.profile_id, r.end_time as string);
+  }
   const extensionByProfile = new Map<string, string>(
     (extRes.data || []).map((r) => [r.profile_id, r.extension_until as string]),
   );

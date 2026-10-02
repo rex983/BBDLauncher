@@ -94,12 +94,17 @@ export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }
 
   // Reset filters whenever a new profile is opened so the dialog picks up
   // the summary's current range instead of stale values from the last view.
-  useEffect(() => {
+  // Done during render (not in an effect) so the fetch below doesn't fire
+  // once with the stale range first.
+  const resetKey = `${profile?.id}|${initialFrom}|${initialTo}`;
+  const [lastResetKey, setLastResetKey] = useState(resetKey);
+  if (resetKey !== lastResetKey) {
+    setLastResetKey(resetKey);
     if (profile) {
       setFrom(initialFrom);
       setTo(initialTo);
     }
-  }, [profile?.id, initialFrom, initialTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   useEffect(() => {
     if (!profile) return;

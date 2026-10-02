@@ -3,28 +3,9 @@ import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-
-const ALLOWED_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/svg+xml",
-  "image/x-icon",
-  "image/vnd.microsoft.icon",
-  "image/gif",
-]);
+import { iconExtension } from "@/app/api/_lib/icon-types";
 
 const MAX_BYTES = 1_000_000; // 1 MB
-
-const EXT_FROM_TYPE: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/webp": "webp",
-  "image/svg+xml": "svg",
-  "image/x-icon": "ico",
-  "image/vnd.microsoft.icon": "ico",
-  "image/gif": "gif",
-};
 
 export async function POST(req: NextRequest) {
   const session = await requireSession(canManageContent);
@@ -42,7 +23,8 @@ export async function POST(req: NextRequest) {
   if (!file) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }
-  if (!ALLOWED_TYPES.has(file.type)) {
+  const ext = iconExtension(file.type);
+  if (!ext) {
     return NextResponse.json(
       { error: `Unsupported image type: ${file.type || "unknown"}` },
       { status: 400 }
@@ -55,7 +37,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ext = EXT_FROM_TYPE[file.type] || "png";
   const path = `${randomUUID()}.${ext}`;
   const supabase = createAdminClient();
   const buffer = Buffer.from(await file.arrayBuffer());

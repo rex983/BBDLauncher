@@ -27,6 +27,20 @@ import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, ArrowUpDown, Search, X } from
 type SortKey = "name" | "url" | "sso_type" | "status" | "offices" | "roles";
 type SortDir = "asc" | "desc";
 
+const COLUMNS: { key: SortKey; label: string }[] = [
+  { key: "name", label: "Name" },
+  { key: "url", label: "URL" },
+  { key: "sso_type", label: "SSO Type" },
+  { key: "status", label: "Status" },
+  { key: "offices", label: "Offices" },
+  { key: "roles", label: "Roles" },
+];
+
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+  return dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+}
+
 export default function AdminAppsPage() {
   const [apps, setApps] = useState<AppWithAccess[]>([]);
   const [editingApp, setEditingApp] = useState<AppWithAccess | null>(null);
@@ -77,15 +91,6 @@ export default function AdminAppsPage() {
       value(a).localeCompare(value(b), undefined, { sensitivity: "base" }) * dir
     );
   })();
-
-  const SortIcon = ({ k }: { k: SortKey }) =>
-    sortKey !== k ? (
-      <ArrowUpDown className="h-3 w-3 opacity-40" />
-    ) : sortDir === "asc" ? (
-      <ArrowUp className="h-3 w-3" />
-    ) : (
-      <ArrowDown className="h-3 w-3" />
-    );
 
   const fetchApps = async () => {
     const res = await fetch("/api/apps");
@@ -162,42 +167,17 @@ export default function AdminAppsPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead
-              onClick={() => toggleSort("name")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">Name <SortIcon k="name" /></div>
-            </TableHead>
-            <TableHead
-              onClick={() => toggleSort("url")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">URL <SortIcon k="url" /></div>
-            </TableHead>
-            <TableHead
-              onClick={() => toggleSort("sso_type")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">SSO Type <SortIcon k="sso_type" /></div>
-            </TableHead>
-            <TableHead
-              onClick={() => toggleSort("status")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">Status <SortIcon k="status" /></div>
-            </TableHead>
-            <TableHead
-              onClick={() => toggleSort("offices")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">Offices <SortIcon k="offices" /></div>
-            </TableHead>
-            <TableHead
-              onClick={() => toggleSort("roles")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">Roles <SortIcon k="roles" /></div>
-            </TableHead>
+            {COLUMNS.map(({ key, label }) => (
+              <TableHead
+                key={key}
+                onClick={() => toggleSort(key)}
+                className="cursor-pointer select-none"
+              >
+                <div className="flex items-center gap-1">
+                  {label} <SortIcon active={sortKey === key} dir={sortDir} />
+                </div>
+              </TableHead>
+            ))}
             <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>

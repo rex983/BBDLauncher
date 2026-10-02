@@ -77,15 +77,9 @@ export async function listCases(): Promise<CaseSummary[]> {
 
 export async function getCaseDetail(caseId: string): Promise<CaseDetail | null> {
   const supabase = createAdminClient();
-  const { data: row } = await supabase
-    .from("offboarding_cases")
-    .select(CASE_COLUMNS)
-    .eq("id", caseId)
-    .maybeSingle();
-  if (!row) return null;
-  const c = row as OffboardingCase;
-
-  const [tasksRes, eventsRes, exportsRes, accountRes, sectionsRes] = await Promise.all([
+  // Everything keyed by caseId loads alongside the case row itself.
+  const [{ data: row }, tasksRes, eventsRes, exportsRes, sectionsRes] = await Promise.all([
+    supabase.from("offboarding_cases").select(CASE_COLUMNS).eq("id", caseId).maybeSingle(),
     supabase.from("offboarding_tasks").select(TASK_COLUMNS).eq("case_id", caseId).order("display_order"),
     supabase
       .from("offboarding_events")
@@ -93,11 +87,10 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail | null> 
       .eq("case_id", caseId)
       .order("created_at", { ascending: true }),
     supabase.storage.from(EXPORT_BUCKET).list(caseId, { sortBy: { column: "created_at", order: "desc" } }),
-    c.profile_id
-      ? supabase.from("profiles").select("is_active").eq("id", c.profile_id).maybeSingle()
-      : Promise.resolve({ data: null }),
     supabase.from("offboarding_sections").select("name").order("display_order"),
   ]);
+  if (!row) return null;
+  const c = row as OffboardingCase;
 
   const tasks = (tasksRes.data || []) as OffboardingTask[];
   // The checklist's sections (so empty ones show and accept tasks), then any
@@ -118,9 +111,14 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail | null> 
   }
   if (c.opened_by) ids.add(c.opened_by);
   if (c.closed_by) ids.add(c.closed_by);
-  const { data: people } = ids.size
-    ? await supabase.from("profiles").select("id, email, name:full_name").in("id", [...ids])
-    : { data: [] };
+  const [{ data: people }, accountRes] = await Promise.all([
+    ids.size
+      ? supabase.from("profiles").select("id, email, name:full_name").in("id", [...ids])
+      : Promise.resolve({ data: [] }),
+    c.profile_id
+      ? supabase.from("profiles").select("is_active").eq("id", c.profile_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
   return {
     case: c,
@@ -304,13 +302,13 @@ export async function syncCaseToChecklist(caseId: string): Promise<SyncResult> {
   if (!c) return { ok: false, status: 404, error: "Not found" };
   if (c.status !== "open") return { ok: false, status: 409, error: "Reopen the case first." };
 
-  const [template, tasksRes] = await Promise.all([
+  const [template, tasksRes, personApps] = await Promise.all([
     getTemplate(),
     supabase.from("offboarding_tasks").select(TASK_COLUMNS).eq("case_id", caseId).order("display_order"),
+    c.profile_id
+      ? appsForPerson({ id: c.profile_id, role: c.employee_role ?? "", office: c.employee_office })
+      : [],
   ]);
-  const personApps = c.profile_id
-    ? await appsForPerson({ id: c.profile_id, role: c.employee_role ?? "", office: c.employee_office })
-    : [];
   const expected = expectedTasks(template, personApps);
   const tasks = (tasksRes.data || []) as OffboardingTask[];
 

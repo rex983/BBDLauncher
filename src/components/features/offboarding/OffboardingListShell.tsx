@@ -41,6 +41,8 @@ import {
   type CaseSummary,
   type OffboardingReason,
 } from "@/lib/offboarding/types";
+import { todayISO } from "@/lib/timeoff/types";
+import { fmtDay } from "@/components/shared/format";
 
 interface Person {
   id: string;
@@ -51,19 +53,6 @@ interface Person {
   department: string | null;
   is_active: boolean;
   can_offboard: boolean;
-}
-
-export function fmtDay(d: string) {
-  return new Date(d + "T00:00:00").toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export function OffboardingListShell({
@@ -202,7 +191,7 @@ function StartOffboardingDialog({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [profileId, setProfileId] = useState("");
-  const [lastDay, setLastDay] = useState(todayISO());
+  const [lastDay, setLastDay] = useState(todayISO);
   const [reason, setReason] = useState<OffboardingReason>("resigned");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);

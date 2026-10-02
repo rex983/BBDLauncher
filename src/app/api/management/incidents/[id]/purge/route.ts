@@ -71,26 +71,29 @@ export async function POST(
   // Storage: remove the actual files. If this fails we log + proceed —
   // orphaned files in the bucket are the lesser evil vs. leaving the
   // row around with a partially-successful purge.
-  if (attachmentPaths.length > 0) {
-    const { error: storageErr } = await supabase.storage
-      .from("incident-attachments")
-      .remove(attachmentPaths);
-    if (storageErr) {
-      console.error(
-        "[incident-purge] storage cleanup failed:",
-        id,
-        attachmentPaths,
-        storageErr.message,
-      );
-    }
-  }
-
-  // Kill any pending bell notifications so clicks don't 404.
-  await supabase
-    .from("notifications")
-    .delete()
-    .eq("reference_type", "incident_report")
-    .eq("reference_id", id);
+  // Independent of the storage cleanup, so both run together: kill any
+  // pending bell notifications so clicks don't 404.
+  await Promise.all([
+    attachmentPaths.length > 0 &&
+      supabase.storage
+        .from("incident-attachments")
+        .remove(attachmentPaths)
+        .then(({ error: storageErr }) => {
+          if (storageErr) {
+            console.error(
+              "[incident-purge] storage cleanup failed:",
+              id,
+              attachmentPaths,
+              storageErr.message,
+            );
+          }
+        }),
+    supabase
+      .from("notifications")
+      .delete()
+      .eq("reference_type", "incident_report")
+      .eq("reference_id", id),
+  ]);
 
   // Hard delete the row. incident_report_events cascade via FK.
   const { error: deleteErr } = await supabase

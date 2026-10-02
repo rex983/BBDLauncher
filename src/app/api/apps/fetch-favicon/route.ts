@@ -6,26 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { lookup } from "dns/promises";
 import { isIP } from "net";
-
-const ALLOWED_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/svg+xml",
-  "image/x-icon",
-  "image/vnd.microsoft.icon",
-  "image/gif",
-]);
-
-const EXT_FROM_TYPE: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/webp": "webp",
-  "image/svg+xml": "svg",
-  "image/x-icon": "ico",
-  "image/vnd.microsoft.icon": "ico",
-  "image/gif": "gif",
-};
+import { iconExtension } from "@/app/api/_lib/icon-types";
 
 const MAX_BYTES = 1_000_000;
 const FETCH_TIMEOUT_MS = 8_000;
@@ -190,7 +171,7 @@ function rankCandidates(candidates: IconCandidate[]): IconCandidate[] {
 
 async function downloadIcon(
   href: string
-): Promise<{ buffer: Buffer; contentType: string } | null> {
+): Promise<{ buffer: Buffer; contentType: string; ext: string } | null> {
   try {
     const res = await fetchWithTimeout(href);
     if (!res.ok) return null;
@@ -198,10 +179,11 @@ async function downloadIcon(
       .split(";")[0]
       .trim()
       .toLowerCase();
-    if (!ALLOWED_TYPES.has(contentType)) return null;
+    const ext = iconExtension(contentType);
+    if (!ext) return null;
     const arrayBuffer = await res.arrayBuffer();
     if (arrayBuffer.byteLength === 0 || arrayBuffer.byteLength > MAX_BYTES) return null;
-    return { buffer: Buffer.from(arrayBuffer), contentType };
+    return { buffer: Buffer.from(arrayBuffer), contentType, ext };
   } catch {
     return null;
   }
@@ -259,7 +241,7 @@ export async function POST(req: NextRequest) {
     isApple: false,
   });
 
-  let picked: { buffer: Buffer; contentType: string; source: string } | null = null;
+  let picked: { buffer: Buffer; contentType: string; ext: string; source: string } | null = null;
   for (const candidate of rankCandidates(candidates)) {
     const downloaded = await downloadIcon(candidate.href);
     if (downloaded) {
@@ -275,8 +257,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ext = EXT_FROM_TYPE[picked.contentType] || "png";
-  const path = `${randomUUID()}.${ext}`;
+  const path = `${randomUUID()}.${picked.ext}`;
   const supabase = createAdminClient();
 
   const { error } = await supabase.storage

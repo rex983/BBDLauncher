@@ -25,6 +25,19 @@ import { Plus, Pencil, Trash2, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown } f
 type SortKey = "name" | "description" | "url" | "office" | "display_order";
 type SortDir = "asc" | "desc";
 
+const COLUMNS: { key: SortKey; label: string }[] = [
+  { key: "name", label: "Name" },
+  { key: "description", label: "Description" },
+  { key: "url", label: "URL" },
+  { key: "office", label: "Office" },
+  { key: "display_order", label: "Order" },
+];
+
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+  return dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+}
+
 export default function AdminLinksPage() {
   const [links, setLinks] = useState<ImportantLink[]>([]);
   const [editingLink, setEditingLink] = useState<ImportantLink | null>(null);
@@ -53,15 +66,6 @@ export default function AdminLinksPage() {
       return as.localeCompare(bs, undefined, { sensitivity: "base" }) * dir;
     });
   })();
-
-  const SortIcon = ({ k }: { k: SortKey }) =>
-    sortKey !== k ? (
-      <ArrowUpDown className="h-3 w-3 opacity-40" />
-    ) : sortDir === "asc" ? (
-      <ArrowUp className="h-3 w-3" />
-    ) : (
-      <ArrowDown className="h-3 w-3" />
-    );
 
   const fetchLinks = async () => {
     const res = await fetch("/api/links");
@@ -120,36 +124,17 @@ export default function AdminLinksPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead
-              onClick={() => toggleSort("name")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">Name <SortIcon k="name" /></div>
-            </TableHead>
-            <TableHead
-              onClick={() => toggleSort("description")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">Description <SortIcon k="description" /></div>
-            </TableHead>
-            <TableHead
-              onClick={() => toggleSort("url")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">URL <SortIcon k="url" /></div>
-            </TableHead>
-            <TableHead
-              onClick={() => toggleSort("office")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">Office <SortIcon k="office" /></div>
-            </TableHead>
-            <TableHead
-              onClick={() => toggleSort("display_order")}
-              className="cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-1">Order <SortIcon k="display_order" /></div>
-            </TableHead>
+            {COLUMNS.map(({ key, label }) => (
+              <TableHead
+                key={key}
+                onClick={() => toggleSort(key)}
+                className="cursor-pointer select-none"
+              >
+                <div className="flex items-center gap-1">
+                  {label} <SortIcon active={sortKey === key} dir={sortDir} />
+                </div>
+              </TableHead>
+            ))}
             <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 // Server page.tsx hydrates this shell with initialRows so first paint is
-// populated. Client refetches on filter changes / after actions.
+// populated. Client refetches after actions.
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
@@ -96,8 +96,6 @@ export default function MemosShell({
   );
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
-  // Skip the initial refetch — server rendered with the right rows.
-  const skipInitialFetch = useRef(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,30 +109,19 @@ export default function MemosShell({
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    if (skipInitialFetch.current) {
-      skipInitialFetch.current = false;
-      return;
-    }
-    load();
-  }, [load]);
-
   const filtered = useMemo(() => {
     const statuses = tab === "active" ? ACTIVE_STATUSES : ARCHIVE_STATUSES;
-    return rows
-      .filter((r) => statuses.includes(r.status))
-      .filter((r) => priorityFilter === "all" || r.priority === priorityFilter)
-      .filter((r) => categoryFilter === "all" || r.category === categoryFilter)
-      .filter((r) => {
-        if (!query.trim()) return true;
-        const q = query.trim().toLowerCase();
-        return (
+    const q = query.trim().toLowerCase();
+    return rows.filter(
+      (r) =>
+        statuses.includes(r.status) &&
+        (priorityFilter === "all" || r.priority === priorityFilter) &&
+        (categoryFilter === "all" || r.category === categoryFilter) &&
+        (!q ||
           r.title.toLowerCase().includes(q) ||
-          (r.author_name || "").toLowerCase().includes(q)
-        );
-      });
+          (r.author_name || "").toLowerCase().includes(q)),
+    );
   }, [rows, tab, priorityFilter, categoryFilter, query]);
-
 
   return (
     <div className="space-y-6">

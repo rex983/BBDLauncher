@@ -30,23 +30,22 @@ export async function POST(
   }
 
   const supabase = createAdminClient();
-  const { data: memo } = await supabase
-    .from("office_memos")
-    .select(
-      "id, acknowledgement_mode, document_hash, author_signature_hash, status",
-    )
-    .eq("id", id)
-    .single();
+  const [{ data: memo }, { data: recipient }] = await Promise.all([
+    supabase
+      .from("office_memos")
+      .select("acknowledgement_mode, document_hash, author_signature_hash, status")
+      .eq("id", id)
+      .single(),
+    supabase
+      .from("office_memo_recipients")
+      .select("id, acknowledged_at")
+      .eq("memo_id", id)
+      .eq("profile_id", session.user.profileId)
+      .single(),
+  ]);
   if (!memo || memo.status !== "published") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-
-  const { data: recipient } = await supabase
-    .from("office_memo_recipients")
-    .select("id, acknowledged_at")
-    .eq("memo_id", id)
-    .eq("profile_id", session.user.profileId)
-    .single();
   if (!recipient) {
     return NextResponse.json({ error: "Not a recipient" }, { status: 404 });
   }
@@ -57,8 +56,9 @@ export async function POST(
   const now = new Date().toISOString();
   const { ip, ua } = extractActorHeaders(req);
 
-  const update: Record<string, unknown> = { acknowledged_at: now };
-  if (!recipient.acknowledged_at) update.read_at = now;
+  // acknowledged_at is null past the early return above, so read_at is
+  // always (re)stamped alongside it.
+  const update: Record<string, unknown> = { acknowledged_at: now, read_at: now };
 
   if (memo.acknowledgement_mode === "signed") {
     if (!parsed.data.acknowledged) {

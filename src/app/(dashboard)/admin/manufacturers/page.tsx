@@ -93,17 +93,11 @@ export default function AdminManufacturersPage() {
       active: form.active,
     };
 
-    const res = editing
-      ? await fetch(`/api/manufacturers/${editing.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        })
-      : await fetch("/api/manufacturers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+    const res = await fetch(editing ? `/api/manufacturers/${editing.id}` : "/api/manufacturers", {
+      method: editing ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
     setSaving(false);
 

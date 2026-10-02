@@ -85,11 +85,10 @@ async function handle() {
   // timestamp will be rejected by the jwt callback on next request.
   // Supabase requires a WHERE clause for UPDATE, so we filter on a
   // universally-true predicate.
-  const { data: bumped, error: bumpErr } = await supabase
+  const { count: bumped, error: bumpErr } = await supabase
     .from("profiles")
-    .update({ signed_out_at: now.toISOString() })
-    .not("id", "is", null)
-    .select("id");
+    .update({ signed_out_at: now.toISOString() }, { count: "exact" })
+    .not("id", "is", null);
 
   if (bumpErr) {
     return NextResponse.json({ error: bumpErr.message }, { status: 500 });
@@ -98,7 +97,7 @@ async function handle() {
   return NextResponse.json({
     ok: true,
     clocked_out: clockedOut,
-    sessions_invalidated: (bumped || []).length,
+    sessions_invalidated: bumped ?? 0,
     ran_at: now.toISOString(),
   });
 }

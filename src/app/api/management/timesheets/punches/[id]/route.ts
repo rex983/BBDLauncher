@@ -15,18 +15,18 @@ const patchSchema = z.object({
   note: z.string().nullable().optional(),
 });
 
-// Fetches the target punch. For non-admins, additionally fetches the punch
-// owner's profile and enforces (office ∩ department ∩ is_active). Admins
-// skip the profile fetch entirely.
+// Fetches the target punch with its owner's scope columns embedded (one
+// round-trip). Non-admins must have the owner inside (office ∩ department
+// ∩ is_active); admins skip the scope check.
 async function loadPunchWithScope(id: string) {
   const gate = await requireTimeDataAccess(null, "edit");
   if (!gate.ok) return { fail: gate.response };
 
   const { data: punch } = await gate.supabase
     .from("time_punches")
-    .select("id, profile_id, event_type, occurred_at")
+    .select("id, profile_id, profile:profiles!profile_id(department, office, is_active)")
     .eq("id", id)
-    .maybeSingle();
+    .maybeSingle<{ id: string; profile_id: string; profile: ScopedProfile | null }>();
   if (!punch) {
     return { fail: NextResponse.json({ error: "Punch not found" }, { status: 404 }) };
   }
@@ -34,18 +34,11 @@ async function loadPunchWithScope(id: string) {
     return { fail: ownRecordResponse() };
   }
 
-  if (!gate.viewerIsAdmin) {
-    const { data: prof } = await gate.supabase
-      .from("profiles")
-      .select("department, office, is_active")
-      .eq("id", punch.profile_id)
-      .maybeSingle<ScopedProfile>();
-    if (!prof || !isTargetInScope(gate.scope, prof)) {
-      return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
-    }
+  if (!gate.viewerIsAdmin && (!punch.profile || !isTargetInScope(gate.scope, punch.profile))) {
+    return { fail: NextResponse.json({ error: "Out of scope" }, { status: 403 }) };
   }
 
-  return { ok: true as const, session: gate.session, supabase: gate.supabase, punch };
+  return { ok: true as const, session: gate.session, supabase: gate.supabase };
 }
 
 export async function PATCH(

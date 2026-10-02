@@ -66,30 +66,10 @@ import {
   type PersonRef,
   type TaskStatus,
 } from "@/lib/offboarding/types";
-import { fmtDay } from "./OffboardingListShell";
+import { fmtDay, fmtWhen } from "@/components/shared/format";
 import { EMPTY_DRAFT, ItemFields, type ItemDraft } from "./ItemFields";
 import { iid, isSection, moveAcrossSections, raw, sectionsAndTasksCollision, sid } from "./dnd";
-
-function fmtWhen(iso: string) {
-  return new Date(iso).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-async function send(url: string, method: string, body?: unknown): Promise<string | null> {
-  const res = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (res.ok) return null;
-  const b = await res.json().catch(() => ({}));
-  return typeof b.error === "string" ? b.error : "Something went wrong";
-}
+import { send } from "./api";
 
 export function OffboardingCaseShell({ initial, isAdmin }: { initial: CaseDetail; isAdmin: boolean }) {
   const [detail, setDetail] = useState(initial);
@@ -106,7 +86,11 @@ export function OffboardingCaseShell({ initial, isAdmin }: { initial: CaseDetail
     for (const p of detail.people) m.set(p.id, p);
     return m;
   }, [detail.people]);
-  const who = (id: string | null) => (id ? people.get(id)?.name || people.get(id)?.email || "Unknown" : "—");
+  const who = (id: string | null) => {
+    if (!id) return "—";
+    const p = people.get(id);
+    return p?.name || p?.email || "Unknown";
+  };
 
   const reload = useCallback(async () => {
     const res = await fetch(base, { cache: "no-store" });

@@ -93,19 +93,17 @@ export default function IncidentsShell({
   const filtered = useMemo(() => {
     const statuses =
       tab === "in_progress" ? IN_PROGRESS_STATUSES : ARCHIVE_STATUSES;
-    return rows
-      .filter((r) => statuses.includes(r.status))
-      .filter((r) => severityFilter === "all" || r.severity === severityFilter)
-      .filter((r) => categoryFilter === "all" || r.category === categoryFilter)
-      .filter((r) => {
-        if (!query.trim()) return true;
-        const q = query.trim().toLowerCase();
-        return (
+    const q = query.trim().toLowerCase();
+    return rows.filter(
+      (r) =>
+        statuses.includes(r.status) &&
+        (severityFilter === "all" || r.severity === severityFilter) &&
+        (categoryFilter === "all" || r.category === categoryFilter) &&
+        (!q ||
           r.title.toLowerCase().includes(q) ||
           (r.employee?.name || "").toLowerCase().includes(q) ||
-          (r.employee?.email || "").toLowerCase().includes(q)
-        );
-      });
+          (r.employee?.email || "").toLowerCase().includes(q)),
+    );
   }, [rows, tab, severityFilter, categoryFilter, query]);
 
   const openRow = (id: string) => {

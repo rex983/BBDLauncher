@@ -152,6 +152,7 @@ export async function POST(req: NextRequest) {
   let authorSignatureHash: string | null = null;
   let authorSignedAt: string | null = null;
 
+  const { ip, ua } = extractActorHeaders(req);
   const isSigned = parsed.data.acknowledgement_mode === "signed";
   if (isSigned) {
     const { data: authorProfile } = await supabase
@@ -168,7 +169,6 @@ export async function POST(req: NextRequest) {
     }
     documentHash = hashMemoDocument(parsed.data.body);
     authorSignedAt = now.toISOString();
-    const { ip, ua } = extractActorHeaders(req);
     authorSignatureHash = hashAuthorSignature({
       documentHash,
       signatureText: authorSignatureText,
@@ -177,8 +177,6 @@ export async function POST(req: NextRequest) {
       ua,
     });
   }
-
-  const { ip, ua } = extractActorHeaders(req);
 
   const { data: memo, error: insertErr } = await supabase
     .from("office_memos")

@@ -8,7 +8,7 @@
 //                                unset = DM each person instead
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createNotification } from "@/lib/notifications/service";
+import { createNotifications } from "@/lib/notifications/service";
 import { slackEscape } from "@/lib/slack/escape";
 import { OFFBOARDING_REASON_LABEL, type OffboardingReason } from "./types";
 
@@ -101,17 +101,17 @@ export async function notifyCaseOpened(p: {
   const reason = OFFBOARDING_REASON_LABEL[p.reason];
 
   await Promise.all([
-    ...others.map((r) =>
-      createNotification({
-        userId: r.id,
+    createNotifications(
+      others.map((r) => r.id),
+      {
         type: "offboarding_opened",
         title: `Offboarding started: ${p.employeeName}`,
         body: `Submitted by ${p.openerName} · last day ${lastDay}`,
         href: `/offboarding/${p.caseId}`,
         referenceType: "offboarding_case",
         referenceId: p.caseId,
-      }).catch(() => undefined),
-    ),
+      },
+    ).catch(() => undefined),
     // Slack tags everyone with access, including whoever started it.
     notifySlack(team, { ...p, lastDay, reason, url }).catch((e) =>
       console.error("[offboarding] slack error:", e),

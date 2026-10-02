@@ -64,14 +64,10 @@ const DEFAULT_STATUSES = [
   "cancelled",
 ];
 
-// Runs the two queries incidents management needs (profiles-in-scope +
-// incidents-for-those-profiles) in parallel where possible, folds the
-// profile map into each row, and returns the enriched summary list.
-//
-// The two queries can't be a single JOIN cleanly because the profile
-// scope drives which incidents are visible — but the profile fetch and
-// the initial incident fetch don't depend on each other's data, so we
-// still gain by kicking them off together and intersecting in memory.
+// Runs the two queries incidents management needs (profiles-in-scope, then
+// incidents for those profiles), folds the profile map into each row, and
+// returns the enriched summary list. The profile scope drives which
+// incidents are visible, so the second query waits on the first.
 export async function listScopedIncidentSummaries(
   params: ListParams,
 ): Promise<IncidentSummary[]> {
