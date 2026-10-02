@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ANALYTICS_RANGE_OPTIONS } from "@/lib/analytics/ranges";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -143,8 +143,11 @@ export function UserProfile360Shell({
     };
   }, [range, userId]);
 
+  // Latest request wins, so a slow 30-day load can't overwrite a newer 7-day one.
+  const loadSeq = useRef(0);
   const loadTime = useCallback(async () => {
     if (timeDataError) return;
+    const seq = ++loadSeq.current;
     setTimeLoading(true);
     const now = new Date();
     const from = new Date(now);
@@ -152,8 +155,10 @@ export function UserProfile360Shell({
     from.setHours(0, 0, 0, 0);
     const url = `/api/management/timesheets/employee/${userId}?from=${from.toISOString()}&to=${now.toISOString()}`;
     const res = await fetch(url);
+    if (seq !== loadSeq.current) return;
     if (res.ok) {
       const data = await res.json();
+      if (seq !== loadSeq.current) return;
       setPunches(data.punches);
       if (data.time_off) {
         setTimeOffWindow(data.time_off.window ?? []);
@@ -163,16 +168,21 @@ export function UserProfile360Shell({
     setTimeLoading(false);
   }, [userId, days, timeDataError]);
 
-  // Only refetch when days actually changes from initial (avoids double-load).
+  // Refetch whenever the window changes from what's loaded (the server
+  // hydrated initialDays, so the first render doesn't load twice).
+  const loadedDays = useRef(initialDays);
   useEffect(() => {
-    if (days === initialDays) return;
+    if (days === loadedDays.current) return;
+    loadedDays.current = days;
     loadTime();
-  }, [days, initialDays, loadTime]);
+  }, [days, loadTime]);
 
-  useEffect(() => {
-    const next = rangeToDays(range);
-    if (next !== days) setDays(next);
-  }, [range, days]);
+  // The header range drives the timesheet window too; the Timesheet tab's own
+  // picker can then narrow or widen it independently.
+  const changeRange = (next: string) => {
+    setRange(next);
+    setDays(rangeToDays(next));
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -243,7 +253,7 @@ export function UserProfile360Shell({
               </p>
             )}
           </div>
-          <Select value={range} onValueChange={setRange}>
+          <Select value={range} onValueChange={changeRange}>
             <SelectTrigger className="w-[180px]">
               <SelectValue />
             </SelectTrigger>

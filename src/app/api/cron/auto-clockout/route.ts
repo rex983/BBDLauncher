@@ -8,6 +8,7 @@ import {
 } from "@/lib/timesheets/tz";
 import { NextResponse } from "next/server";
 import { cronRoute } from "@/lib/cron";
+import { fetchAllPages } from "@/app/api/_lib/paged";
 import { DEFAULT_END, DEFAULT_WORKDAYS } from "@/lib/timesheets/schedule";
 
 export const maxDuration = 60;
@@ -30,15 +31,24 @@ async function handle() {
   const startOfDay = startOfDayInZone(now);
 
   // Find everyone with a punch today (ET-day) whose latest event isn't clock_out.
-  const { data: today, error: recentErr } = await supabase
-    .from("time_punches")
-    .select("profile_id, event_type, occurred_at")
-    .gte("occurred_at", startOfDay.toISOString())
-    .order("occurred_at", { ascending: false });
-  if (recentErr) return NextResponse.json({ error: recentErr.message }, { status: 500 });
+  // Paged so a busy day past PostgREST's 1000-row cap doesn't skip anyone.
+  const { data: today, error: recentErr } = await fetchAllPages<{
+    profile_id: string;
+    event_type: string;
+    occurred_at: string;
+  }>((from, to) =>
+    supabase
+      .from("time_punches")
+      .select("profile_id, event_type, occurred_at")
+      .gte("occurred_at", startOfDay.toISOString())
+      .order("occurred_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to),
+  );
+  if (recentErr) return NextResponse.json({ error: recentErr }, { status: 500 });
 
   const latest = new Map<string, PunchEventType>();
-  for (const row of today || []) {
+  for (const row of today) {
     if (!latest.has(row.profile_id)) latest.set(row.profile_id, row.event_type as PunchEventType);
   }
   const onClock: string[] = [];

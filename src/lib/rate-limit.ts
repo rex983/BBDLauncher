@@ -12,8 +12,10 @@ type Bucket = { hits: number[] };
 const buckets = new Map<string, Bucket>();
 const MAX_KEYS = 10_000;
 
+// Runs before a new key is added. Pruning after would sort the brand-new,
+// still-empty bucket first and delete it, losing its hits.
 function prune() {
-  if (buckets.size <= MAX_KEYS) return;
+  if (buckets.size < MAX_KEYS) return;
   // Drop the oldest half when we exceed the cap so the map can't grow
   // unbounded from unique-key attacks.
   const entries = [...buckets.entries()];
@@ -41,9 +43,9 @@ export function rateLimit(
   const cutoff = now - windowMs;
   let bucket = buckets.get(key);
   if (!bucket) {
+    prune();
     bucket = { hits: [] };
     buckets.set(key, bucket);
-    prune();
   }
   // Drop hits outside the window
   bucket.hits = bucket.hits.filter((t) => t > cutoff);

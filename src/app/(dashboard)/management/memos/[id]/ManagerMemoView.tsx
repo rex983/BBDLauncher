@@ -48,6 +48,13 @@ export function ManagerMemoView({
 }) {
   const router = useRouter();
   const [memo, setMemo] = useState(data);
+  // router.refresh() (after publish/edit) hands in fresh server data; adopt it
+  // so status, buttons and recipients update without a full reload.
+  const [prevData, setPrevData] = useState(data);
+  if (data !== prevData) {
+    setPrevData(data);
+    setMemo(data);
+  }
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(data.title);

@@ -8,6 +8,7 @@ import {
   startOfDayInZone,
 } from "@/lib/timesheets/tz";
 import { NextResponse } from "next/server";
+import { fetchAllPages } from "@/app/api/_lib/paged";
 
 // One-shot cleanup for historical stranded clock-ins: for every ET-local
 // day that ended without a matching clock_out, insert a clock_out at
@@ -28,14 +29,23 @@ export async function POST() {
   // Scan the last 60 days — plenty of runway without pulling the entire
   // history. Anything older than 60d is either already closed or lost.
   const scanFrom = new Date(startOfToday.getTime() - 60 * 24 * 60 * 60 * 1000);
-  const { data: punches, error } = await supabase
-    .from("time_punches")
-    .select("profile_id, event_type, occurred_at")
-    .gte("occurred_at", scanFrom.toISOString())
-    .lt("occurred_at", startOfToday.toISOString())
-    .order("occurred_at", { ascending: true });
+  // Paged: 60 days of company-wide punches easily passes the 1000-row cap.
+  const { data: punches, error } = await fetchAllPages<{
+    profile_id: string;
+    event_type: string;
+    occurred_at: string;
+  }>((from, to) =>
+    supabase
+      .from("time_punches")
+      .select("profile_id, event_type, occurred_at")
+      .gte("occurred_at", scanFrom.toISOString())
+      .lt("occurred_at", startOfToday.toISOString())
+      .order("occurred_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error }, { status: 500 });
 
   // Group by (profile_id, ET-local day) and record the latest event per group.
   interface DayInfo {
@@ -44,7 +54,7 @@ export async function POST() {
     latestType: PunchEventType;
   }
   const byKey = new Map<string, DayInfo>();
-  for (const p of punches || []) {
+  for (const p of punches) {
     const day = localDateInZone(new Date(p.occurred_at));
     const key = `${p.profile_id}|${day}`;
     byKey.set(key, {

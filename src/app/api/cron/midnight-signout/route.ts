@@ -3,6 +3,7 @@ import type { PunchEventType } from "@/lib/timesheets/state";
 import { localDateInZone, scheduledTimeInZone } from "@/lib/timesheets/tz";
 import { NextResponse } from "next/server";
 import { cronRoute } from "@/lib/cron";
+import { fetchAllPages } from "@/app/api/_lib/paged";
 
 export const maxDuration = 60;
 
@@ -28,15 +29,24 @@ async function handle() {
   const cutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
 
   // Step 1: find the latest punch per profile (last 48h — anyone without a
-  // punch in that window can't be on the clock).
-  const { data: recent, error: recentErr } = await supabase
-    .from("time_punches")
-    .select("profile_id, event_type, occurred_at")
-    .gte("occurred_at", cutoff)
-    .order("occurred_at", { ascending: false });
+  // punch in that window can't be on the clock). Paged: company-wide 48h
+  // can pass PostgREST's 1000-row cap, which would silently skip people.
+  const { data: recent, error: recentErr } = await fetchAllPages<{
+    profile_id: string;
+    event_type: string;
+    occurred_at: string;
+  }>((from, to) =>
+    supabase
+      .from("time_punches")
+      .select("profile_id, event_type, occurred_at")
+      .gte("occurred_at", cutoff)
+      .order("occurred_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to),
+  );
 
   if (recentErr) {
-    return NextResponse.json({ error: recentErr.message }, { status: 500 });
+    return NextResponse.json({ error: recentErr }, { status: 500 });
   }
 
   // Track (latest event, latest event time) per profile so we can
@@ -44,7 +54,7 @@ async function handle() {
   // Without the backdate, midnight cron clockouts land on the day AFTER
   // the clock_in, so weekly bucketing never sees a matching pair.
   const latest = new Map<string, { eventType: PunchEventType; occurredAt: string }>();
-  for (const row of recent || []) {
+  for (const row of recent) {
     if (!latest.has(row.profile_id)) {
       latest.set(row.profile_id, {
         eventType: row.event_type as PunchEventType,

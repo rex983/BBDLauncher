@@ -19,6 +19,7 @@ import {
   TIME_OFF_TYPES,
   type TimeOffStatus,
   type TimeOffType,
+  todayISO,
 } from "@/lib/timeoff/types";
 
 interface Profile {
@@ -159,7 +160,7 @@ export function TimeOffSummary({
     // "Upcoming" = approved and not yet ended as of today. Sort ascending
     // by start_date so the soonest request lands first for at-a-glance
     // "who's off next" reading.
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayIso = todayISO(); // local date, not UTC
     const sortedByStart = [...requests].sort((a, b) =>
       a.start_date.localeCompare(b.start_date),
     );
