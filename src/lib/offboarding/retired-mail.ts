@@ -88,7 +88,7 @@ async function managersFor(office: string | null) {
 
 const oneLine = (s: string) => slackName(s.trim() || "(none)");
 
-export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: boolean; employee: string | null }> {
+export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: boolean; employee: string | null; slack_error?: string }> {
   const employee = await findEmployee(addresses(mail.recipients));
   const managers = await managersFor(employee?.office ?? null);
   const supabase = createAdminClient();
@@ -103,7 +103,7 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: bo
       .eq("event_type", "mail_received")
       .contains("details", { message_id: mail.message_id })
       .limit(1);
-    if (dup?.length) return { posted: false, employee: employee.name };
+    if (dup?.length) return { posted: false, employee: employee.name, slack_error: "duplicate" };
     const { error } = await supabase.from("offboarding_events").insert({
       case_id: employee.caseId,
       event_type: "mail_received",
@@ -114,7 +114,7 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: bo
   }
 
   const token = process.env.SLACK_BOT_TOKEN;
-  if (!token) return { posted: false, employee: employee?.name ?? null };
+  if (!token) return { posted: false, employee: employee?.name ?? null, slack_error: "SLACK_BOT_TOKEN not set" };
 
   const who = employee
     ? `*${slackName(employee.name)}*${employee.office ? ` (former ${slackName(employee.office)})` : ""}`
@@ -144,5 +144,5 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: bo
     unfurl_media: false,
   });
   if (!res.ok) console.error("[retired-mail] slack post failed:", res.error);
-  return { posted: res.ok, employee: employee?.name ?? null };
+  return { posted: res.ok, employee: employee?.name ?? null, slack_error: res.error };
 }

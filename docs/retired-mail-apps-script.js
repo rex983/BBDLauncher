@@ -13,7 +13,7 @@
  */
 
 const ENDPOINT = "https://bbd-launcher.vercel.app/api/integrations/retired-mail";
-const ADDRESS_HEADERS = ["To", "Cc", "Delivered-To", "X-Original-To", "X-Forwarded-To", "X-Forwarded-For"];
+const ADDRESS_HEADERS = ["X-Gm-Original-To", "To", "Cc", "Delivered-To", "X-Original-To", "X-Forwarded-To", "X-Forwarded-For"];
 
 function setup() {
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
@@ -29,9 +29,10 @@ function checkMail() {
   const lastSeen = Number(props.getProperty("LAST_SEEN") || Date.now());
 
   // Search a little before lastSeen (Gmail's `after:` is whole seconds),
-  // then keep only messages strictly newer than it.
+  // then keep only messages strictly newer than it. `in:anywhere` because
+  // forwarding often archives or trashes Gmail's copy right away.
   const after = Math.floor(lastSeen / 1000) - 120;
-  const threads = GmailApp.search(`in:inbox after:${after}`, 0, 100);
+  const threads = GmailApp.search(`in:anywhere after:${after} -in:sent -in:drafts -in:spam`, 0, 100);
   const fresh = [];
   threads.forEach((t) =>
     t.getMessages().forEach((m) => {
@@ -39,6 +40,7 @@ function checkMail() {
     }),
   );
   fresh.sort((a, b) => a.getDate() - b.getDate());
+  console.log(`${fresh.length} new message(s) since ${new Date(lastSeen).toISOString()}`);
 
   let newest = lastSeen;
   for (const m of fresh) {
@@ -56,10 +58,12 @@ function checkMail() {
         recipients: recipients.concat([m.getTo(), m.getCc()]),
       }),
     });
+    console.log(`"${m.getSubject()}" → ${res.getResponseCode()} ${res.getContentText()}`);
     // Stop on failure and retry from here next minute, so nothing is lost.
+    // Throwing marks the run Failed in Executions.
     if (res.getResponseCode() >= 300) {
-      console.error(`Launcher returned ${res.getResponseCode()}: ${res.getContentText()}`);
-      break;
+      props.setProperty("LAST_SEEN", String(newest));
+      throw new Error(`Launcher returned ${res.getResponseCode()}: ${res.getContentText()}`);
     }
     newest = m.getDate().getTime();
   }
