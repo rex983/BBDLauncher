@@ -1,7 +1,7 @@
 // Mail for offboarded employees is forwarded to retiredemployees@. A Google
 // Apps Script on that mailbox (docs/retired-mail-apps-script.js) posts each
 // new message here; we work out which ex-employee it was meant for and tag
-// their office's managers in Slack.
+// the Sales managers in Slack.
 //
 //   RETIRED_MAIL_SECRET          shared secret the Apps Script sends
 //   SLACK_BOT_TOKEN              bot token (chat:write, users:read.email)
@@ -72,25 +72,29 @@ async function findEmployee(candidates: string[]): Promise<Employee | null> {
   return p ? { name: p.name || p.email, email: p.email, office: p.office, caseId: null, lastDay: null } : null;
 }
 
-// Active managers of the employee's office; every manager when we can't
-// tell whose mail it is, so nothing goes unseen.
-async function managersFor(office: string | null) {
+// Only Sales managers are tagged, whoever the mail was for: ex-employee
+// mail is customer mail, and BST managers don't handle it.
+const TAGGED_OFFICE = "Sales";
+
+async function salesManagers() {
   const supabase = createAdminClient();
-  let q = supabase
+  const { data } = await supabase
     .from("profiles")
     .select("email, name:full_name")
     .eq("is_active", true)
-    .in("role", [...MANAGER_TIER_ROLES]);
-  if (office) q = q.eq("office", office);
-  const { data } = await q.order("full_name");
+    .eq("office", TAGGED_OFFICE)
+    .in("role", [...MANAGER_TIER_ROLES])
+    .order("full_name");
   return (data ?? []) as { email: string; name: string | null }[];
 }
 
 const oneLine = (s: string) => slackName(s.trim() || "(none)");
 
 export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: boolean; employee: string | null; slack_error?: string }> {
-  const employee = await findEmployee(addresses(mail.recipients));
-  const managers = await managersFor(employee?.office ?? null);
+  const [employee, managers] = await Promise.all([
+    findEmployee(addresses(mail.recipients)),
+    salesManagers(),
+  ]);
   const supabase = createAdminClient();
 
   if (employee?.caseId) {
