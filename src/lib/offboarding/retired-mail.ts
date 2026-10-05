@@ -127,7 +127,7 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: bo
   const who = employee
     ? `*${slackName(employee.name)}*${employee.office ? ` (former ${slackName(employee.office)})` : ""}`
     : sentTo
-      ? `*${slackName(sentTo)}* (no offboarding record in the launcher)`
+      ? `*${slackName(sentTo)}*`
       : "*an unknown former employee*";
   const lastDay = employee?.lastDay
     ? ` · last day ${new Date(employee.lastDay + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
