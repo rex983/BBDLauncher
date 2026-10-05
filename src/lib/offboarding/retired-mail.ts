@@ -91,8 +91,9 @@ async function salesManagers() {
 const oneLine = (s: string) => slackName(s.trim() || "(none)");
 
 export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: boolean; employee: string | null; slack_error?: string }> {
+  const recipients = addresses(mail.recipients);
   const [employee, managers] = await Promise.all([
-    findEmployee(addresses(mail.recipients)),
+    findEmployee(recipients),
     salesManagers(),
   ]);
   const supabase = createAdminClient();
@@ -120,9 +121,14 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: bo
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) return { posted: false, employee: employee?.name ?? null, slack_error: "SLACK_BOT_TOKEN not set" };
 
+  // No launcher record (offboarded before the launcher, or no case opened):
+  // name the company address it was sent to instead.
+  const sentTo = recipients.find((a) => a.endsWith("@bigbuildingsdirect.com")) ?? recipients[0];
   const who = employee
     ? `*${slackName(employee.name)}*${employee.office ? ` (former ${slackName(employee.office)})` : ""}`
-    : "*an unknown former employee*";
+    : sentTo
+      ? `*${slackName(sentTo)}* (no offboarding record in the launcher)`
+      : "*an unknown former employee*";
   const lastDay = employee?.lastDay
     ? ` · last day ${new Date(employee.lastDay + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
     : "";
