@@ -36,6 +36,7 @@ import {
   AlertTriangle,
   Megaphone,
   UserMinus,
+  UserCheck,
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
@@ -57,6 +58,7 @@ const navItems: NavItem[] = [
 
 const managementItems: NavItem[] = [
   { href: "/management/timesheets", label: "Timesheets", icon: Clock },
+  { href: "/management/attendance", label: "Attendance", icon: UserCheck },
   { href: "/management/timeoff", label: "Time-off Queue", icon: CalendarCheck },
   { href: "/management/incidents", label: "Incident Reports", icon: AlertTriangle },
   { href: "/management/memos", label: "Office Memos", icon: Megaphone },

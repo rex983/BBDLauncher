@@ -63,3 +63,13 @@ export function formatClockTime(t: string): string {
   const displayH = h % 12 === 0 ? 12 : h % 12;
   return `${displayH}:${String(m).padStart(2, "0")} ${period}`;
 }
+
+// Clock-ins up to 59s past the scheduled start are on time (10:00:59 is
+// fine, 10:01:00 is late).
+export const LATE_GRACE_MS = 60_000;
+
+// Whole minutes late, or 0 when inside the grace window.
+export function minutesLate(clockIn: Date, scheduledStart: Date): number {
+  const diff = clockIn.getTime() - scheduledStart.getTime();
+  return diff >= LATE_GRACE_MS ? Math.floor(diff / 60_000) : 0;
+}

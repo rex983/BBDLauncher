@@ -11,7 +11,9 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CalendarCheck, Clock, LogIn, LogOut } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { AlarmClock, CalendarCheck, Clock, LogIn, LogOut } from "lucide-react";
+import { fmtTime } from "@/components/shared/format";
 import type { LiveState, PunchEventType } from "@/lib/timesheets/state";
 import {
   TIME_OFF_TYPE_LABEL,
@@ -72,6 +74,9 @@ export function ClockGate({
   const [loading, setLoading] = useState(initialState === null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when the server rejects a late clock-in for want of a reason.
+  const [late, setLate] = useState<{ minutes: number; scheduled_start: string } | null>(null);
+  const [lateReason, setLateReason] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -132,18 +137,41 @@ export function ClockGate({
     [load],
   );
 
+  // Clock-in can't go through punch(): a late first clock-in comes back 422
+  // asking for a reason, which swaps the card into the "why are you late"
+  // form instead of showing an error.
   const clockIn = async () => {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      setError(await punch("clock_in"));
+      const res = await fetch("/api/timeclock/punch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event_type: "clock_in",
+          late_reason: late ? lateReason.trim() : undefined,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setState(body.state);
+        setLate(null);
+        setLateReason("");
+      } else if (res.status === 422 && body.late_reason_required) {
+        setLate({ minutes: body.minutes_late, scheduled_start: body.scheduled_start });
+      } else if (res.status === 409) {
+        await load();
+      } else {
+        setError(typeof body.error === "string" ? body.error : "Clock in failed");
+      }
     } catch {
       setError("Clock in failed");
     } finally {
       setBusy(false);
     }
   };
+  const reasonReady = lateReason.trim().length >= 3;
 
   const locked = !loading && (state === null || state.status === "clocked_out");
   const ctx = useMemo(() => ({ state, loading, punch }), [state, loading, punch]);
@@ -158,12 +186,42 @@ export function ClockGate({
           aria-modal="true"
         >
           <div className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
-            <Clock className="mx-auto h-10 w-10 text-primary" />
-            <h2 className="mt-3 text-xl font-bold">You&rsquo;re clocked out</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Clock in to access the launcher. Everyone clocks in — including
-              managers and admins.
-            </p>
+            {late ? (
+              <>
+                <AlarmClock className="mx-auto h-10 w-10 text-amber-500" />
+                <h2 className="mt-3 text-xl font-bold">
+                  You&rsquo;re {late.minutes} minute{late.minutes === 1 ? "" : "s"} late
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Your shift started at {fmtTime(late.scheduled_start)}. Let your
+                  manager know why, then clock in.
+                </p>
+                <Textarea
+                  autoFocus
+                  className="mt-4 text-left"
+                  rows={3}
+                  maxLength={500}
+                  placeholder="e.g. Traffic on the highway, doctor's appointment ran over"
+                  value={lateReason}
+                  onChange={(e) => setLateReason(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && reasonReady) {
+                      e.preventDefault();
+                      clockIn();
+                    }
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <Clock className="mx-auto h-10 w-10 text-primary" />
+                <h2 className="mt-3 text-xl font-bold">You&rsquo;re clocked out</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Clock in to access the launcher. Everyone clocks in — including
+                  managers and admins.
+                </p>
+              </>
+            )}
             {error && (
               <p className="mt-3 text-sm text-destructive">{error}</p>
             )}
@@ -171,7 +229,7 @@ export function ClockGate({
               size="lg"
               className="mt-6 w-full"
               onClick={clockIn}
-              disabled={busy}
+              disabled={busy || (!!late && !reasonReady)}
             >
               <LogIn className="mr-2 h-5 w-5" />
               {busy ? "Clocking in…" : "Clock in"}

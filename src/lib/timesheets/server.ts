@@ -7,7 +7,7 @@ import {
   startOfDayInZone,
   weekdayInZone,
 } from "./tz";
-import { DEFAULT_END, DEFAULT_START, DEFAULT_WORKDAYS } from "./schedule";
+import { DEFAULT_END, DEFAULT_START, DEFAULT_WORKDAYS, minutesLate } from "./schedule";
 
 export interface TodayScheduleData {
   scheduled: boolean;
@@ -113,4 +113,30 @@ export async function isClockedIn(profileId: string): Promise<boolean> {
     .maybeSingle();
   if (!data) return false;
   return data.event_type !== "clock_out";
+}
+
+// Is a clock-in right now late? Only the day's first clock-in counts
+// (callers check that), only on a scheduled day, and never when the person
+// has approved time off today — a partial day covers a late start.
+export async function lateClockIn(
+  profileId: string,
+  now: Date = new Date(),
+): Promise<{ minutes: number; scheduled_start: string } | null> {
+  const supabase = createAdminClient();
+  const today = localDateInZone(now);
+  const [schedule, timeOff] = await Promise.all([
+    getMyScheduleToday(profileId),
+    supabase
+      .from("time_off_requests")
+      .select("id")
+      .eq("profile_id", profileId)
+      .eq("status", "approved")
+      .lte("start_date", today)
+      .gte("end_date", today)
+      .limit(1),
+  ]);
+  if (!schedule.scheduled || (timeOff.data?.length ?? 0) > 0) return null;
+  const start = scheduledTimeInZone(now, schedule.start_time);
+  const minutes = minutesLate(now, start);
+  return minutes > 0 ? { minutes, scheduled_start: start.toISOString() } : null;
 }

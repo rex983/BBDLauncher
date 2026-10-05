@@ -15,6 +15,7 @@ export const MANAGER_ADMIN_PATHS = [
 // Restricted to admins + manager-tier only. Anything else 404s.
 export const MANAGER_MANAGEMENT_PATHS = [
   "/management/timesheets",
+  "/management/attendance",
   "/management/timeoff",
   "/management/incidents",
   "/management/memos",
