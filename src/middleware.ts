@@ -11,6 +11,8 @@ const publicPaths = [
   // If middleware redirects them to /login, external cron pings return
   // 307-then-HTML and never actually execute the handler.
   "/api/cron",
+  // Server-to-server webhooks that check their own shared secret.
+  "/api/integrations",
 ];
 
 // Paths where cross-origin POST is legitimate and expected. The Origin
@@ -24,6 +26,7 @@ const csrfExemptPrefixes = [
   "/api/saml/sso",
   "/api/saml/acs",
   "/api/cron",
+  "/api/integrations",
 ];
 
 const stateChangingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);

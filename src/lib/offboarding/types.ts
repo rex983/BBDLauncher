@@ -171,4 +171,5 @@ export const EVENT_LABEL: Record<string, string> = {
   launcher_deactivated: "Deactivated launcher account",
   data_exported: "Backed up launcher records",
   export_downloaded: "Downloaded backup",
+  mail_received: "Email received at retiredemployees@",
 };

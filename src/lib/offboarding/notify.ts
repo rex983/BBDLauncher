@@ -10,6 +10,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createNotifications } from "@/lib/notifications/service";
 import { slackEscape } from "@/lib/slack/escape";
+import { slackApi, slackUserId } from "@/lib/slack/bot";
 import { OFFBOARDING_REASON_LABEL, type OffboardingReason } from "./types";
 
 const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
@@ -32,24 +33,7 @@ async function offboardingTeam(): Promise<Recipient[]> {
 
 // Names come from profiles, but escape them so a name can't inject mentions
 // or break the one-line layout.
-const slackName = (s: string) => slackEscape(s).replace(/[\r\n]+/g, " ");
-
-async function slackApi(method: string, token: string, body: Record<string, unknown>) {
-  const res = await fetch(`https://slack.com/api/${method}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
-  return (await res.json()) as { ok: boolean; error?: string; user?: { id: string } };
-}
-
-async function slackUserId(token: string, email: string): Promise<string | null> {
-  const res = await fetch(`https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(email)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const json = (await res.json()) as { ok: boolean; user?: { id: string } };
-  return json.ok && json.user ? json.user.id : null;
-}
+export const slackName = (s: string) => slackEscape(s).replace(/[\r\n]+/g, " ");
 
 // Posts to SLACK_OFFBOARDING_CHANNEL (or DMs each person when unset),
 // @-mentioning everyone with offboarding access. People Slack can't match

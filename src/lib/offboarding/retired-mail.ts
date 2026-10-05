@@ -1,0 +1,148 @@
+// Mail for offboarded employees is forwarded to retiredemployees@. A Google
+// Apps Script on that mailbox (docs/retired-mail-apps-script.js) posts each
+// new message here; we work out which ex-employee it was meant for and tag
+// their office's managers in Slack.
+//
+//   RETIRED_MAIL_SECRET          shared secret the Apps Script sends
+//   SLACK_BOT_TOKEN              bot token (chat:write, users:read.email)
+//   SLACK_RETIRED_MAIL_CHANNEL   channel to post in (default #bot-notifications)
+
+import { createAdminClient } from "@/lib/supabase/admin";
+import { MANAGER_TIER_ROLES } from "@/lib/auth/permissions";
+import { slackApi, slackTags } from "@/lib/slack/bot";
+import { slackEscape } from "@/lib/slack/escape";
+import { slackName } from "./notify";
+
+const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
+export const RETIRED_MAILBOX = "retiredemployees@bigbuildingsdirect.com";
+
+export interface RetiredMail {
+  message_id: string;
+  from: string;
+  subject: string;
+  preview: string;
+  // Every address header the script saw (To, Cc, Delivered-To, …). The
+  // ex-employee is whichever of these we've offboarded.
+  recipients: string[];
+}
+
+interface Employee {
+  name: string;
+  email: string;
+  office: string | null;
+  caseId: string | null;
+  lastDay: string | null;
+}
+
+function addresses(raw: string[]): string[] {
+  const found = raw.join(" ").toLowerCase().match(/[a-z0-9._%+'-]+@[a-z0-9.-]+\.[a-z]{2,}/g) ?? [];
+  return [...new Set(found)].filter((a) => a !== RETIRED_MAILBOX);
+}
+
+// Latest non-cancelled offboarding case for any recipient, else an
+// inactive-or-not profile with that email (offboarded before cases existed).
+async function findEmployee(candidates: string[]): Promise<Employee | null> {
+  if (!candidates.length) return null;
+  const supabase = createAdminClient();
+  const [cases, profiles] = await Promise.all([
+    supabase
+      .from("offboarding_cases")
+      .select("id, employee_name, employee_email, employee_office, last_day, status")
+      .in("employee_email", candidates)
+      .neq("status", "cancelled")
+      .order("created_at", { ascending: false })
+      .limit(1),
+    supabase
+      .from("profiles")
+      .select("email, name:full_name, office")
+      .in("email", candidates)
+      .limit(1),
+  ]);
+  const c = cases.data?.[0];
+  if (c) {
+    return {
+      name: c.employee_name || c.employee_email,
+      email: c.employee_email,
+      office: c.employee_office,
+      caseId: c.id,
+      lastDay: c.last_day,
+    };
+  }
+  const p = profiles.data?.[0];
+  return p ? { name: p.name || p.email, email: p.email, office: p.office, caseId: null, lastDay: null } : null;
+}
+
+// Active managers of the employee's office; every manager when we can't
+// tell whose mail it is, so nothing goes unseen.
+async function managersFor(office: string | null) {
+  const supabase = createAdminClient();
+  let q = supabase
+    .from("profiles")
+    .select("email, name:full_name")
+    .eq("is_active", true)
+    .in("role", [...MANAGER_TIER_ROLES]);
+  if (office) q = q.eq("office", office);
+  const { data } = await q.order("full_name");
+  return (data ?? []) as { email: string; name: string | null }[];
+}
+
+const oneLine = (s: string) => slackName(s.trim() || "(none)");
+
+export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: boolean; employee: string | null }> {
+  const employee = await findEmployee(addresses(mail.recipients));
+  const managers = await managersFor(employee?.office ?? null);
+  const supabase = createAdminClient();
+
+  if (employee?.caseId) {
+    // Fire-and-forget audit entry on the case; skip duplicates if the
+    // script ever resends a message.
+    const { data: dup } = await supabase
+      .from("offboarding_events")
+      .select("id")
+      .eq("case_id", employee.caseId)
+      .eq("event_type", "mail_received")
+      .contains("details", { message_id: mail.message_id })
+      .limit(1);
+    if (dup?.length) return { posted: false, employee: employee.name };
+    const { error } = await supabase.from("offboarding_events").insert({
+      case_id: employee.caseId,
+      event_type: "mail_received",
+      actor_name: RETIRED_MAILBOX,
+      details: { message_id: mail.message_id, from: mail.from, subject: mail.subject },
+    });
+    if (error) console.error("[retired-mail] audit insert failed:", error.message);
+  }
+
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) return { posted: false, employee: employee?.name ?? null };
+
+  const who = employee
+    ? `*${slackName(employee.name)}*${employee.office ? ` (former ${slackName(employee.office)})` : ""}`
+    : "*an unknown former employee*";
+  const lastDay = employee?.lastDay
+    ? ` · last day ${new Date(employee.lastDay + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+    : "";
+  const preview = slackEscape(mail.preview.replace(/\s+/g, " ").trim().slice(0, 280));
+  const tags = await slackTags(token, managers, slackName);
+
+  const text = [
+    `:incoming_envelope: New email for ${who}${lastDay}`,
+    `*From:* ${oneLine(mail.from)}`,
+    `*Subject:* ${oneLine(mail.subject)}`,
+    preview ? `> ${preview}${mail.preview.length > 280 ? "…" : ""}` : null,
+    `It's been forwarded to your inbox from ${RETIRED_MAILBOX}.` +
+      (employee?.caseId ? ` <${LAUNCHER_URL}/offboarding/${employee.caseId}|Offboarding case>` : ""),
+    tags.length ? tags.join(" ") : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const res = await slackApi("chat.postMessage", token, {
+    channel: process.env.SLACK_RETIRED_MAIL_CHANNEL || "#bot-notifications",
+    text,
+    unfurl_links: false,
+    unfurl_media: false,
+  });
+  if (!res.ok) console.error("[retired-mail] slack post failed:", res.error);
+  return { posted: res.ok, employee: employee?.name ?? null };
+}
