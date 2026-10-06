@@ -1,20 +1,24 @@
 // Mail for offboarded employees is forwarded to retiredemployees@. A Google
 // Apps Script on that mailbox (docs/retired-mail-apps-script.js) posts each
-// new message here; we work out which ex-employee it was meant for and tag
-// the Sales managers in Slack.
+// new message here; we log it, screen out junk (mail-filter.ts), work out
+// which ex-employee it was meant for and tag the Sales managers in Slack.
+// Admins monitor all of it at /admin/retired-mail.
 //
 //   RETIRED_MAIL_SECRET          shared secret the Apps Script sends
 //   SLACK_BOT_TOKEN              bot token (chat:write, users:read.email)
 //   SLACK_RETIRED_MAIL_CHANNEL   channel to post in (default #bot-notifications)
+//   RETIRED_MAIL_AI + GEMINI_API_KEY  optional AI spam check (off unless "on")
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MANAGER_TIER_ROLES } from "@/lib/auth/permissions";
 import { slackApi, slackTags } from "@/lib/slack/bot";
 import { slackEscape } from "@/lib/slack/escape";
+import { classifyMail, senderAddress, type MailVerdict } from "./mail-filter";
 import { slackName } from "./notify";
 
-const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
+export const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
 export const RETIRED_MAILBOX = "retiredemployees@bigbuildingsdirect.com";
+export const RETIRED_MAIL_CHANNEL = process.env.SLACK_RETIRED_MAIL_CHANNEL || "#bot-notifications";
 
 export interface RetiredMail {
   message_id: string;
@@ -24,6 +28,8 @@ export interface RetiredMail {
   // Every address header the script saw (To, Cc, Delivered-To, …). The
   // ex-employee is whichever of these we've offboarded.
   recipients: string[];
+  headers: Record<string, string>;
+  category: string | null;
 }
 
 interface Employee {
@@ -76,7 +82,7 @@ async function findEmployee(candidates: string[]): Promise<Employee | null> {
 // mail is customer mail, and BST managers don't handle it.
 const TAGGED_OFFICE = "Sales";
 
-async function salesManagers() {
+export async function salesManagers() {
   const supabase = createAdminClient();
   const { data } = await supabase
     .from("profiles")
@@ -88,49 +94,54 @@ async function salesManagers() {
   return (data ?? []) as { email: string; name: string | null }[];
 }
 
+// An admin's "always alert" / "never alert" rule for this sender's address
+// or domain. The exact address wins over the domain.
+async function senderRule(from: string): Promise<MailVerdict | null> {
+  const address = senderAddress(from);
+  const domain = address.includes("@") ? address.slice(address.indexOf("@")) : null;
+  const { data } = await createAdminClient()
+    .from("retired_mail_senders")
+    .select("pattern, action")
+    .in("pattern", domain ? [address, domain] : [address]);
+  const rule = data?.find((r) => r.pattern === address) ?? data?.[0];
+  if (!rule) return null;
+  return {
+    junk: rule.action === "block",
+    reason: rule.action === "block" ? `muted sender ${rule.pattern}` : `always-alert sender ${rule.pattern}`,
+    by: "sender",
+  };
+}
+
 const oneLine = (s: string) => slackName(s.trim() || "(none)");
 
-export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: boolean; employee: string | null; slack_error?: string }> {
+interface AlertInput {
+  from: string;
+  subject: string;
+  preview: string;
+  recipients: string[];
+}
+
+// Posts the Slack alert for one email. Used for new mail and when an admin
+// pushes a filtered email through from /admin/retired-mail.
+export async function postAlert(mail: AlertInput, employee?: Employee | null) {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) return { ok: false, error: "SLACK_BOT_TOKEN not set" };
   const recipients = addresses(mail.recipients);
-  const [employee, managers] = await Promise.all([
-    findEmployee(recipients),
+  const [emp, managers] = await Promise.all([
+    employee === undefined ? findEmployee(recipients) : employee,
     salesManagers(),
   ]);
-  const supabase = createAdminClient();
-
-  if (employee?.caseId) {
-    // Fire-and-forget audit entry on the case; skip duplicates if the
-    // script ever resends a message.
-    const { data: dup } = await supabase
-      .from("offboarding_events")
-      .select("id")
-      .eq("case_id", employee.caseId)
-      .eq("event_type", "mail_received")
-      .contains("details", { message_id: mail.message_id })
-      .limit(1);
-    if (dup?.length) return { posted: false, employee: employee.name, slack_error: "duplicate" };
-    const { error } = await supabase.from("offboarding_events").insert({
-      case_id: employee.caseId,
-      event_type: "mail_received",
-      actor_name: RETIRED_MAILBOX,
-      details: { message_id: mail.message_id, from: mail.from, subject: mail.subject },
-    });
-    if (error) console.error("[retired-mail] audit insert failed:", error.message);
-  }
-
-  const token = process.env.SLACK_BOT_TOKEN;
-  if (!token) return { posted: false, employee: employee?.name ?? null, slack_error: "SLACK_BOT_TOKEN not set" };
 
   // No launcher record (offboarded before the launcher, or no case opened):
   // name the company address it was sent to instead.
   const sentTo = recipients.find((a) => a.endsWith("@bigbuildingsdirect.com")) ?? recipients[0];
-  const who = employee
-    ? `*${slackName(employee.name)}*${employee.office ? ` (former ${slackName(employee.office)})` : ""}`
+  const who = emp
+    ? `*${slackName(emp.name)}*${emp.office ? ` (former ${slackName(emp.office)})` : ""}`
     : sentTo
       ? `*${slackName(sentTo)}*`
       : "*an unknown former employee*";
-  const lastDay = employee?.lastDay
-    ? ` · last day ${new Date(employee.lastDay + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+  const lastDay = emp?.lastDay
+    ? ` · last day ${new Date(emp.lastDay + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
     : "";
   const preview = slackEscape(mail.preview.replace(/\s+/g, " ").trim().slice(0, 280));
   const tags = await slackTags(token, managers, slackName);
@@ -141,18 +152,99 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{ posted: bo
     `*Subject:* ${oneLine(mail.subject)}`,
     preview ? `> ${preview}${mail.preview.length > 280 ? "…" : ""}` : null,
     `It's been forwarded to your inbox from ${RETIRED_MAILBOX}.` +
-      (employee?.caseId ? ` <${LAUNCHER_URL}/offboarding/${employee.caseId}|Offboarding case>` : ""),
+      (emp?.caseId ? ` <${LAUNCHER_URL}/offboarding/${emp.caseId}|Offboarding case>` : ""),
     tags.length ? tags.join(" ") : null,
   ]
     .filter(Boolean)
     .join("\n");
 
   const res = await slackApi("chat.postMessage", token, {
-    channel: process.env.SLACK_RETIRED_MAIL_CHANNEL || "#bot-notifications",
+    channel: RETIRED_MAIL_CHANNEL,
     text,
     unfurl_links: false,
     unfurl_media: false,
   });
   if (!res.ok) console.error("[retired-mail] slack post failed:", res.error);
-  return { posted: res.ok, employee: employee?.name ?? null, slack_error: res.error };
+  return { ok: res.ok, error: res.error };
+}
+
+export async function handleRetiredMail(mail: RetiredMail): Promise<{
+  posted: boolean;
+  junk: boolean;
+  reason: string;
+  employee: string | null;
+  slack_error?: string;
+}> {
+  const supabase = createAdminClient();
+  const recipients = addresses(mail.recipients);
+
+  // Claim the message id first so a resend from the script never posts twice.
+  const { data: existing } = await supabase
+    .from("retired_mail_log")
+    .select("junk, reason, employee_name, slack_posted")
+    .eq("message_id", mail.message_id)
+    .maybeSingle();
+  if (existing) {
+    return {
+      posted: false,
+      junk: existing.junk,
+      reason: existing.reason ?? "",
+      employee: existing.employee_name,
+      slack_error: "duplicate",
+    };
+  }
+
+  const [employee, verdict] = await Promise.all([
+    findEmployee(recipients),
+    senderRule(mail.from).then((rule) => rule ?? classifyMail(mail)),
+  ]);
+  const sentTo = recipients.find((a) => a.endsWith("@bigbuildingsdirect.com")) ?? recipients[0] ?? null;
+
+  const { data: row, error: insertError } = await supabase
+    .from("retired_mail_log")
+    .insert({
+      message_id: mail.message_id,
+      from_text: mail.from,
+      subject: mail.subject,
+      preview: mail.preview.slice(0, 2000),
+      recipients,
+      sent_to: employee?.email ?? sentTo,
+      employee_name: employee?.name ?? null,
+      case_id: employee?.caseId ?? null,
+      junk: verdict.junk,
+      reason: verdict.reason,
+      decided_by: verdict.by,
+    })
+    .select("id")
+    .single();
+  if (insertError) {
+    // Unique violation: another run got here first.
+    if (insertError.code === "23505") {
+      return { posted: false, junk: verdict.junk, reason: verdict.reason, employee: employee?.name ?? null, slack_error: "duplicate" };
+    }
+    console.error("[retired-mail] log insert failed:", insertError.message);
+  }
+
+  if (employee?.caseId) {
+    const { error } = await supabase.from("offboarding_events").insert({
+      case_id: employee.caseId,
+      event_type: "mail_received",
+      actor_name: RETIRED_MAILBOX,
+      details: { message_id: mail.message_id, from: mail.from, subject: mail.subject, junk: verdict.junk },
+    });
+    if (error) console.error("[retired-mail] audit insert failed:", error.message);
+  }
+
+  if (verdict.junk) {
+    return { posted: false, junk: true, reason: verdict.reason, employee: employee?.name ?? null };
+  }
+
+  const res = await postAlert(mail, employee);
+  if (row) {
+    await supabase
+      .from("retired_mail_log")
+      .update({ slack_posted: res.ok, slack_error: res.ok ? null : res.error ?? "unknown error" })
+      .eq("id", row.id);
+  }
+  return { posted: res.ok, junk: false, reason: verdict.reason, employee: employee?.name ?? null, slack_error: res.error };
 }

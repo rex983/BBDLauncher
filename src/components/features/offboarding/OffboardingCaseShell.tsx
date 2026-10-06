@@ -598,7 +598,7 @@ function EventExtra({
     text = `${(details.changes as string[]).join(", ").replace("_", " ")}${details.to_checklist ? " · also on the checklist" : ""}`;
   } else if (type === "task_deleted" && details.from_checklist) text = "also removed from the checklist";
   else if (type === "task_added" && details.added_to_checklist) text = "also added to the checklist";
-  else if (type === "mail_received") text = `from ${details.from as string} · “${details.subject as string}”`;
+  else if (type === "mail_received") text = `from ${details.from as string} · “${details.subject as string}”${details.junk ? " · filtered as junk" : ""}`;
   else if (type === "task_moved") text = `${details.from as string} → ${details.to as string}`;
   else if (type === "section_removed") {
     const removed = Array.isArray(details.removed) ? details.removed.length : 0;
