@@ -155,7 +155,7 @@ export async function loadRetiredMailHealth(now = Date.now()): Promise<RetiredMa
           id: "ai",
           label: "Spam filter",
           status: "ok",
-          detail: "Rules: Gmail's Promotions/Social tabs, unsubscribe headers, no-reply senders and your sender rules. Cold pitches from real people still alert; mute them below.",
+          detail: "Rules: BCC'd mass mail, Gmail's Promotions/Social tabs, unsubscribe headers, no-reply senders and your sender rules. Cold pitches from real people still alert; mute them below.",
         }
       : aiMisses
         ? {

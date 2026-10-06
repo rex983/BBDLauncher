@@ -389,7 +389,7 @@ export default function RetiredMailShell({
               </li>
               <li>
                 <b>Spam filter</b>: mail sent by BBD staff (e.g. a manager&apos;s reply-all) is logged but never
-                alerted. Gmail&apos;s Promotions/Social tabs, unsubscribe/mailing-list headers and
+                alerted. Mail BCC&apos;d with no BBD address on it (vendor blasts), Gmail&apos;s Promotions/Social tabs, unsubscribe/mailing-list headers and
                 no-reply senders are junk. Your sender rules above always win. Anything that looks like a person
                 writing alerts, so a customer is never missed; mute cold pitches as they show up.
               </li>

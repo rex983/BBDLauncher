@@ -3,10 +3,12 @@
 // stays in the archive without a Slack alert.
 //
 //   1. Mail from our own domain never alerts (managers' reply-alls).
-//   2. Gmail's Promotions / Social tabs are trusted as junk (Adobe, Pinterest…).
-//   3. If enabled, everything else goes to Gemini with the bulk-mail signals attached, so
+//   2. Mail that names none of our addresses was BCC'd to a list (a vendor's
+//      "we've moved" blast); real mail is addressed to the person.
+//   3. Gmail's Promotions / Social tabs are trusted as junk (Adobe, Pinterest…).
+//   4. If enabled, everything else goes to Gemini with the bulk-mail signals attached, so
 //      it can also catch cold sales pitches written by real people.
-//   4. Otherwise (or if Gemini fails), bulk-mail headers alone decide.
+//   5. Otherwise (or if Gemini fails), bulk-mail headers alone decide.
 //
 // When in doubt we alert: a missed customer email costs more than a stray
 // newsletter.
@@ -20,6 +22,7 @@ export interface MailSignals {
   preview: string;
   headers: Record<string, string>;
   category: string | null; // Gmail tab: promotions, social, updates, forums
+  recipients: string[]; // To/Cc/Delivered-To…, minus the retired mailbox
 }
 
 export interface MailVerdict {
@@ -66,6 +69,9 @@ function byRules(m: MailSignals): MailVerdict | null {
   if (senderAddress(m.from).endsWith(OUR_DOMAIN)) return { junk: true, reason: INTERNAL_REASON, by: "rules" };
   if (/^(mailer-daemon|postmaster)@/.test(senderAddress(m.from)) || /^auto-replied/i.test(header(m, "Auto-Submitted"))) {
     return { junk: true, reason: "automatic bounce or auto-reply", by: "rules" };
+  }
+  if (!m.recipients.some((a) => a.endsWith(OUR_DOMAIN))) {
+    return { junk: true, reason: "BCC'd: no BBD address on it (mass mailing)", by: "rules" };
   }
   if (m.category === "promotions" || m.category === "social") {
     return { junk: true, reason: `Gmail filed it under ${m.category[0].toUpperCase()}${m.category.slice(1)}`, by: "rules" };

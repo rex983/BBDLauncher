@@ -196,7 +196,7 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{
 
   const [employee, verdict] = await Promise.all([
     findEmployee(recipients),
-    senderRule(mail.from).then((rule) => rule ?? classifyMail(mail)),
+    senderRule(mail.from).then((rule) => rule ?? classifyMail({ ...mail, recipients })),
   ]);
   const sentTo = recipients.find((a) => a.endsWith("@bigbuildingsdirect.com")) ?? recipients[0] ?? null;
   const internal = verdict.reason === INTERNAL_REASON;
