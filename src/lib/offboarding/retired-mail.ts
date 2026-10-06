@@ -13,7 +13,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { MANAGER_TIER_ROLES } from "@/lib/auth/permissions";
 import { slackApi, slackTags } from "@/lib/slack/bot";
 import { slackEscape } from "@/lib/slack/escape";
-import { classifyMail, senderAddress, type MailVerdict } from "./mail-filter";
+import { classifyMail, INTERNAL_REASON, senderAddress, type MailVerdict } from "./mail-filter";
 import { slackName } from "./notify";
 
 export const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
@@ -199,6 +199,7 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{
     senderRule(mail.from).then((rule) => rule ?? classifyMail(mail)),
   ]);
   const sentTo = recipients.find((a) => a.endsWith("@bigbuildingsdirect.com")) ?? recipients[0] ?? null;
+  const internal = verdict.reason === INTERNAL_REASON;
 
   const { data: row, error: insertError } = await supabase
     .from("retired_mail_log")
@@ -230,13 +231,15 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{
       case_id: employee.caseId,
       event_type: "mail_received",
       actor_name: RETIRED_MAILBOX,
-      details: { message_id: mail.message_id, from: mail.from, subject: mail.subject, junk: verdict.junk },
+      details: { message_id: mail.message_id, from: mail.from, subject: mail.subject, junk: verdict.junk && !internal },
     });
     if (error) console.error("[retired-mail] audit insert failed:", error.message);
   }
 
   if (verdict.junk) {
-    return { posted: false, junk: true, reason: verdict.reason, employee: employee?.name ?? null };
+    // `junk` tells the script to label the thread Launcher/Junk; staff mail
+    // isn't junk, it just doesn't need an alert.
+    return { posted: false, junk: !internal, reason: verdict.reason, employee: employee?.name ?? null };
   }
 
   const res = await postAlert(mail, employee);

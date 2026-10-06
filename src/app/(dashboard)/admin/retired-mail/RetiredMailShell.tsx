@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { fmtRelative, fmtWhen } from "@/components/shared/format";
 import type { CheckStatus, RetiredMailHealth } from "@/lib/offboarding/retired-mail-health";
+import { INTERNAL_REASON } from "@/lib/offboarding/mail-filter";
 import { ChevronDown, Mail, Search, Send, ShieldCheck, VolumeX, Bell, X } from "lucide-react";
 
 export interface MailRow {
@@ -172,7 +173,7 @@ export default function RetiredMailShell({
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label={`Received · ${days}d`} value={String(counts.all)} />
         <StatCard label="Alerted" value={String(counts.alerted)} sub="Sent to Slack" />
-        <StatCard label="Filtered" value={String(counts.filtered)} sub="Junk, archive only" />
+        <StatCard label="Filtered" value={String(counts.filtered)} sub="Junk or staff, no alert" />
         <StatCard label="Failed" value={String(counts.failed)} sub="Slack post failed" highlight={counts.failed > 0} />
       </div>
 
@@ -223,7 +224,7 @@ export default function RetiredMailShell({
                         variant={s === "alerted" ? "default" : s === "failed" ? "destructive" : "outline"}
                         className="w-16 justify-center"
                       >
-                        {s === "alerted" ? "Alerted" : s === "failed" ? "Failed" : "Junk"}
+                        {s === "alerted" ? "Alerted" : s === "failed" ? "Failed" : m.reason === INTERNAL_REASON ? "Staff" : "Junk"}
                       </Badge>
                       <div className="min-w-0 flex-1">
                         <div className="truncate">
@@ -387,7 +388,8 @@ export default function RetiredMailShell({
                 Script source: <code>docs/retired-mail-apps-script.js</code> in the launcher repo.
               </li>
               <li>
-                <b>Spam filter</b>: Gmail&apos;s Promotions/Social tabs, unsubscribe/mailing-list headers and
+                <b>Spam filter</b>: mail sent by BBD staff (e.g. a manager&apos;s reply-all) is logged but never
+                alerted. Gmail&apos;s Promotions/Social tabs, unsubscribe/mailing-list headers and
                 no-reply senders are junk. Your sender rules above always win. Anything that looks like a person
                 writing alerts, so a customer is never missed; mute cold pitches as they show up.
               </li>

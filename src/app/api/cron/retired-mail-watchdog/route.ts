@@ -37,7 +37,7 @@ async function handle() {
     const total = week?.length ?? 0;
     const alerted = week?.filter((m) => !m.junk).length ?? 0;
     lines.push(
-      `:bar_chart: *Retired-employee mail, last 7 days:* ${total} received · ${alerted} alerted · ${total - alerted} filtered as junk. All systems OK.`,
+      `:bar_chart: *Retired-employee mail, last 7 days:* ${total} received · ${alerted} alerted · ${total - alerted} filtered (junk or staff replies). All systems OK.`,
     );
   }
   lines.push(`Review filtered mail and settings in ${page}.`);

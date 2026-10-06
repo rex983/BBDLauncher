@@ -2,7 +2,7 @@
 // the Sales managers about. Mail is never deleted either way — junk just
 // stays in the archive without a Slack alert.
 //
-//   1. Mail from our own domain is always real.
+//   1. Mail from our own domain never alerts (managers' reply-alls).
 //   2. Gmail's Promotions / Social tabs are trusted as junk (Adobe, Pinterest…).
 //   3. If enabled, everything else goes to Gemini with the bulk-mail signals attached, so
 //      it can also catch cold sales pitches written by real people.
@@ -30,6 +30,9 @@ export interface MailVerdict {
 
 const OUR_DOMAIN = "@bigbuildingsdirect.com";
 export const AI_FALLBACK_PREFIX = "AI unavailable";
+// Staff mail (usually a manager's reply-all that still includes the
+// ex-employee) is logged but never alerted: the sender already knows.
+export const INTERNAL_REASON = "sent by BBD staff";
 
 export function aiEnabled(): boolean {
   return process.env.RETIRED_MAIL_AI === "on" && !!process.env.GEMINI_API_KEY;
@@ -60,7 +63,7 @@ function bulkSignals(m: MailSignals): string[] {
 }
 
 function byRules(m: MailSignals): MailVerdict | null {
-  if (senderAddress(m.from).endsWith(OUR_DOMAIN)) return { junk: false, reason: "sent from a BBD address", by: "rules" };
+  if (senderAddress(m.from).endsWith(OUR_DOMAIN)) return { junk: true, reason: INTERNAL_REASON, by: "rules" };
   if (/^(mailer-daemon|postmaster)@/.test(senderAddress(m.from)) || /^auto-replied/i.test(header(m, "Auto-Submitted"))) {
     return { junk: true, reason: "automatic bounce or auto-reply", by: "rules" };
   }
