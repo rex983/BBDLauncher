@@ -2,8 +2,8 @@ import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SectionedAppGrid } from "@/components/features/launcher/sectioned-app-grid";
 import { ImportantLinks } from "@/components/features/launcher/important-links";
-import { ViewAsRole } from "@/components/features/launcher/view-as-role";
-import { ViewAsOffice } from "@/components/features/launcher/view-as-office";
+import { ViewAsUser } from "@/components/features/launcher/view-as-user";
+import type { PreviewUser } from "@/components/features/launcher/role-preview-context";
 import { allowedAppIds, personalGrants } from "@/lib/launcher/access";
 import { QuoteBanner } from "@/components/features/launcher/quote-banner";
 import { TimeClockShell } from "@/components/features/timeclock/TimeClockShell";
@@ -19,41 +19,51 @@ import {
   getCachedActiveQuote,
 } from "@/lib/launcher/cache";
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
 import type { LauncherApp, LauncherSection } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
 import type { MotivationalQuote } from "@/types/quote";
 import type { Office } from "@/types/auth";
-import { OFFICES, VALID_OFFICES } from "@/lib/org/constants";
+
+// Everyone an admin can preview the launcher as.
+async function loadPreviewUsers(): Promise<PreviewUser[]> {
+  const [roles, { data }] = await Promise.all([
+    getCachedRoles(),
+    createAdminClient()
+      .from("profiles")
+      .select("id, full_name, email, role, office, department, can_offboard")
+      .eq("is_active", true)
+      .order("full_name"),
+  ]);
+  const label = new Map(roles.map((r) => [r.name, r.display_name]));
+  return (data ?? []).map((p) => ({
+    id: p.id,
+    name: p.full_name || p.email,
+    role: p.role,
+    role_label: label.get(p.role) ?? p.role,
+    office: p.office,
+    department: p.department,
+    can_offboard: !!p.can_offboard,
+  }));
+}
 
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ viewAs?: string; viewAsOffice?: string; clock_required?: string }>;
+  searchParams: Promise<{ viewAsUser?: string; clock_required?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const { viewAs, viewAsOffice, clock_required } = await searchParams;
+  const { viewAsUser, clock_required } = await searchParams;
   const isAdmin = session.user.role === "admin";
   const canEditDashboard = canManageContent(session.user.role);
-  const userOffice = session.user.office;
-  const viewAsOfficeValid =
-    isAdmin && viewAsOffice && VALID_OFFICES.has(viewAsOffice)
-      ? (viewAsOffice as Office)
-      : null;
-  const effectiveOffice = viewAsOfficeValid ?? userOffice;
-  // When an admin pins a view-as office, apply the office filter as if they
-  // were a user in that office (i.e. no admin bypass for office gating).
-  const bypassOffice = isAdmin && !viewAsOfficeValid;
 
   let apps: LauncherApp[] = [];
   let sections: LauncherSection[] = [];
   let links: ImportantLink[] = [];
-  let roles: { name: string; display_name: string }[] = [];
+  let previewUsers: PreviewUser[] = [];
   let quote: MotivationalQuote | null = null;
-  let effectiveRole = session.user.role;
   // Server-fetch today's schedule so TimeClockShell's "Scheduled until"
   // label paints on the first frame. Live clock state comes from
   // <ClockGate> in the layout.
@@ -61,48 +71,32 @@ export default async function DashboardPage({
   const schedulePromise = getMyScheduleToday(session.user.profileId).catch(() => null);
   try {
     // Everything below is cached (see src/lib/launcher/cache.ts). On a
-    // cache hit this whole block is zero Supabase round-trips.
-    const [allApps, accessRows, userAccessRows, sectionsData, linksData, rolesData, quoteData] =
+    // cache hit this whole block is zero Supabase round-trips, apart from
+    // the people list admins get for View as.
+    const [allApps, accessRows, userAccessRows, sectionsData, linksData, people, quoteData] =
       await Promise.all([
         getCachedApps(),
         getCachedRoleAppAccess(),
         getCachedUserAccess(),
         getCachedSections(),
         getCachedLinks(),
-        isAdmin ? getCachedRoles() : Promise.resolve([] as { name: string; display_name: string }[]),
+        isAdmin ? loadPreviewUsers() : Promise.resolve([] as PreviewUser[]),
         getCachedActiveQuote(),
       ]);
+    previewUsers = people;
 
-    // Resolve view-as role by consulting the cached roles list rather
-    // than a fresh query — an arbitrary URL string must not be able to
-    // flow into DB filters or (worse) UI hints, so we still validate.
-    if (isAdmin && viewAs) {
-      if (rolesData.some((r) => r.name === viewAs)) {
-        effectiveRole = viewAs;
-      } else {
-        // Non-admin roles list is empty (`getCachedRoles` only runs for
-        // admins here). Fall through to a direct check for that case —
-        // paranoia only; admins already have rolesData populated above.
-        const supabase = createAdminClient();
-        const { data: validRole } = await supabase
-          .from("launcher_roles")
-          .select("name")
-          .eq("name", viewAs)
-          .maybeSingle();
-        if (validRole?.name) effectiveRole = validRole.name;
-      }
-    }
+    // View as: an admin sees exactly what that person sees — their role,
+    // their office and anything granted to them by name. Only ids from the
+    // active-people list are honoured.
+    const target = (isAdmin && viewAsUser && previewUsers.find((u) => u.id === viewAsUser)) || null;
+    const effectiveRole = target?.role ?? session.user.role;
+    const effectiveOffice = (target ? target.office : session.user.office) as Office | null;
+    const bypassOffice = effectiveRole === "admin";
 
-    // Office × role grid (migration 034). Admins skip the office part unless
-    // they've pinned a view-as office.
+    // Office × role grid (migration 034). Admins skip the office part.
     const roleAppIds = allowedAppIds(accessRows, effectiveRole, effectiveOffice, bypassOffice);
-    // Apps and links granted to this person by name (migration 040). Left out
-    // while an admin previews another role or office — those are about what
-    // the role/office sees.
-    const previewing = effectiveRole !== session.user.role || !!viewAsOfficeValid;
-    const mine = previewing
-      ? { apps: new Set<string>(), links: new Set<string>() }
-      : personalGrants(userAccessRows, session.user.profileId);
+    // Apps and links granted to this person by name (migration 040).
+    const mine = personalGrants(userAccessRows, target?.id ?? session.user.profileId);
 
     // Links keep their single-office filter; people-only links show just to
     // their people (and admins). Apps: the old per-app office list still
@@ -123,7 +117,6 @@ export default async function DashboardPage({
     links = linksData.filter(
       (l) => mine.links.has(l.id) || bypassOffice || (!l.people_only && linkOfficeMatches(l.office)),
     );
-    roles = rolesData;
     quote = quoteData;
   } catch (err) {
     console.error("Dashboard data fetch error:", err);
@@ -142,17 +135,7 @@ export default async function DashboardPage({
         </div>
         {isAdmin && (
           <div className="flex items-center gap-2">
-            {roles.length > 0 && (
-              <Suspense>
-                <ViewAsRole roles={roles} currentRole={session.user.role} />
-              </Suspense>
-            )}
-            <Suspense>
-              <ViewAsOffice
-                offices={OFFICES}
-                currentOffice={session.user.office}
-              />
-            </Suspense>
+            <ViewAsUser users={previewUsers} selfId={session.user.profileId} />
           </div>
         )}
       </div>

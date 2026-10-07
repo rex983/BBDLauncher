@@ -187,19 +187,15 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
   const { data: session } = useSession();
   const actualRole = session?.user?.role;
   const isAdmin = isAdminRole(actualRole);
-  const { viewAs, viewAsOffice, exitPreview } = useRolePreview();
-  const isViewingAsOtherRole = isAdmin && !!viewAs && viewAs !== actualRole;
-  const isViewingAsOtherOffice = isAdmin && !!viewAsOffice;
-  const isPreviewing = isViewingAsOtherRole || isViewingAsOtherOffice;
-  const effectiveRole = (isViewingAsOtherRole ? viewAs : actualRole) as UserRole | undefined;
+  const { viewAsUser, exitPreview } = useRolePreview();
+  const isPreviewing = isAdmin && !!viewAsUser;
+  const effectiveRole = (isPreviewing ? viewAsUser!.role : actualRole) as UserRole | undefined;
   const showManagementNav = canViewTimeData(effectiveRole);
-  // While previewing another role, hide the offboarding nav too (the preview
-  // is about what that role sees, and can_offboard isn't part of the role).
   const showOffboarding = canRunOffboarding(
     effectiveRole,
-    isViewingAsOtherRole ? false : session?.user?.can_offboard,
+    isPreviewing ? viewAsUser!.can_offboard : session?.user?.can_offboard,
   );
-  const preview = { viewAs, viewAsOffice };
+  const preview = isPreviewing ? viewAsUser : null;
   const pendingCount = usePendingCount(
     showManagementNav,
     "/api/management/timeoff/pending-count",
@@ -347,7 +343,7 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
           <button
             type="button"
             onClick={exitPreview}
-            title={collapsed ? "Exit role preview" : undefined}
+            title={collapsed ? "Exit preview" : undefined}
             className={cn(
               "mt-6 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors",
               collapsed ? "px-2" : "px-3",
@@ -356,10 +352,10 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
             {collapsed ? (
               <>
                 <X className="h-4 w-4" />
-                <span className="sr-only">Exit role preview</span>
+                <span className="sr-only">Exit preview</span>
               </>
             ) : (
-              "Exit role preview"
+              "Exit preview"
             )}
           </button>
         )}

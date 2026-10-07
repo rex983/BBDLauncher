@@ -26,9 +26,8 @@ export function Header() {
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
   const user = session?.user;
-  const { viewAs, viewAsOffice } = useRolePreview();
-  const preview = { viewAs, viewAsOffice };
-  const dashboardHref = buildPreviewHref("/dashboard", preview);
+  const { viewAsUser } = useRolePreview();
+  const dashboardHref = buildPreviewHref("/dashboard", viewAsUser);
 
   const initials = user?.name
     ? user.name

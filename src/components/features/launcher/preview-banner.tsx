@@ -9,31 +9,17 @@ import { useRolePreview } from "@/components/features/launcher/role-preview-cont
 // (the sidebar has one too, but this is always in the main flow of view).
 export function PreviewBanner() {
   const { data: session } = useSession();
-  const { viewAs, viewAsOffice, exitPreview } = useRolePreview();
+  const { viewAsUser, exitPreview } = useRolePreview();
 
-  const actualRole = session?.user?.role;
-  const isAdmin = actualRole === "admin";
-  const previewingRole = isAdmin && viewAs && viewAs !== actualRole;
-  const previewingOffice = isAdmin && !!viewAsOffice;
-
-  if (!previewingRole && !previewingOffice) return null;
+  if (session?.user?.role !== "admin" || !viewAsUser) return null;
+  const where = [viewAsUser.office, viewAsUser.department].filter(Boolean).join(" · ");
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
       <Eye className="h-4 w-4" />
       <span>
-        Preview mode:
-        {previewingRole && (
-          <>
-            {" "}role <span className="font-medium">{viewAs}</span>
-          </>
-        )}
-        {previewingRole && previewingOffice && " · "}
-        {previewingOffice && (
-          <>
-            office <span className="font-medium">{viewAsOffice}</span>
-          </>
-        )}
+        Viewing as <span className="font-medium">{viewAsUser.name}</span>
+        {" "}({viewAsUser.role_label}{where ? ` · ${where}` : ""})
       </span>
       <button
         type="button"
