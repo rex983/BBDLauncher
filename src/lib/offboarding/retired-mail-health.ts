@@ -36,7 +36,7 @@ export interface MailboxHealth {
   label: string;
   lastCheckAt: string | null;
   tagged: { email: string; name: string | null }[];
-  tagIds: string[]; // the admin's picks (orders@)
+  tagIds: string[]; // the admin's picks
 }
 
 export interface RetiredMailHealth {
@@ -123,8 +123,8 @@ export async function loadRetiredMailHealth(now = Date.now()): Promise<RetiredMa
               id: `tags:${box.address}`,
               label: `${name} tags`,
               status: "bad",
-              detail: "No active Sales managers, so alerts tag nobody.",
-              fix: "Set a manager's office to Sales in Admin → Users.",
+              detail: "Nobody picked, so alerts for former employees tag nobody.",
+              fix: "Pick who gets tagged under Who gets tagged below.",
             }
           : {
               id: `tags:${box.address}`,

@@ -153,8 +153,8 @@ export default function EmailMonitorShell({
           <h1 className="text-2xl font-bold">Email monitor</h1>
           <p className="text-muted-foreground text-sm">
             New mail to {MAILBOXES.map((m) => shortMailbox(m.address)).join(" and ")} is posted to Slack.
-            retiredemployees@ (mail for deleted addresses) is spam-filtered and pings the Sales managers; every
-            orders@ email pings the people picked below.
+            retiredemployees@ (mail for deleted addresses) is spam-filtered; every orders@ email alerts. Each
+            pings the people picked under Who gets tagged.
           </p>
         </div>
         <Badge variant={problems.length ? "destructive" : "secondary"} className="text-sm">
@@ -342,25 +342,15 @@ export default function EmailMonitorShell({
           <CardTitle className="text-base">Who gets tagged</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {health.mailboxes.map((b) =>
-            mailboxInfo(b.address)?.pickTags ? (
-              <TagPicker
-                key={b.address}
-                mailbox={b}
-                people={people}
-                pending={pending}
-                onChange={(ids) => setTags(b.address, ids)}
-              />
-            ) : (
-              <div key={b.address} className="text-sm">
-                <div className="font-medium">{shortMailbox(b.address)}</div>
-                <p className="text-muted-foreground">
-                  Active Sales managers, automatically
-                  {b.tagged.length ? `: ${b.tagged.map((m) => m.name || m.email).join(", ")}` : " (none right now)"}.
-                </p>
-              </div>
-            ),
-          )}
+          {health.mailboxes.map((b) => (
+            <TagPicker
+              key={b.address}
+              mailbox={b}
+              people={people}
+              pending={pending}
+              onChange={(ids) => setTags(b.address, ids)}
+            />
+          ))}
         </CardContent>
       </Card>
 
@@ -474,7 +464,7 @@ export default function EmailMonitorShell({
   );
 }
 
-// Pick who orders@ alerts tag: picked people as chips, everyone else in a
+// Pick who a mailbox's alerts tag: picked people as chips, everyone else in a
 // searchable checkbox list. Saves on every click.
 function TagPicker({
   mailbox,

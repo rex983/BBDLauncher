@@ -3,8 +3,9 @@
 // message here and we log it and alert Slack.
 //   retiredemployees@  mail for offboarded staff: screen out junk
 //                      (mail-filter.ts), work out which ex-employee it was
-//                      for and tag the Sales managers.
-//   orders@            every email alerts, tagging the people an admin chose.
+//                      for.
+//   orders@            every email alerts.
+// Each mailbox tags the people an admin picked for it.
 // Admins monitor all of it at /admin/email-monitor.
 //
 //   RETIRED_MAIL_SECRET          shared secret the Apps Script sends
@@ -13,7 +14,6 @@
 //   RETIRED_MAIL_AI + GEMINI_API_KEY  optional AI spam check (off unless "on")
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { MANAGER_TIER_ROLES } from "@/lib/auth/permissions";
 import { slackApi, slackTags } from "@/lib/slack/bot";
 import { slackEscape } from "@/lib/slack/escape";
 import { classifyMail, INTERNAL_REASON, senderAddress, type MailVerdict } from "./mail-filter";
@@ -83,24 +83,9 @@ async function findEmployee(candidates: string[]): Promise<Employee | null> {
   return p ? { name: p.name || p.email, email: p.email, office: p.office, caseId: null, lastDay: null } : null;
 }
 
-// Only Sales managers are tagged, whoever the mail was for: ex-employee
-// mail is customer mail, and BST managers don't handle it.
-const TAGGED_OFFICE = "Sales";
-
-export async function salesManagers() {
-  const supabase = createAdminClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("email, name:full_name")
-    .eq("is_active", true)
-    .eq("office", TAGGED_OFFICE)
-    .in("role", [...MANAGER_TIER_ROLES])
-    .order("full_name");
-  return (data ?? []) as { email: string; name: string | null }[];
-}
-
-// The people an admin picked on /admin/email-monitor (orders@), still active.
-export async function pickedPeople(mailbox: string) {
+// The people an admin picked for this mailbox on /admin/email-monitor,
+// still active.
+export async function taggedFor(mailbox: string) {
   const supabase = createAdminClient();
   const { data: box } = await supabase
     .from("mail_monitor_mailboxes")
@@ -117,9 +102,6 @@ export async function pickedPeople(mailbox: string) {
     .order("full_name");
   return (data ?? []) as { email: string; name: string | null }[];
 }
-
-export const taggedFor = (mailbox: string) =>
-  mailbox === RETIRED_MAILBOX ? salesManagers() : pickedPeople(mailbox);
 
 // An admin's "always alert" / "never alert" rule for this sender's address
 // or domain. The exact address wins over the domain.
@@ -158,7 +140,7 @@ export async function postAlert(mail: AlertInput, employee?: Employee | null) {
   const recipients = addresses(mail.recipients, mail.mailbox);
   const [emp, managers] = await Promise.all([
     employee === undefined ? findEmployee(recipients) : employee,
-    salesManagers(),
+    taggedFor(mail.mailbox),
   ]);
 
   // No launcher record (offboarded before the launcher, or no case opened):

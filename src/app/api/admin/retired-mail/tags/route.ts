@@ -5,9 +5,9 @@ import { isAdmin } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mailboxInfo } from "@/lib/offboarding/mailboxes";
 
-// Who gets tagged in Slack for a mailbox whose people an admin picks (orders@).
+// Who gets tagged in Slack for a mailbox's alerts.
 const schema = z.object({
-  mailbox: z.string().refine((m) => mailboxInfo(m)?.pickTags, "Unknown mailbox"),
+  mailbox: z.string().refine((m) => !!mailboxInfo(m), "Unknown mailbox"),
   profile_ids: z.array(z.uuid()).max(200),
 });
 
