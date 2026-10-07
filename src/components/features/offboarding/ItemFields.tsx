@@ -8,10 +8,9 @@ export interface ItemDraft {
   title: string;
   system: string;
   instructions: string;
-  requiresNote: boolean;
 }
 
-export const EMPTY_DRAFT: ItemDraft = { title: "", system: "", instructions: "", requiresNote: false };
+export const EMPTY_DRAFT: ItemDraft = { title: "", system: "", instructions: "" };
 
 // Task fields shared by the checklist editor and a case's "Add task" dialog.
 export function ItemFields({
@@ -52,14 +51,6 @@ export function ItemFields({
           onChange={(e) => set({ instructions: e.target.value })}
         />
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={draft.requiresNote}
-          onChange={(e) => set({ requiresNote: e.target.checked })}
-        />
-        Require a note to close (e.g. where a backup was saved)
-      </label>
     </>
   );
 }

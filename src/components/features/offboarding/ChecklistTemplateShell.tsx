@@ -353,9 +353,6 @@ function ItemRow({
         {item.auto_action && (
           <Badge variant="secondary" className="text-[10px]">{TEMPLATE_AUTO_LABEL[item.auto_action]}</Badge>
         )}
-        {item.requires_note && (
-          <span className="text-[10px] font-medium uppercase text-amber-600">note required</span>
-        )}
       </div>
       <div className="flex items-center gap-1">
         <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onToggle}>
@@ -391,7 +388,6 @@ function ItemDialog({
           title: item.title,
           system: item.system ?? "",
           instructions: item.instructions ?? "",
-          requiresNote: item.requires_note,
         }
       : EMPTY_DRAFT,
   );
@@ -410,7 +406,6 @@ function ItemDialog({
         title: draft.title,
         system: draft.system || null,
         instructions: draft.instructions || null,
-        requires_note: draft.requiresNote,
       },
     );
     setSaving(false);

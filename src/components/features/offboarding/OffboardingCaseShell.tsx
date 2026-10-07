@@ -645,13 +645,11 @@ function TaskRow({
   };
 
   const complete = (status: TaskStatus) => {
-    // Send the open draft with the status so a required note and the
-    // completion land together.
+    // Send an open note draft with the status so both land together.
     if (editingNote) {
       onPatch({ status, note: note || null });
       setEditingNote(false);
-    } else if (task.requires_note && !task.note) openNoteEditor();
-    else onPatch({ status });
+    } else onPatch({ status });
   };
 
   const doneBy = started
@@ -680,9 +678,6 @@ function TaskRow({
           {task.title}
           {started && (
             <span className="ml-2 text-[10px] font-medium uppercase text-amber-600">in progress</span>
-          )}
-          {task.requires_note && pending && !task.note && (
-            <span className="ml-2 text-[10px] font-medium uppercase text-amber-600">note required</span>
           )}
         </span>
         <div className="flex items-center gap-1 print:hidden">
@@ -757,7 +752,7 @@ function TaskRow({
             rows={2}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder={task.requires_note ? "Where was it saved / what changed?" : "Note"}
+            placeholder="Note"
             autoFocus
           />
           <div className="flex gap-2">
@@ -803,7 +798,6 @@ function AddTaskDialog({
     title: string;
     system: string | null;
     instructions: string | null;
-    requires_note: boolean;
     add_to_checklist: boolean;
   }) => Promise<string | null>;
 }) {
@@ -828,7 +822,6 @@ function AddTaskDialog({
       title: draft.title,
       system: draft.system || null,
       instructions: draft.instructions || null,
-      requires_note: draft.requiresNote,
       add_to_checklist: toChecklist,
     });
     setSaving(false);
@@ -876,7 +869,6 @@ function EditTaskDialog({
     title: string;
     system: string | null;
     instructions: string | null;
-    requires_note: boolean;
     apply_to_checklist: boolean;
   }) => Promise<string | null>;
 }) {
@@ -884,7 +876,6 @@ function EditTaskDialog({
     title: task.title,
     system: task.system ?? "",
     instructions: task.instructions ?? "",
-    requiresNote: task.requires_note,
   });
   // Per-app tasks are generated, not checklist items.
   const linkable = !task.app_id;
@@ -899,7 +890,6 @@ function EditTaskDialog({
       title: draft.title,
       system: draft.system || null,
       instructions: draft.instructions || null,
-      requires_note: draft.requiresNote,
       apply_to_checklist: linkable && toChecklist,
     });
     setSaving(false);

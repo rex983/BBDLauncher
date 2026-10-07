@@ -68,7 +68,6 @@ export async function PATCH(
       details: { changes: Object.keys(wording), from: task.title, to_checklist: !!parsed.data.apply_to_checklist },
     });
   }
-  const requiresNote = (wording.requires_note as boolean | undefined) ?? task.requires_note;
 
   const note = parsed.data.note !== undefined ? parsed.data.note?.trim() || null : task.note;
   if (note !== task.note) {
@@ -81,13 +80,6 @@ export async function PATCH(
     if ((status === "done" || status === "in_progress") && task.auto_action) {
       return NextResponse.json(
         { error: "Use the action button on this task — it completes itself when it runs." },
-        { status: 400 },
-      );
-    }
-    // Backup / rotation tasks must say WHERE the data went or WHAT changed.
-    if ((status === "done" || status === "not_applicable") && requiresNote && !note) {
-      return NextResponse.json(
-        { error: "This task needs a note (e.g. where the backup was saved) before it can be closed." },
         { status: 400 },
       );
     }
