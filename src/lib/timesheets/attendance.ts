@@ -67,6 +67,7 @@ export interface AttendanceDayPerson {
   scheduled: string | null; // shift start, "HH:MM"
   reason: string | null; // late reason
   partial_off?: boolean; // partial-day time off covered the start
+  bucket?: number; // index into report.arrivals, for people who clocked in
 }
 
 export interface AttendanceDay {
@@ -349,6 +350,7 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
         at: firstIn.occurred_at,
         minutes: lateBy > 0 ? lateBy : Math.round(offset / MIN),
         reason: lateBy > 0 ? firstIn.note : null,
+        bucket,
         ...(off && offset >= LATE_GRACE_MS ? { partial_off: true } : {}),
       });
       if (lateBy > 0) {

@@ -26,13 +26,11 @@ import {
 } from "@/components/ui/table";
 import { useSortableRows } from "@/lib/hooks/use-sortable-rows";
 import { cn } from "@/lib/utils";
-import { fmtDay, fmtTime } from "@/components/shared/format";
-import { formatClockTime } from "@/lib/timesheets/schedule";
+import { fmtDay } from "@/components/shared/format";
 import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
 import { ATTENDANCE_RANGES } from "@/lib/timesheets/attendance-ranges";
 import type {
   AttendanceDayPerson,
-  AttendanceEvent,
   AttendanceEventKind,
   AttendanceReport,
   EmployeeAttendance,
@@ -42,60 +40,27 @@ import {
   ArrivalsDonut,
   ChartCard,
   DailyArrivalsChart,
-  DayBreakdown,
   arrivalNote,
   LeaderChart,
   STATUS_COLOR,
   WeekdayChart,
 } from "./AttendanceCharts";
+import {
+  AttendanceDrill,
+  KIND,
+  KIND_ORDER,
+  eventDetail,
+  hours,
+  mins,
+  rowsForBucket,
+  rowsForKind,
+  rowsForStatus,
+  rowsForWeekday,
+  type DrillView,
+} from "./AttendanceDrill";
 
 const ALL = "__all__";
 const PAGE = 50;
-
-const KIND: Record<AttendanceEventKind, { label: string; color: string }> = {
-  late: { label: "Late", color: STATUS_COLOR.late },
-  absent: { label: "Absent", color: STATUS_COLOR.absent },
-  early_leave: { label: "Left early", color: "#f97316" },
-  overtime: { label: "Stayed late", color: STATUS_COLOR.overtime },
-  weekly_overtime: { label: "Over 40h", color: "#6d28d9" },
-  missed_clockout: { label: "No clock-out", color: "#64748b" },
-  unscheduled: { label: "Day off worked", color: STATUS_COLOR.time_off },
-};
-const KIND_ORDER = Object.keys(KIND) as AttendanceEventKind[];
-
-function mins(m: number): string {
-  if (m < 60) return `${m} min`;
-  const h = Math.floor(m / 60);
-  const r = m % 60;
-  return r ? `${h}h ${r}m` : `${h}h`;
-}
-
-function hours(m: number): string {
-  return (m / 60).toFixed(1);
-}
-
-function eventDetail(e: AttendanceEvent): string {
-  const sched = e.scheduled ? formatClockTime(e.scheduled) : "";
-  const at = e.at ? fmtTime(e.at) : "";
-  switch (e.kind) {
-    case "late":
-      return `${mins(e.minutes)} late · in at ${at} (shift ${sched})`;
-    case "absent":
-      return `No clock-in (shift ${sched})`;
-    case "early_leave":
-      return `${mins(e.minutes)} early · out at ${at} (shift ends ${sched})`;
-    case "overtime":
-      return e.live
-        ? `${mins(e.minutes)} past ${sched} · still on the clock`
-        : `${mins(e.minutes)} past ${sched} · out at ${at}`;
-    case "weekly_overtime":
-      return `${mins(e.minutes)} over 40 hours that week`;
-    case "missed_clockout":
-      return "Forgot to clock out · closed automatically";
-    case "unscheduled":
-      return `Worked ${mins(e.minutes)} on a day off`;
-  }
-}
 
 type EmpKey =
   | "name"
@@ -174,34 +139,38 @@ export default function AttendanceShell({
     direction: "desc",
   });
 
-  // Event log filters: kind toggles (all on by default), person, free text.
+  // Event log filters: kind toggles (all on by default) and free text.
   const [hidden, setHidden] = useState<Set<AttendanceEventKind>>(new Set());
-  const [person, setPerson] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [shown, setShown] = useState(PAGE);
-  const [todayOpen, setTodayOpen] = useState(false);
+  // Zoom stack for the drill dialog; any chart, card or name starts a new one.
+  const [stack, setStack] = useState<DrillView[]>([]);
+  const drill = (v: DrillView) => setStack(() => [v]);
+  const openPerson = (id: string, focus?: AttendanceEventKind) => drill({ type: "person", id, focus });
+  const openKind = (kind: AttendanceEventKind, title: string) =>
+    drill({ type: "list", title, sub: `${fmtDay(report.from)} – ${fmtDay(report.to)}`, rows: rowsForKind(report, kind) });
+  const allPeople = useMemo(() => report.daily.flatMap((d) => d.people), [report.daily]);
   const todayDay = report.daily.find((d) => d.date === report.to);
   const todayPeople = (status: AttendanceDayPerson["status"]) =>
     (todayDay?.people ?? []).filter((p) => p.status === status).map((p) => ({ ...p, note: arrivalNote(p) }));
-  const toggleToday = () => setTodayOpen((o) => !o);
+  const toggleToday = () => drill({ type: "day", date: report.to });
 
   const kindCounts = useMemo(() => {
     const c = Object.fromEntries(KIND_ORDER.map((k) => [k, 0])) as Record<AttendanceEventKind, number>;
-    for (const e of report.events) if (!person || e.profile_id === person) c[e.kind]++;
+    for (const e of report.events) c[e.kind]++;
     return c;
-  }, [report.events, person]);
+  }, [report.events]);
 
   const events = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return report.events.filter(
       (e) =>
         !hidden.has(e.kind) &&
-        (!person || e.profile_id === person) &&
         (!needle ||
           e.name.toLowerCase().includes(needle) ||
           (e.reason ?? "").toLowerCase().includes(needle)),
     );
-  }, [report.events, hidden, person, q]);
+  }, [report.events, hidden, q]);
 
   const toggleKind = (k: AttendanceEventKind) => {
     setShown(PAGE);
@@ -213,7 +182,6 @@ export default function AttendanceShell({
     });
   };
 
-  const personName = person ? report.employees.find((e) => e.profile_id === person)?.name : null;
 
   return (
     <div className={cn("space-y-6 transition-opacity", pending && "opacity-60")}>
@@ -288,76 +256,114 @@ export default function AttendanceShell({
           onClick={toggleToday}
         />
       </div>
-      {todayOpen && todayDay && <DayBreakdown day={todayDay} onClose={() => setTodayOpen(false)} />}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        <StatCard
-          label="On-time rate"
-          value={arrived ? `${Math.round((totals.on_time / arrived) * 100)}%` : "—"}
-          sub={`${totals.on_time} of ${arrived} arrivals`}
-        />
-        <StatCard
-          label="Late arrivals"
-          value={String(totals.late)}
-          sub={totals.late ? `avg ${mins(Math.round(totals.late_minutes / totals.late))} late` : undefined}
-          highlight={totals.late > 0}
-        />
-        <StatCard label="Absences" value={String(totals.absent)} sub="no clock-in, no time off" highlight={totals.absent > 0} />
-        <StatCard label="Left early" value={String(totals.early)} />
-        <StatCard label="Stayed past shift" value={`${hours(totals.overtime)}h`} />
-        <StatCard
-          label="Over 40h weeks"
-          value={String(totals.overWeeks)}
-          sub={totals.weekly ? `${hours(totals.weekly)}h overtime` : undefined}
-        />
-        <StatCard label="Missed clock-outs" value={String(totals.missed)} />
+        <ClickCard
+          onClick={() =>
+            drill({ type: "list", title: "On-time arrivals", rows: rowsForStatus(report, "on_time") })
+          }
+        >
+          <StatCard
+            label="On-time rate"
+            value={arrived ? `${Math.round((totals.on_time / arrived) * 100)}%` : "—"}
+            sub={`${totals.on_time} of ${arrived} arrivals`}
+          />
+        </ClickCard>
+        <ClickCard onClick={() => openKind("late", "Late arrivals")}>
+          <StatCard
+            label="Late arrivals"
+            value={String(totals.late)}
+            sub={totals.late ? `avg ${mins(Math.round(totals.late_minutes / totals.late))} late` : undefined}
+            highlight={totals.late > 0}
+          />
+        </ClickCard>
+        <ClickCard onClick={() => openKind("absent", "Absences")}>
+          <StatCard label="Absences" value={String(totals.absent)} sub="no clock-in, no time off" highlight={totals.absent > 0} />
+        </ClickCard>
+        <ClickCard onClick={() => openKind("early_leave", "Left early")}>
+          <StatCard label="Left early" value={String(totals.early)} />
+        </ClickCard>
+        <ClickCard onClick={() => openKind("overtime", "Stayed past shift")}>
+          <StatCard label="Stayed past shift" value={`${hours(totals.overtime)}h`} />
+        </ClickCard>
+        <ClickCard onClick={() => openKind("weekly_overtime", "Over 40-hour weeks")}>
+          <StatCard
+            label="Over 40h weeks"
+            value={String(totals.overWeeks)}
+            sub={totals.weekly ? `${hours(totals.weekly)}h overtime` : undefined}
+          />
+        </ClickCard>
+        <ClickCard onClick={() => openKind("missed_clockout", "Missed clock-outs")}>
+          <StatCard label="Missed clock-outs" value={String(totals.missed)} />
+        </ClickCard>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <ChartCard title="Arrivals" sub="Scheduled days in range">
-          <ArrivalsDonut totals={totals} />
+        <ChartCard title="Arrivals" sub="Scheduled days in range · click a slice">
+          <ArrivalsDonut
+            totals={totals}
+            people={allPeople}
+            onSlice={(status) => drill({ type: "list", title: STATUS_TITLE[status], rows: rowsForStatus(report, status) })}
+          />
         </ChartCard>
-        <ChartCard title="Arrivals by day" sub="Hover a day for who was late or out; click it for everyone" className="lg:col-span-2">
-          <DailyArrivalsChart daily={report.daily} />
+        <ChartCard title="Arrivals by day" sub="Hover for who; click a day to zoom in, or a week to see its days" className="lg:col-span-2">
+          <DailyArrivalsChart daily={report.daily} onDay={(date) => drill({ type: "day", date })} />
         </ChartCard>
-        <ChartCard title="Clock-in vs. shift start" sub="On time = within 59 seconds">
-          <ArrivalTimesChart arrivals={report.arrivals} />
+        <ChartCard title="Clock-in vs. shift start" sub="On time = within 59 seconds · click a bar">
+          <ArrivalTimesChart
+            arrivals={report.arrivals}
+            people={allPeople}
+            onBucket={(i) =>
+              drill({ type: "list", title: `Clock-ins: ${report.arrivals[i].label}`, rows: rowsForBucket(report, i) })
+            }
+          />
         </ChartCard>
-        <ChartCard title="Late rate by weekday">
-          <WeekdayChart weekdays={report.weekdays} />
+        <ChartCard title="Late rate by weekday" sub="Click a day for who was late">
+          <WeekdayChart
+            weekdays={report.weekdays}
+            onDay={(day) => drill({ type: "list", title: `Late on ${day}s`, rows: rowsForWeekday(report, day) })}
+          />
         </ChartCard>
-        <ChartCard title="Most late arrivals">
+        <ChartCard title="Most late arrivals" sub="Click a name for their days">
           <LeaderChart
             employees={report.employees}
             value={(e) => e.late}
             color={STATUS_COLOR.late}
             label="Late arrivals"
+            detail={(e) => `${mins(e.late_minutes)} late in total · avg ${mins(Math.round(e.late_minutes / e.late))}`}
+            onPick={(id) => openPerson(id, "late")}
           />
         </ChartCard>
-        <ChartCard title="Most time past shift" sub="Hours worked after scheduled end">
+        <ChartCard title="Most time past shift" sub="Hours worked after scheduled end · click a name">
           <LeaderChart
             employees={report.employees}
             value={(e) => Math.round(e.overtime_minutes / 6) / 10}
             unit="h"
             color={STATUS_COLOR.overtime}
             label="Past shift"
+            detail={(e) => `${mins(e.overtime_minutes)} past shift · ${hours(e.weekly_overtime_minutes)}h over 40h weeks`}
+            onPick={(id) => openPerson(id, "overtime")}
           />
         </ChartCard>
-        <ChartCard title="Most minutes late" sub="Total across the range">
+        <ChartCard title="Most minutes late" sub="Total across the range · click a name">
           <LeaderChart
             employees={report.employees}
             value={(e) => e.late_minutes}
             unit=" min"
             color="#ea580c"
             label="Minutes late"
+            detail={(e) => `${e.late} late arrival${e.late === 1 ? "" : "s"} · avg ${mins(Math.round(e.late_minutes / e.late))}`}
+            onPick={(id) => openPerson(id, "late")}
           />
         </ChartCard>
-        <ChartCard title="Most absences">
+        <ChartCard title="Most absences" sub="Click a name for their days">
           <LeaderChart
             employees={report.employees}
             value={(e) => e.absent}
             color={STATUS_COLOR.absent}
             label="Absences"
+            detail={(e) => `${e.absent} of ${e.scheduled_days} scheduled days`}
+            onPick={(id) => openPerson(id, "absent")}
           />
         </ChartCard>
       </div>
@@ -414,11 +420,8 @@ export default function AttendanceShell({
                 return (
                   <TableRow
                     key={e.profile_id}
-                    className={cn("cursor-pointer", person === e.profile_id && "bg-accent")}
-                    onClick={() => {
-                      setPerson(person === e.profile_id ? null : e.profile_id);
-                      setShown(PAGE);
-                    }}
+                    className="cursor-pointer"
+                    onClick={() => openPerson(e.profile_id)}
                   >
                     <TableCell className="font-medium">{e.name}</TableCell>
                     <TableCell className="text-right tabular-nums">{e.scheduled_days}</TableCell>
@@ -456,7 +459,7 @@ export default function AttendanceShell({
           </Table>
         </div>
         <p className="text-xs text-muted-foreground">
-          Click a row to filter the log below to that person.
+          Click a row to zoom into that person&apos;s days.
         </p>
       </section>
 
@@ -464,15 +467,6 @@ export default function AttendanceShell({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">
             Log
-            {personName && (
-              <button
-                type="button"
-                onClick={() => setPerson(null)}
-                className="ml-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 align-middle text-xs font-normal hover:bg-accent"
-              >
-                {personName} ✕
-              </button>
-            )}
           </h2>
           <div className="flex items-center gap-2">
             <Input
@@ -540,9 +534,19 @@ export default function AttendanceShell({
               {events.slice(0, shown).map((e) => (
                 <TableRow key={e.id}>
                   <TableCell className="whitespace-nowrap text-sm">
-                    {e.kind === "weekly_overtime" ? `Week of ${fmtDay(e.date)}` : fmtDay(e.date)}
+                    <button
+                      type="button"
+                      onClick={() => drill({ type: "day", date: e.date })}
+                      className="hover:underline"
+                    >
+                      {e.kind === "weekly_overtime" ? `Week of ${fmtDay(e.date)}` : fmtDay(e.date)}
+                    </button>
                   </TableCell>
-                  <TableCell className="font-medium">{e.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <button type="button" onClick={() => openPerson(e.profile_id)} className="hover:underline">
+                      {e.name}
+                    </button>
+                  </TableCell>
                   <TableCell>
                     <span className="inline-flex items-center gap-2 text-sm">
                       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: KIND[e.kind].color }} />
@@ -570,7 +574,29 @@ export default function AttendanceShell({
           </div>
         )}
       </section>
+
+      <AttendanceDrill report={report} stack={stack} setStack={setStack} />
     </div>
+  );
+}
+
+const STATUS_TITLE: Record<AttendanceDayPerson["status"], string> = {
+  on_time: "On-time arrivals",
+  late: "Late arrivals",
+  absent: "Absences",
+  time_off: "Time off",
+  not_in: "Not in yet",
+};
+
+function ClickCard({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md text-left transition-shadow hover:ring-2 hover:ring-ring/40"
+    >
+      {children}
+    </button>
   );
 }
 
