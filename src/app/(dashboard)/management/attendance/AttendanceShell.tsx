@@ -214,7 +214,7 @@ export default function AttendanceShell({
           <h1 className="text-2xl font-bold">Attendance</h1>
           <p className="text-muted-foreground">
             Late arrivals, overtime, early exits and absences ·{" "}
-            {fmtDay(report.from)} – {fmtDay(report.to)}
+            {report.from === report.to ? fmtDay(report.from) : `${fmtDay(report.from)} – ${fmtDay(report.to)}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -231,7 +231,7 @@ export default function AttendanceShell({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {d}d
+                {d === 1 ? "Today" : `${d}d`}
               </button>
             ))}
           </div>
