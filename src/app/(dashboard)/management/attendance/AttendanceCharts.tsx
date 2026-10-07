@@ -31,6 +31,7 @@ export const STATUS_COLOR = {
   on_time: "#16a34a",
   late: "#f59e0b",
   absent: "#dc2626",
+  not_in: "#dc2626",
   time_off: "#3b82f6",
   overtime: "#8b5cf6",
 } as const;
@@ -127,6 +128,7 @@ export function ArrivalsDonut({ totals }: {
 
 const DAY_GROUPS: { status: AttendanceDayPerson["status"]; label: string }[] = [
   { status: "late", label: "Late" },
+  { status: "not_in", label: "Not in yet" },
   { status: "absent", label: "Didn't clock in" },
   { status: "time_off", label: "Time off" },
   { status: "on_time", label: "On time / early" },
@@ -139,7 +141,8 @@ const BAR_STACK = [
   { status: "time_off", name: "Time off" },
 ] as const;
 
-function arrivalNote(p: AttendanceDayPerson): string {
+export function arrivalNote(p: AttendanceDayPerson): string {
+  if (p.status === "not_in") return p.scheduled ? `shift started ${formatClockTime(p.scheduled)}` : "";
   if (p.status === "absent") return p.scheduled ? `due ${formatClockTime(p.scheduled)}` : "";
   if (p.status === "time_off") return "full day";
   const time = p.at ? fmtTime(p.at) : "";
@@ -168,7 +171,7 @@ function DayTooltip({ active, payload }: { active?: boolean; payload?: { payload
       {DAY_GROUPS.map(({ status, label }) => {
         const people = day.people.filter((p) => p.status === status);
         if (!people.length) return null;
-        const named = status === "late" || status === "absent";
+        const named = status === "late" || status === "absent" || status === "not_in";
         return (
           <div key={status} className="mb-1">
             <div className="flex items-center gap-1.5 font-medium">
@@ -194,7 +197,9 @@ function DayTooltip({ active, payload }: { active?: boolean; payload?: { payload
   );
 }
 
-function DayBreakdown({ day, onClose }: { day: AttendanceDay; onClose: () => void }) {
+export function DayBreakdown({ day, onClose }: { day: AttendanceDay; onClose: () => void }) {
+  // "Not in yet" only exists for today; skip the empty column otherwise.
+  const groups = DAY_GROUPS.filter((g) => g.status !== "not_in" || day.people.some((p) => p.status === "not_in"));
   return (
     <div className="mt-3 rounded-md border bg-muted/30 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -214,8 +219,8 @@ function DayBreakdown({ day, onClose }: { day: AttendanceDay; onClose: () => voi
       {day.people.length === 0 ? (
         <div className="text-sm text-muted-foreground">Nobody was scheduled.</div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {DAY_GROUPS.map(({ status, label }) => {
+        <div className={`grid gap-3 sm:grid-cols-2 ${groups.length > 4 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+          {groups.map(({ status, label }) => {
             const people = day.people.filter((p) => p.status === status);
             return (
               <div key={status} className="min-w-0">

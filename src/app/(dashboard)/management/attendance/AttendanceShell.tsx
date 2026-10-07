@@ -31,6 +31,7 @@ import { formatClockTime } from "@/lib/timesheets/schedule";
 import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
 import { ATTENDANCE_RANGES } from "@/lib/timesheets/attendance-ranges";
 import type {
+  AttendanceDayPerson,
   AttendanceEvent,
   AttendanceEventKind,
   AttendanceReport,
@@ -41,6 +42,8 @@ import {
   ArrivalsDonut,
   ChartCard,
   DailyArrivalsChart,
+  DayBreakdown,
+  arrivalNote,
   LeaderChart,
   STATUS_COLOR,
   WeekdayChart,
@@ -176,6 +179,11 @@ export default function AttendanceShell({
   const [person, setPerson] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [shown, setShown] = useState(PAGE);
+  const [todayOpen, setTodayOpen] = useState(false);
+  const todayDay = report.daily.find((d) => d.date === report.to);
+  const todayPeople = (status: AttendanceDayPerson["status"]) =>
+    (todayDay?.people ?? []).filter((p) => p.status === status).map((p) => ({ ...p, note: arrivalNote(p) }));
+  const toggleToday = () => setTodayOpen((o) => !o);
 
   const kindCounts = useMemo(() => {
     const c = Object.fromEntries(KIND_ORDER.map((k) => [k, 0])) as Record<AttendanceEventKind, number>;
@@ -267,14 +275,20 @@ export default function AttendanceShell({
       {/* Today at a glance */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border bg-card px-4 py-3 text-sm">
         <span className="font-semibold">Today</span>
-        <TodayStat color={STATUS_COLOR.on_time} n={report.today.on_time} label="on time" />
-        <TodayStat color={STATUS_COLOR.late} n={report.today.late} label="late" />
-        <TodayStat color={STATUS_COLOR.absent} n={report.today.not_in} label="not in yet" />
-        <TodayStat color={STATUS_COLOR.time_off} n={report.today.time_off} label="time off" />
-        <span className="ml-auto text-muted-foreground">
-          <span className="font-semibold text-foreground tabular-nums">{report.today.on_clock}</span> on the clock now
-        </span>
+        <TodayStat color={STATUS_COLOR.on_time} n={report.today.on_time} label="on time" people={todayPeople("on_time")} onClick={toggleToday} />
+        <TodayStat color={STATUS_COLOR.late} n={report.today.late} label="late" people={todayPeople("late")} onClick={toggleToday} />
+        <TodayStat color={STATUS_COLOR.absent} n={report.today.not_in} label="not in yet" people={todayPeople("not_in")} onClick={toggleToday} />
+        <TodayStat color={STATUS_COLOR.time_off} n={report.today.time_off} label="time off" people={todayPeople("time_off")} onClick={toggleToday} />
+        <TodayStat
+          className="ml-auto"
+          popupClassName="right-0 left-auto"
+          n={report.today.on_clock}
+          label="on the clock now"
+          people={report.today.on_clock_people}
+          onClick={toggleToday}
+        />
       </div>
+      {todayOpen && todayDay && <DayBreakdown day={todayDay} onClose={() => setTodayOpen(false)} />}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         <StatCard
@@ -560,13 +574,53 @@ export default function AttendanceShell({
   );
 }
 
-function TodayStat({ color, n, label }: { color: string; n: number; label: string }) {
+// One count in the Today bar: hover lists the people, click opens today's
+// full breakdown.
+function TodayStat({
+  color,
+  n,
+  label,
+  people,
+  onClick,
+  className,
+  popupClassName,
+}: {
+  color?: string;
+  n: number;
+  label: string;
+  people: { profile_id: string; name: string; note?: string }[];
+  onClick: () => void;
+  className?: string;
+  popupClassName?: string;
+}) {
+  const MAX = 12;
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn("group relative -mx-1 inline-flex items-center gap-1.5 rounded px-1 hover:bg-muted", className)}
+    >
+      {color && <span className="h-2 w-2 rounded-full" style={{ background: color }} />}
       <span className="font-semibold tabular-nums">{n}</span>
       <span className="text-muted-foreground">{label}</span>
-    </span>
+      {people.length > 0 && (
+        <span
+          className={cn(
+            "pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-72 rounded-lg border bg-popover p-2.5 text-left text-xs text-popover-foreground shadow-md group-hover:block",
+            popupClassName,
+          )}
+        >
+          {people.slice(0, MAX).map((p) => (
+            <span key={p.profile_id} className="flex justify-between gap-3">
+              <span className="truncate">{p.name}</span>
+              {p.note && <span className="shrink-0 text-muted-foreground">{p.note}</span>}
+            </span>
+          ))}
+          {people.length > MAX && <span className="block text-muted-foreground">+{people.length - MAX} more</span>}
+          <span className="mt-1.5 block text-[11px] text-muted-foreground">Click for today&apos;s full breakdown</span>
+        </span>
+      )}
+    </button>
   );
 }
 

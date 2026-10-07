@@ -61,7 +61,7 @@ export interface EmployeeAttendance {
 export interface AttendanceDayPerson {
   profile_id: string;
   name: string;
-  status: "on_time" | "late" | "absent" | "time_off";
+  status: "on_time" | "late" | "absent" | "time_off" | "not_in"; // not_in: today, shift started, no clock-in yet
   at: string | null; // first clock-in
   minutes: number; // clock-in vs. shift start: negative = early, positive = late
   scheduled: string | null; // shift start, "HH:MM"
@@ -87,7 +87,15 @@ export interface AttendanceReport {
   daily: AttendanceDay[];
   arrivals: { label: string; count: number; late: boolean }[];
   weekdays: { day: string; on_time: number; late: number }[];
-  today: { scheduled: number; on_time: number; late: number; not_in: number; time_off: number; on_clock: number };
+  today: {
+    scheduled: number;
+    on_time: number;
+    late: number;
+    not_in: number;
+    time_off: number;
+    on_clock: number;
+    on_clock_people: { profile_id: string; name: string }[];
+  };
 }
 
 const MIN = 60_000;
@@ -143,7 +151,7 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
     daily: keys.map((date) => ({ date, on_time: 0, late: 0, absent: 0, time_off: 0, people: [] })),
     arrivals: ARRIVAL_BUCKETS.map((b) => ({ label: b.label, count: 0, late: b.late })),
     weekdays: [],
-    today: { scheduled: 0, on_time: 0, late: 0, not_in: 0, time_off: 0, on_clock: 0 },
+    today: { scheduled: 0, on_time: 0, late: 0, not_in: 0, time_off: 0, on_clock: 0, on_clock_people: [] },
   };
 
   const { data: profiles } = await scopeProfilesQuery(
@@ -271,7 +279,10 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
       const dayPunches = byDay.get(key) ?? [];
       const isToday = key === todayKey;
       if (dayPunches.length) emp.worked_ms += computeDayWorkedMs(dayPunches, key, now);
-      if (isToday && computeState(dayPunches, now).status !== "clocked_out") report.today.on_clock++;
+      if (isToday && computeState(dayPunches, now).status !== "clocked_out") {
+        report.today.on_clock++;
+        report.today.on_clock_people.push({ profile_id: id, name });
+      }
 
       const last = dayPunches.at(-1);
       const missed = !!last && last.event_type === "clock_out" && isMissedClockout(last);
@@ -320,6 +331,7 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
           event("absent", key, { scheduled: day.start });
         } else if (now.getTime() >= start.getTime() + LATE_GRACE_MS) {
           report.today.not_in++;
+          person("not_in");
         }
         continue;
       }
@@ -395,7 +407,7 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
     .map((c, i) => ({ day: WEEKDAY_LABELS[i], on_time: c.on_time, late: c.late, scheduled: c.scheduled }))
     .filter((c) => c.scheduled > 0)
     .map(({ day, on_time, late }) => ({ day, on_time, late }));
-  const rank = { late: 0, absent: 1, time_off: 2, on_time: 3 } as const;
+  const rank = { late: 0, not_in: 1, absent: 2, time_off: 3, on_time: 4 } as const;
   for (const d of report.daily) {
     d.people.sort((a, b) =>
       rank[a.status] - rank[b.status] ||
@@ -403,6 +415,7 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
       a.name.localeCompare(b.name),
     );
   }
+  report.today.on_clock_people.sort((a, b) => a.name.localeCompare(b.name));
   report.events.sort((a, b) =>
     a.date === b.date ? (b.at ?? "").localeCompare(a.at ?? "") : b.date.localeCompare(a.date),
   );
