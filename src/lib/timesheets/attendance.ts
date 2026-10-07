@@ -13,8 +13,8 @@ import { buildWeekView, LATE_GRACE_MS, minutesLate, WEEKDAY_LABELS, type WorkSch
 import { buildWeekStarts, computeDayWorkedMs, computeWeeklyBreakdown } from "./weekly";
 import type { Department, Office } from "@/types/auth";
 
-export const ATTENDANCE_RANGES = [7, 14, 30, 90] as const;
-export type AttendanceRange = (typeof ATTENDANCE_RANGES)[number];
+import type { AttendanceRange } from "./attendance-ranges";
+export { ATTENDANCE_RANGES, type AttendanceRange } from "./attendance-ranges";
 
 export type AttendanceEventKind =
   | "late"

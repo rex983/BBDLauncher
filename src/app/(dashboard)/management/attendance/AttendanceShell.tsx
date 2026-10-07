@@ -29,12 +29,12 @@ import { cn } from "@/lib/utils";
 import { fmtDay, fmtTime } from "@/components/shared/format";
 import { formatClockTime } from "@/lib/timesheets/schedule";
 import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
-import {
-  ATTENDANCE_RANGES,
-  type AttendanceEvent,
-  type AttendanceEventKind,
-  type AttendanceReport,
-  type EmployeeAttendance,
+import { ATTENDANCE_RANGES } from "@/lib/timesheets/attendance-ranges";
+import type {
+  AttendanceEvent,
+  AttendanceEventKind,
+  AttendanceReport,
+  EmployeeAttendance,
 } from "@/lib/timesheets/attendance";
 import {
   ArrivalTimesChart,
