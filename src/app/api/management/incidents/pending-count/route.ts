@@ -13,7 +13,7 @@ export async function GET() {
   if (!gate.ok) {
     return NextResponse.json({ count: 0 });
   }
-  const { supabase, scope } = gate;
+  const { supabase, scope, session, viewerIsAdmin } = gate;
 
   let query = supabase
     .from("incident_reports")
@@ -25,6 +25,8 @@ export async function GET() {
     .eq("employee.is_active", true);
   if (scope.department) query = query.eq("employee.department", scope.department);
   if (scope.office) query = query.eq("employee.office", scope.office);
+  // Match the list, which hides reports filed against the viewer.
+  if (!viewerIsAdmin && session.user.profileId) query = query.neq("employee_profile_id", session.user.profileId);
 
   const { count, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

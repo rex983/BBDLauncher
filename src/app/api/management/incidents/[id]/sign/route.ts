@@ -1,4 +1,4 @@
-import { requireTimeDataAccess } from "@/lib/auth/scope-check";
+import { isTargetInScope, requireTimeDataAccess } from "@/lib/auth/scope-check";
 import {
   notifyIncidentSubmitted,
   type IncidentSubmittedPayload,
@@ -67,11 +67,12 @@ export async function POST(
   const [{ data: emp }, { data: reporterProfile }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("department, office, full_name, email")
+      .select("department, office, is_active, full_name, email")
       .eq("id", row.employee_profile_id)
       .single<{
         department: string | null;
         office: string | null;
+        is_active: boolean;
         full_name: string | null;
         email: string | null;
       }>(),
@@ -85,10 +86,7 @@ export async function POST(
   // Scope check on the subject employee.
   if (!viewerIsAdmin) {
     if (!emp) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (scope.department && emp.department !== scope.department) {
-      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-    }
-    if (scope.office && emp.office !== scope.office) {
+    if (!isTargetInScope(scope, emp)) {
       return NextResponse.json({ error: "Out of scope" }, { status: 403 });
     }
   }

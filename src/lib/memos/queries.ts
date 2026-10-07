@@ -11,6 +11,8 @@ import type {
   MemoPriority,
   MemoStatus,
 } from "@/lib/memos/types";
+import type { Department, Office, UserRole } from "@/types/auth";
+import { memoTrackingScope, type MemoPerson } from "@/lib/memos/scope";
 
 // ============================================================
 // Management side — memos the viewer can see on /management/memos
@@ -67,6 +69,7 @@ interface RawMemoRow {
   recipients: {
     read_at: string | null;
     acknowledged_at: string | null;
+    profile: MemoPerson | null;
   }[] | null;
 }
 
@@ -88,7 +91,8 @@ export async function listMemosForManagement(
        audience_department, status, effective_date, published_at,
        created_at, updated_at,
        author:profiles!author_profile_id(id, full_name),
-       recipients:office_memo_recipients(read_at, acknowledged_at)`,
+       recipients:office_memo_recipients(read_at, acknowledged_at,
+         profile:profiles!profile_id(department, office, is_active))`,
     )
     .in("status", statuses)
     .order("created_at", { ascending: false });
@@ -114,8 +118,15 @@ export async function listMemosForManagement(
 
   const { data } = await query.returns<RawMemoRow[]>();
 
+  const viewerScope = {
+    role: viewer.role as UserRole,
+    department: viewer.department as Department | null,
+    office: viewer.office as Office | null,
+  };
   return (data || []).map((row) => {
-    const recips = row.recipients ?? [];
+    // Non-author managers only count their own team's reads/acks.
+    const visible = memoTrackingScope(viewerScope, row.author_profile_id === viewer.profileId);
+    const recips = (row.recipients ?? []).filter((r) => !visible || visible(r.profile));
     let read = 0;
     let acknowledged = 0;
     for (const r of recips) {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { memoTrackingScope, type MemoPerson } from "@/lib/memos/scope";
 import { canViewTimeData, isAdmin } from "@/lib/auth/permissions";
 import type { MemoEventType } from "@/lib/memos/audit";
 import type {
@@ -127,24 +128,38 @@ export default async function ManagerMemoDetailPage({
     if (e.actor_profile_id) profileIds.add(e.actor_profile_id);
   }
   const nameMap = new Map<string, string>();
+  const peopleMap = new Map<string, MemoPerson>();
   if (profileIds.size > 0) {
     const { data: profs } = await supabase
       .from("profiles")
-      .select("id, full_name, email")
+      .select("id, full_name, email, department, office, is_active")
       .in("id", Array.from(profileIds));
     for (const p of profs || []) {
       nameMap.set(p.id, p.full_name || p.email || p.id);
+      peopleMap.set(p.id, p);
     }
   }
 
-  const recipients = (recipRes.data || []).map((r) => ({
-    ...r,
-    name: nameMap.get(r.profile_id) || null,
-  }));
-  const events = (eventsRes.data || []).map((e) => ({
-    ...e,
-    actor_name: e.actor_profile_id ? nameMap.get(e.actor_profile_id) || null : null,
-  }));
+  // Non-author managers only see tracking for their own team.
+  const visible = memoTrackingScope(session.user, isAuthor);
+  const recipients = (recipRes.data || [])
+    .filter((r) => !visible || visible(peopleMap.get(r.profile_id)))
+    .map((r) => ({
+      ...r,
+      name: nameMap.get(r.profile_id) || null,
+    }));
+  const events = (eventsRes.data || [])
+    .filter(
+      (e) =>
+        !visible ||
+        !e.actor_profile_id ||
+        e.actor_profile_id === memo.author_profile_id ||
+        visible(peopleMap.get(e.actor_profile_id)),
+    )
+    .map((e) => ({
+      ...e,
+      actor_name: e.actor_profile_id ? nameMap.get(e.actor_profile_id) || null : null,
+    }));
 
   const data: ManagerMemoPageData = {
     ...memo,

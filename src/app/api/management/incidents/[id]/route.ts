@@ -372,10 +372,7 @@ export async function DELETE(
       .eq("id", existing.employee_profile_id)
       .single();
     if (!emp) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (scope.department && emp.department !== scope.department) {
-      return NextResponse.json({ error: "Out of scope" }, { status: 403 });
-    }
-    if (scope.office && emp.office !== scope.office) {
+    if (!isTargetInScope(scope, emp)) {
       return NextResponse.json({ error: "Out of scope" }, { status: 403 });
     }
   }
