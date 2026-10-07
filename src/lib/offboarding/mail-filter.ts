@@ -164,7 +164,7 @@ export async function classifyMail(m: MailSignals): Promise<MailVerdict> {
   const ai = await byAI(m, signals);
   if (ai) return ai;
   // No AI: anything sent to a list is junk, everything else alerts. The
-  // prefix lets /admin/retired-mail notice when the AI keeps failing.
+  // prefix lets /admin/email-monitor notice when the AI keeps failing.
   const fallback = aiEnabled() ? `${AI_FALLBACK_PREFIX}: ` : "";
   return signals.length
     ? { junk: true, reason: fallback + signals[0], by: "rules" }

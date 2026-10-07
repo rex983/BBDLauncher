@@ -1,17 +1,20 @@
 /* eslint-disable @typescript-eslint/no-unused-vars -- Apps Script calls setup/checkMail by name */
 /**
- * retiredemployees@bigbuildingsdirect.com → BBD Launcher → Slack
- * Managed and monitored at https://bbd-launcher.vercel.app/admin/retired-mail
+ * Email monitor: a watched mailbox → BBD Launcher → Slack
+ * Managed and monitored at https://bbd-launcher.vercel.app/admin/email-monitor
  *
- * Paste into a new Apps Script project (script.google.com) while signed in
- * as retiredemployees@, then:
+ * One script for every watched mailbox (retiredemployees@, orders@). It
+ * reports which mailbox it runs on, so install a copy on each account:
+ * paste into a new Apps Script project (script.google.com) while signed in
+ * as that mailbox, then:
  *   1. Project Settings → Script properties → add
  *        LAUNCHER_SECRET = <same value as RETIRED_MAIL_SECRET on Vercel>
  *   2. Select `setup` in the toolbar and click Run once (approve access).
  * From then on `checkMail` runs every minute and sends each new email's
  * sender, subject, recipients, a short preview and its bulk-mail headers to
  * the launcher. The launcher decides whether it's real (Slack alert) or junk
- * (left in the archive, labelled "Launcher/Junk" here).
+ * (left in the archive, labelled "Launcher/Junk" here). Every orders@ email
+ * alerts.
  *
  * Updating an existing install: replace the code and Save. No need to run
  * setup again.
@@ -20,6 +23,8 @@
 const LAUNCHER = "https://bbd-launcher.vercel.app";
 const ENDPOINT = `${LAUNCHER}/api/integrations/retired-mail`;
 const HEARTBEAT = `${ENDPOINT}/heartbeat`;
+// The account this script runs as, i.e. the mailbox it watches.
+const MAILBOX = () => Session.getEffectiveUser().getEmail().toLowerCase();
 const HEARTBEAT_EVERY_MS = 5 * 60 * 1000;
 const JUNK_LABEL = "Launcher/Junk";
 const ADDRESS_HEADERS = ["X-Gm-Original-To", "To", "Cc", "Delivered-To", "X-Original-To", "X-Forwarded-To", "X-Forwarded-For"];
@@ -39,7 +44,7 @@ function post(url, secret, body) {
     contentType: "application/json",
     headers: { Authorization: `Bearer ${secret}` },
     muteHttpExceptions: true,
-    payload: JSON.stringify(body),
+    payload: JSON.stringify({ mailbox: MAILBOX(), ...body }),
   });
 }
 
@@ -50,7 +55,7 @@ function checkMail() {
   try {
     processNewMail(props, secret);
   } catch (err) {
-    // Tell the launcher so /admin/retired-mail shows it, then fail the run.
+    // Tell the launcher so /admin/email-monitor shows it, then fail the run.
     post(HEARTBEAT, secret, { error: String(err && err.message ? err.message : err).slice(0, 1000) });
     throw err;
   }

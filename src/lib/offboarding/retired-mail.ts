@@ -1,8 +1,11 @@
-// Mail for offboarded employees is forwarded to retiredemployees@. A Google
-// Apps Script on that mailbox (docs/retired-mail-apps-script.js) posts each
-// new message here; we log it, screen out junk (mail-filter.ts), work out
-// which ex-employee it was meant for and tag the Sales managers in Slack.
-// Admins monitor all of it at /admin/retired-mail.
+// Email monitor. A Google Apps Script on each watched mailbox
+// (docs/email-monitor-apps-script.js, see mailboxes.ts) posts each new
+// message here and we log it and alert Slack.
+//   retiredemployees@  mail for offboarded staff: screen out junk
+//                      (mail-filter.ts), work out which ex-employee it was
+//                      for and tag the Sales managers.
+//   orders@            every email alerts, tagging the people an admin chose.
+// Admins monitor all of it at /admin/email-monitor.
 //
 //   RETIRED_MAIL_SECRET          shared secret the Apps Script sends
 //   SLACK_BOT_TOKEN              bot token (chat:write, users:read.email)
@@ -15,12 +18,14 @@ import { slackApi, slackTags } from "@/lib/slack/bot";
 import { slackEscape } from "@/lib/slack/escape";
 import { classifyMail, INTERNAL_REASON, senderAddress, type MailVerdict } from "./mail-filter";
 import { slackName } from "./notify";
+import { RETIRED_MAILBOX, shortMailbox } from "./mailboxes";
 
 export const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
-export const RETIRED_MAILBOX = "retiredemployees@bigbuildingsdirect.com";
+export { RETIRED_MAILBOX };
 export const RETIRED_MAIL_CHANNEL = process.env.SLACK_RETIRED_MAIL_CHANNEL || "#bot-notifications";
 
 export interface RetiredMail {
+  mailbox: string;
   message_id: string;
   from: string;
   subject: string;
@@ -40,9 +45,9 @@ interface Employee {
   lastDay: string | null;
 }
 
-function addresses(raw: string[]): string[] {
+function addresses(raw: string[], mailbox: string): string[] {
   const found = raw.join(" ").toLowerCase().match(/[a-z0-9._%+'-]+@[a-z0-9.-]+\.[a-z]{2,}/g) ?? [];
-  return [...new Set(found)].filter((a) => a !== RETIRED_MAILBOX);
+  return [...new Set(found)].filter((a) => a !== mailbox);
 }
 
 // Latest non-cancelled offboarding case for any recipient, else an
@@ -94,6 +99,28 @@ export async function salesManagers() {
   return (data ?? []) as { email: string; name: string | null }[];
 }
 
+// The people an admin picked on /admin/email-monitor (orders@), still active.
+export async function pickedPeople(mailbox: string) {
+  const supabase = createAdminClient();
+  const { data: box } = await supabase
+    .from("mail_monitor_mailboxes")
+    .select("tag_profile_ids")
+    .eq("mailbox", mailbox)
+    .maybeSingle();
+  const ids: string[] = box?.tag_profile_ids ?? [];
+  if (!ids.length) return [];
+  const { data } = await supabase
+    .from("profiles")
+    .select("email, name:full_name")
+    .in("id", ids)
+    .eq("is_active", true)
+    .order("full_name");
+  return (data ?? []) as { email: string; name: string | null }[];
+}
+
+export const taggedFor = (mailbox: string) =>
+  mailbox === RETIRED_MAILBOX ? salesManagers() : pickedPeople(mailbox);
+
 // An admin's "always alert" / "never alert" rule for this sender's address
 // or domain. The exact address wins over the domain.
 async function senderRule(from: string): Promise<MailVerdict | null> {
@@ -115,6 +142,7 @@ async function senderRule(from: string): Promise<MailVerdict | null> {
 const oneLine = (s: string) => slackName(s.trim() || "(none)");
 
 interface AlertInput {
+  mailbox: string;
   from: string;
   subject: string;
   preview: string;
@@ -122,11 +150,12 @@ interface AlertInput {
 }
 
 // Posts the Slack alert for one email. Used for new mail and when an admin
-// pushes a filtered email through from /admin/retired-mail.
+// pushes a filtered email through from /admin/email-monitor.
 export async function postAlert(mail: AlertInput, employee?: Employee | null) {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) return { ok: false, error: "SLACK_BOT_TOKEN not set" };
-  const recipients = addresses(mail.recipients);
+  if (mail.mailbox !== RETIRED_MAILBOX) return postMailboxAlert(token, mail);
+  const recipients = addresses(mail.recipients, mail.mailbox);
   const [emp, managers] = await Promise.all([
     employee === undefined ? findEmployee(recipients) : employee,
     salesManagers(),
@@ -168,6 +197,30 @@ export async function postAlert(mail: AlertInput, employee?: Employee | null) {
   return { ok: res.ok, error: res.error };
 }
 
+// A shared mailbox like orders@: who sent it, what it says, and a tag for
+// each person an admin picked.
+async function postMailboxAlert(token: string, mail: AlertInput) {
+  const preview = slackEscape(mail.preview.replace(/\s+/g, " ").trim().slice(0, 280));
+  const tags = await slackTags(token, await taggedFor(mail.mailbox), slackName);
+  const text = [
+    `:inbox_tray: New email to *${shortMailbox(mail.mailbox)}*`,
+    `*From:* ${oneLine(mail.from)}`,
+    `*Subject:* ${oneLine(mail.subject)}`,
+    preview ? `> ${preview}${mail.preview.length > 280 ? "…" : ""}` : null,
+    tags.length ? tags.join(" ") : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const res = await slackApi("chat.postMessage", token, {
+    channel: RETIRED_MAIL_CHANNEL,
+    text,
+    unfurl_links: false,
+    unfurl_media: false,
+  });
+  if (!res.ok) console.error(`[email-monitor] ${mail.mailbox} slack post failed:`, res.error);
+  return { ok: res.ok, error: res.error };
+}
+
 export async function handleRetiredMail(mail: RetiredMail): Promise<{
   posted: boolean;
   junk: boolean;
@@ -176,7 +229,8 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{
   slack_error?: string;
 }> {
   const supabase = createAdminClient();
-  const recipients = addresses(mail.recipients);
+  const recipients = addresses(mail.recipients, mail.mailbox);
+  const retired = mail.mailbox === RETIRED_MAILBOX;
 
   // Claim the message id first so a resend from the script never posts twice.
   const { data: existing } = await supabase
@@ -194,16 +248,23 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{
     };
   }
 
-  const [employee, verdict] = await Promise.all([
-    findEmployee(recipients),
-    senderRule(mail.from).then((rule) => rule ?? classifyMail({ ...mail, recipients })),
-  ]);
-  const sentTo = recipients.find((a) => a.endsWith("@bigbuildingsdirect.com")) ?? recipients[0] ?? null;
+  // Shared mailboxes (orders@) alert on every email: no spam filter and no
+  // ex-employee to look up.
+  const [employee, verdict] = retired
+    ? await Promise.all([
+        findEmployee(recipients),
+        senderRule(mail.from).then((rule) => rule ?? classifyMail({ ...mail, recipients })),
+      ])
+    : [null, { junk: false, reason: `every ${shortMailbox(mail.mailbox)} email alerts`, by: "rules" } satisfies MailVerdict];
+  const sentTo = retired
+    ? (recipients.find((a) => a.endsWith("@bigbuildingsdirect.com")) ?? recipients[0] ?? null)
+    : mail.mailbox;
   const internal = verdict.reason === INTERNAL_REASON;
 
   const { data: row, error: insertError } = await supabase
     .from("retired_mail_log")
     .insert({
+      mailbox: mail.mailbox,
       message_id: mail.message_id,
       from_text: mail.from,
       subject: mail.subject,

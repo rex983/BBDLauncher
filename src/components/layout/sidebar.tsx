@@ -79,7 +79,7 @@ const adminItems: NavItem[] = [
   { href: "/admin/quotes", label: "Quotes", icon: Quote },
   { href: "/admin/roles", label: "Roles", icon: ShieldCheck },
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
-  { href: "/admin/retired-mail", label: "Retired Mail", icon: MailWarning },
+  { href: "/admin/email-monitor", label: "Email Monitor", icon: MailWarning },
 ];
 
 interface NavSection {
@@ -209,18 +209,18 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
     "sidebar-pending-incidents",
     "incident_reports",
   );
-  // Admins only: failing health checks on the retired-mail pipeline, so a
+  // Admins only: failing Email monitor health checks, so a
   // stopped script shows up without anyone visiting the page.
   const retiredMailProblems = usePendingCount(
     isAdminRole(effectiveRole),
     "/api/admin/retired-mail/status",
     "sidebar-retired-mail",
-    "retired_mail_heartbeat",
+    "mail_monitor_mailboxes",
   );
   const badges: Record<string, number> = {
     "/management/timeoff": pendingCount,
     "/management/incidents": pendingIncidents,
-    "/admin/retired-mail": retiredMailProblems,
+    "/admin/email-monitor": retiredMailProblems,
   };
 
   const sections: NavSection[] = [];

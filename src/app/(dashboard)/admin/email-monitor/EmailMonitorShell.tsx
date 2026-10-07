@@ -10,12 +10,14 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { fmtRelative, fmtWhen } from "@/components/shared/format";
-import type { CheckStatus, RetiredMailHealth } from "@/lib/offboarding/retired-mail-health";
+import type { CheckStatus, MailboxHealth, RetiredMailHealth } from "@/lib/offboarding/retired-mail-health";
 import { INTERNAL_REASON } from "@/lib/offboarding/mail-filter";
-import { ChevronDown, Mail, Search, Send, ShieldCheck, VolumeX, Bell, X } from "lucide-react";
+import { MAILBOXES, mailboxInfo, shortMailbox } from "@/lib/offboarding/mailboxes";
+import { AtSign, ChevronDown, Mail, Search, Send, ShieldCheck, VolumeX, Bell, X } from "lucide-react";
 
 export interface MailRow {
   id: string;
+  mailbox: string;
   received_at: string;
   from_text: string;
   subject: string;
@@ -28,6 +30,13 @@ export interface MailRow {
   decided_by: "rules" | "ai" | "sender" | "admin";
   slack_posted: boolean;
   slack_error: string | null;
+}
+
+export interface Person {
+  id: string;
+  name: string | null;
+  email: string;
+  office: string | null;
 }
 
 export interface SenderRule {
@@ -72,15 +81,17 @@ function status(m: MailRow): Exclude<Filter, "all"> {
   return m.slack_posted ? "alerted" : "failed";
 }
 
-export default function RetiredMailShell({
+export default function EmailMonitorShell({
   health,
-  mail,
+  mail: allMail,
   senders,
+  people,
   days,
 }: {
   health: RetiredMailHealth;
   mail: MailRow[];
   senders: SenderRule[];
+  people: Person[];
   days: number;
 }) {
   const router = useRouter();
@@ -91,6 +102,8 @@ export default function RetiredMailShell({
   const [error, setError] = useState<string | null>(null);
   const [newRule, setNewRule] = useState("");
   const [showHow, setShowHow] = useState(false);
+  const [box, setBox] = useState<string>("all");
+  const mail = useMemo(() => (box === "all" ? allMail : allMail.filter((m) => m.mailbox === box)), [allMail, box]);
 
   const counts = useMemo(() => {
     const c = { all: mail.length, alerted: 0, filtered: 0, failed: 0 };
@@ -128,6 +141,8 @@ export default function RetiredMailShell({
     call("/api/admin/retired-mail/senders", { method: "POST", body: JSON.stringify({ pattern, action }) });
   const removeRule = (pattern: string) =>
     call(`/api/admin/retired-mail/senders?pattern=${encodeURIComponent(pattern)}`, { method: "DELETE" });
+  const setTags = (mailbox: string, profile_ids: string[]) =>
+    call("/api/admin/retired-mail/tags", { method: "POST", body: JSON.stringify({ mailbox, profile_ids }) });
 
   const problems = health.checks.filter((c) => c.status === "bad");
 
@@ -135,10 +150,11 @@ export default function RetiredMailShell({
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Retired employee mail</h1>
+          <h1 className="text-2xl font-bold">Email monitor</h1>
           <p className="text-muted-foreground text-sm">
-            Mail to deleted @bigbuildingsdirect.com addresses lands in retiredemployees@. Real mail pings the Sales
-            managers in Slack; junk stays in the archive. This page is where it&apos;s all managed.
+            New mail to {MAILBOXES.map((m) => shortMailbox(m.address)).join(" and ")} is posted to Slack.
+            retiredemployees@ (mail for deleted addresses) is spam-filtered and pings the Sales managers; every
+            orders@ email pings the people picked below.
           </p>
         </div>
         <Badge variant={problems.length ? "destructive" : "secondary"} className="text-sm">
@@ -169,6 +185,21 @@ export default function RetiredMailShell({
           ))}
         </CardContent>
       </Card>
+
+      <div className="flex flex-wrap gap-2">
+        {[{ address: "all", label: "All mailboxes" }, ...MAILBOXES].map((m) => (
+          <Button
+            key={m.address}
+            size="sm"
+            variant={box === m.address ? "default" : "outline"}
+            onClick={() => setBox(m.address)}
+            className="h-7"
+          >
+            {m.address === "all" ? m.label : shortMailbox(m.address)}{" "}
+            {m.address === "all" ? allMail.length : allMail.filter((r) => r.mailbox === m.address).length}
+          </Button>
+        ))}
+      </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label={`Received · ${days}d`} value={String(counts.all)} />
@@ -213,6 +244,7 @@ export default function RetiredMailShell({
                 const domain = sender.includes("@") ? sender.slice(sender.indexOf("@")) : null;
                 const showDomain = domain && !PUBLIC_DOMAINS.has(domain.slice(1));
                 const isOpen = open === m.id;
+                const filtered = mailboxInfo(m.mailbox)?.filtered ?? true;
                 return (
                   <Fragment key={m.id}>
                     <button
@@ -232,7 +264,9 @@ export default function RetiredMailShell({
                           <span className="text-muted-foreground"> · {m.subject || "(no subject)"}</span>
                         </div>
                         <div className="truncate text-xs text-muted-foreground">
-                          for {m.employee_name ?? m.sent_to ?? "unknown"} · {m.reason} ({DECIDED[m.decided_by]})
+                          {filtered
+                            ? `for ${m.employee_name ?? m.sent_to ?? "unknown"} · ${m.reason} (${DECIDED[m.decided_by]})`
+                            : `to ${shortMailbox(m.mailbox)}`}
                         </div>
                       </div>
                       <span className="shrink-0 text-xs text-muted-foreground" title={fmtWhen(m.received_at)}>
@@ -265,7 +299,7 @@ export default function RetiredMailShell({
                               <Send className="size-3.5" /> {s === "failed" ? "Retry Slack alert" : "Not junk, send to Slack"}
                             </Button>
                           )}
-                          {m.junk ? (
+                          {!filtered ? null : m.junk ? (
                             <>
                               {rules.get(sender) !== "allow" && (
                                 <Button size="sm" variant="outline" disabled={pending} onClick={() => setRule(sender, "allow")}>
@@ -305,9 +339,36 @@ export default function RetiredMailShell({
 
       <Card>
         <CardHeader className="pb-2">
+          <CardTitle className="text-base">Who gets tagged</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {health.mailboxes.map((b) =>
+            mailboxInfo(b.address)?.pickTags ? (
+              <TagPicker
+                key={b.address}
+                mailbox={b}
+                people={people}
+                pending={pending}
+                onChange={(ids) => setTags(b.address, ids)}
+              />
+            ) : (
+              <div key={b.address} className="text-sm">
+                <div className="font-medium">{shortMailbox(b.address)}</div>
+                <p className="text-muted-foreground">
+                  Active Sales managers, automatically
+                  {b.tagged.length ? `: ${b.tagged.map((m) => m.name || m.email).join(", ")}` : " (none right now)"}.
+                </p>
+              </div>
+            ),
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">Sender rules</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Override the spam filter for an address or a whole @domain. Applies to new mail.
+            Override the retiredemployees@ spam filter for an address or a whole @domain. Applies to new mail.
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -383,19 +444,19 @@ export default function RetiredMailShell({
                 Don&apos;t add per-person forwarding there; it stops mail reaching the archive.
               </li>
               <li>
-                <b>Apps Script</b> on the retiredemployees@ account (script.google.com) checks every minute and sends
-                each new email here. It checks in every 5 minutes; if it goes quiet, the Health card above turns red.
-                Script source: <code>docs/retired-mail-apps-script.js</code> in the launcher repo.
+                <b>Apps Script</b>: the same script runs on each mailbox&apos;s own account (script.google.com),
+                checks every minute and sends each new email here. It checks in every 5 minutes; if it goes quiet,
+                the Health card above turns red. Script source: <code>docs/email-monitor-apps-script.js</code> in the
+                launcher repo.
               </li>
               <li>
-                <b>Spam filter</b>: mail sent by BBD staff (e.g. a manager&apos;s reply-all) is logged but never
+                <b>Spam filter</b> (retiredemployees@ only; every orders@ email alerts): mail sent by BBD staff (e.g. a manager&apos;s reply-all) is logged but never
                 alerted. Mail BCC&apos;d with no BBD address on it (vendor blasts), Gmail&apos;s Promotions/Social tabs, unsubscribe/mailing-list headers and
                 no-reply senders are junk. Your sender rules above always win. Anything that looks like a person
                 writing alerts, so a customer is never missed; mute cold pitches as they show up.
               </li>
               <li>
-                <b>Slack</b>: bbd-bot posts real mail in #bot-notifications and tags the active Sales managers
-                {health.managers.length ? ` (${health.managers.map((m) => m.name || m.email).join(", ")})` : ""}.
+                <b>Slack</b>: bbd-bot posts in #bot-notifications and tags the people under Who gets tagged.
               </li>
               <li>
                 <b>Watchdog</b>: every morning the launcher checks this page&apos;s health and tags the admins in Slack
@@ -409,6 +470,72 @@ export default function RetiredMailShell({
           </CardContent>
         )}
       </Card>
+    </div>
+  );
+}
+
+// Pick who orders@ alerts tag: picked people as chips, everyone else in a
+// searchable checkbox list. Saves on every click.
+function TagPicker({
+  mailbox,
+  people,
+  pending,
+  onChange,
+}: {
+  mailbox: MailboxHealth;
+  people: Person[];
+  pending: boolean;
+  onChange: (ids: string[]) => void;
+}) {
+  const [q, setQ] = useState("");
+  const picked = new Set(mailbox.tagIds);
+  const needle = q.trim().toLowerCase();
+  const matches = needle
+    ? people.filter((p) => [p.name, p.email, p.office].some((v) => v?.toLowerCase().includes(needle)))
+    : people;
+  const toggle = (id: string) =>
+    onChange(picked.has(id) ? mailbox.tagIds.filter((x) => x !== id) : [...mailbox.tagIds, id]);
+  const chosen = people.filter((p) => picked.has(p.id));
+
+  return (
+    <div className="space-y-2 text-sm">
+      <div className="flex items-center gap-1.5 font-medium">
+        <AtSign className="size-3.5" /> {shortMailbox(mailbox.address)}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {chosen.length === 0 && <span className="text-muted-foreground">Nobody yet. Alerts post without tags.</span>}
+        {chosen.map((p) => (
+          <span key={p.id} className="inline-flex items-center gap-1.5 rounded-full border bg-muted px-2.5 py-0.5 text-xs">
+            {p.name || p.email}
+            <button
+              type="button"
+              aria-label={`Stop tagging ${p.name || p.email}`}
+              disabled={pending}
+              onClick={() => toggle(p.id)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="relative w-72">
+        <Search className="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Add people" className="h-8 pl-7" />
+      </div>
+      <div className="max-h-56 w-72 overflow-y-auto rounded-md border">
+        {matches.length === 0 ? (
+          <p className="px-3 py-2 text-xs text-muted-foreground">Nobody matches.</p>
+        ) : (
+          matches.map((p) => (
+            <label key={p.id} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-muted/50">
+              <input type="checkbox" checked={picked.has(p.id)} disabled={pending} onChange={() => toggle(p.id)} />
+              <span className="truncate">{p.name || p.email}</span>
+              {p.office && <span className="ml-auto shrink-0 text-xs text-muted-foreground">{p.office}</span>}
+            </label>
+          ))
+        )}
+      </div>
     </div>
   );
 }

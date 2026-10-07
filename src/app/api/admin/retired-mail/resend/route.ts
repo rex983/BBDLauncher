@@ -18,12 +18,13 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
   const { data: row } = await supabase
     .from("retired_mail_log")
-    .select("id, from_text, subject, preview, recipients, junk")
+    .select("id, mailbox, from_text, subject, preview, recipients, junk")
     .eq("id", parsed.data.id)
     .maybeSingle();
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const res = await postAlert({
+    mailbox: row.mailbox,
     from: row.from_text,
     subject: row.subject,
     preview: row.preview,

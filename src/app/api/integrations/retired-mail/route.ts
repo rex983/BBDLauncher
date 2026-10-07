@@ -2,11 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRetiredMail } from "@/lib/offboarding/retired-mail";
 import { retiredMailAuthorized } from "@/lib/offboarding/retired-mail-health";
+import { RETIRED_MAILBOX, mailboxInfo } from "@/lib/offboarding/mailboxes";
 
-// Called by the Apps Script on retiredemployees@ for every new email.
+// Called by the Apps Script on each watched mailbox for every new email.
 // Server-to-server only: authenticated by the shared RETIRED_MAIL_SECRET.
 
 const schema = z.object({
+  // Which watched mailbox the script runs on. Older scripts on
+  // retiredemployees@ don't send it.
+  mailbox: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .default(RETIRED_MAILBOX)
+    .refine((m) => !!mailboxInfo(m), "Unknown mailbox"),
   message_id: z.string().min(1).max(200),
   from: z.string().max(500).default(""),
   subject: z.string().max(1000).default(""),
