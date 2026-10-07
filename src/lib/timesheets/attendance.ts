@@ -57,12 +57,25 @@ export interface EmployeeAttendance {
   worked_ms: number;
 }
 
+// One scheduled person on one day, for the per-day breakdown.
+export interface AttendanceDayPerson {
+  profile_id: string;
+  name: string;
+  status: "on_time" | "late" | "absent" | "time_off";
+  at: string | null; // first clock-in
+  minutes: number; // clock-in vs. shift start: negative = early, positive = late
+  scheduled: string | null; // shift start, "HH:MM"
+  reason: string | null; // late reason
+  partial_off?: boolean; // partial-day time off covered the start
+}
+
 export interface AttendanceDay {
   date: string;
   on_time: number;
   late: number;
   absent: number;
   time_off: number;
+  people: AttendanceDayPerson[];
 }
 
 export interface AttendanceReport {
@@ -127,7 +140,7 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
     days,
     employees: [],
     events: [],
-    daily: keys.map((date) => ({ date, on_time: 0, late: 0, absent: 0, time_off: 0 })),
+    daily: keys.map((date) => ({ date, on_time: 0, late: 0, absent: 0, time_off: 0, people: [] })),
     arrivals: ARRIVAL_BUCKETS.map((b) => ({ label: b.label, count: 0, late: b.late })),
     weekdays: [],
     today: { scheduled: 0, on_time: 0, late: 0, not_in: 0, time_off: 0, on_clock: 0 },
@@ -287,10 +300,13 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
       const daily = dailyBy.get(key)!;
       const wd = weekdayCounts[new Date(`${key}T00:00:00Z`).getUTCDay()];
       if (isToday) report.today.scheduled++;
+      const person = (status: AttendanceDayPerson["status"], e: Partial<AttendanceDayPerson> = {}) =>
+        daily.people.push({ profile_id: id, name, status, at: null, minutes: 0, scheduled: day.start, reason: null, ...e });
 
       if (off?.full_day) {
         emp.time_off++;
         daily.time_off++;
+        person("time_off");
         if (isToday) report.today.time_off++;
         continue;
       }
@@ -300,6 +316,7 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
           emp.scheduled_days++;
           emp.absent++;
           daily.absent++;
+          person("absent");
           event("absent", key, { scheduled: day.start });
         } else if (now.getTime() >= start.getTime() + LATE_GRACE_MS) {
           report.today.not_in++;
@@ -316,6 +333,12 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
 
       // Partial-day time off covers a late start or an early finish.
       const lateBy = off ? 0 : minutesLate(inAt, start);
+      person(lateBy > 0 ? "late" : "on_time", {
+        at: firstIn.occurred_at,
+        minutes: lateBy > 0 ? lateBy : Math.round(offset / MIN),
+        reason: lateBy > 0 ? firstIn.note : null,
+        ...(off && offset >= LATE_GRACE_MS ? { partial_off: true } : {}),
+      });
       if (lateBy > 0) {
         emp.late++;
         emp.late_minutes += lateBy;
@@ -372,6 +395,14 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
     .map((c, i) => ({ day: WEEKDAY_LABELS[i], on_time: c.on_time, late: c.late, scheduled: c.scheduled }))
     .filter((c) => c.scheduled > 0)
     .map(({ day, on_time, late }) => ({ day, on_time, late }));
+  const rank = { late: 0, absent: 1, time_off: 2, on_time: 3 } as const;
+  for (const d of report.daily) {
+    d.people.sort((a, b) =>
+      rank[a.status] - rank[b.status] ||
+      (a.status === "late" ? b.minutes - a.minutes : (a.at ?? "").localeCompare(b.at ?? "")) ||
+      a.name.localeCompare(b.name),
+    );
+  }
   report.events.sort((a, b) =>
     a.date === b.date ? (b.at ?? "").localeCompare(a.at ?? "") : b.date.localeCompare(a.date),
   );

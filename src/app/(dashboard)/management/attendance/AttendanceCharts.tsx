@@ -13,7 +13,17 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { AttendanceReport, EmployeeAttendance } from "@/lib/timesheets/attendance";
+import { useState } from "react";
+import Link from "next/link";
+import { X } from "lucide-react";
+import type {
+  AttendanceDay,
+  AttendanceDayPerson,
+  AttendanceReport,
+  EmployeeAttendance,
+} from "@/lib/timesheets/attendance";
+import { fmtTime } from "@/components/shared/format";
+import { formatClockTime } from "@/lib/timesheets/schedule";
 
 // Fixed status colours (readable on light and dark): the same status is
 // always the same colour on every chart and badge.
@@ -115,32 +125,180 @@ export function ArrivalsDonut({ totals }: {
   );
 }
 
-export function DailyArrivalsChart({ daily }: { daily: AttendanceReport["daily"] }) {
-  const data = daily.map((d) => ({
-    ...d,
-    label: new Date(d.date + "T00:00:00").toLocaleDateString([], { month: "short", day: "numeric" }),
-  }));
-  const any = daily.some((d) => d.on_time + d.late + d.absent + d.time_off > 0);
+const DAY_GROUPS: { status: AttendanceDayPerson["status"]; label: string }[] = [
+  { status: "late", label: "Late" },
+  { status: "absent", label: "Didn't clock in" },
+  { status: "time_off", label: "Time off" },
+  { status: "on_time", label: "On time / early" },
+];
+
+const BAR_STACK = [
+  { status: "on_time", name: "On time" },
+  { status: "late", name: "Late" },
+  { status: "absent", name: "Absent" },
+  { status: "time_off", name: "Time off" },
+] as const;
+
+function arrivalNote(p: AttendanceDayPerson): string {
+  if (p.status === "absent") return p.scheduled ? `due ${formatClockTime(p.scheduled)}` : "";
+  if (p.status === "time_off") return "full day";
+  const time = p.at ? fmtTime(p.at) : "";
+  if (p.status === "late") return `${time} · ${p.minutes} min late`;
+  if (p.partial_off) return `${time} · partial day off`;
+  return p.minutes <= -1 ? `${time} · ${-p.minutes} min early` : `${time} · on time`;
+}
+
+const dayLabel = (date: string, long = false) =>
+  new Date(date + "T00:00:00").toLocaleDateString(
+    [],
+    long ? { weekday: "long", month: "short", day: "numeric" } : { month: "short", day: "numeric" },
+  );
+
+// Hover: who was late or missing. Click: the full list for that day.
+function DayTooltip({ active, payload }: { active?: boolean; payload?: { payload?: AttendanceDay }[] }) {
+  const day = payload?.[0]?.payload;
+  if (!active || !day) return null;
+  const MAX = 6;
   return (
-    <div className="h-64">
-      {!any ? (
-        <Empty />
+    <div
+      className="max-w-72 rounded-lg border p-2.5 text-xs shadow-md"
+      style={{ background: "var(--popover)", color: "var(--popover-foreground)" }}
+    >
+      <div className="mb-1.5 font-semibold">{dayLabel(day.date, true)}</div>
+      {DAY_GROUPS.map(({ status, label }) => {
+        const people = day.people.filter((p) => p.status === status);
+        if (!people.length) return null;
+        const named = status === "late" || status === "absent";
+        return (
+          <div key={status} className="mb-1">
+            <div className="flex items-center gap-1.5 font-medium">
+              <span className="size-2 rounded-full" style={{ background: STATUS_COLOR[status] }} />
+              {label} · {people.length}
+            </div>
+            {named && (
+              <div className="pl-3.5 text-muted-foreground">
+                {people.slice(0, MAX).map((p) => (
+                  <div key={p.profile_id} className="truncate">
+                    {p.name}
+                    {status === "late" ? ` (${p.minutes}m)` : ""}
+                  </div>
+                ))}
+                {people.length > MAX && <div>+{people.length - MAX} more</div>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div className="mt-1.5 text-[11px] text-muted-foreground">Click for everyone</div>
+    </div>
+  );
+}
+
+function DayBreakdown({ day, onClose }: { day: AttendanceDay; onClose: () => void }) {
+  return (
+    <div className="mt-3 rounded-md border bg-muted/30 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold">
+          {dayLabel(day.date, true)}
+          <span className="ml-2 font-normal text-muted-foreground">{day.people.length} scheduled</span>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label="Close day breakdown"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+      {day.people.length === 0 ? (
+        <div className="text-sm text-muted-foreground">Nobody was scheduled.</div>
       ) : (
-        <ResponsiveContainer>
-          <BarChart data={data} margin={{ left: -20, right: 8 }}>
-            <CartesianGrid vertical={false} stroke="var(--border)" />
-            <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={false} minTickGap={12} />
-            <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} />
-            <Tooltip {...TOOLTIP} />
-            <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="on_time" name="On time" stackId="a" fill={STATUS_COLOR.on_time} />
-            <Bar dataKey="late" name="Late" stackId="a" fill={STATUS_COLOR.late} />
-            <Bar dataKey="absent" name="Absent" stackId="a" fill={STATUS_COLOR.absent} />
-            <Bar dataKey="time_off" name="Time off" stackId="a" fill={STATUS_COLOR.time_off} radius={[3, 3, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {DAY_GROUPS.map(({ status, label }) => {
+            const people = day.people.filter((p) => p.status === status);
+            return (
+              <div key={status} className="min-w-0">
+                <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold">
+                  <span className="size-2 rounded-full" style={{ background: STATUS_COLOR[status] }} />
+                  {label}
+                  <span className="text-muted-foreground">{people.length}</span>
+                </div>
+                {people.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">None</div>
+                ) : (
+                  <ul className="space-y-1">
+                    {people.map((p) => (
+                      <li key={p.profile_id} className="text-xs">
+                        <Link
+                          href={`/management/timesheets/${p.profile_id}`}
+                          className="block truncate font-medium hover:underline"
+                        >
+                          {p.name}
+                        </Link>
+                        <div className="truncate text-muted-foreground" title={p.reason ?? undefined}>
+                          {arrivalNote(p)}
+                          {p.reason ? ` · “${p.reason}”` : ""}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
+  );
+}
+
+export function DailyArrivalsChart({ daily }: { daily: AttendanceReport["daily"] }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const data = daily.map((d) => ({ ...d, label: dayLabel(d.date) }));
+  const any = daily.some((d) => d.on_time + d.late + d.absent + d.time_off > 0);
+  const day = daily.find((d) => d.date === selected);
+  return (
+    <>
+      <div className="h-64">
+        {!any ? (
+          <Empty />
+        ) : (
+          <ResponsiveContainer>
+            <BarChart
+              data={data}
+              margin={{ left: -20, right: 8 }}
+              className="cursor-pointer"
+              onClick={(state) => {
+                const d = data[Number(state?.activeTooltipIndex)];
+                if (d) setSelected((cur) => (cur === d.date ? null : d.date));
+              }}
+            >
+              <CartesianGrid vertical={false} stroke="var(--border)" />
+              <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={false} minTickGap={12} />
+              <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip content={<DayTooltip />} cursor={TOOLTIP.cursor} />
+              <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+              {BAR_STACK.map(({ status, name }, i, all) => (
+                <Bar
+                  key={status}
+                  dataKey={status}
+                  name={name}
+                  stackId="a"
+                  fill={STATUS_COLOR[status]}
+                  radius={i === all.length - 1 ? [3, 3, 0, 0] : undefined}
+                >
+                  {data.map((d) => (
+                    <Cell key={d.date} opacity={selected && selected !== d.date ? 0.4 : 1} />
+                  ))}
+                </Bar>
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+      {day && <DayBreakdown day={day} onClose={() => setSelected(null)} />}
+    </>
   );
 }
 

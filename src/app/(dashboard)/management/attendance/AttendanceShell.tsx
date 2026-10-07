@@ -303,7 +303,7 @@ export default function AttendanceShell({
         <ChartCard title="Arrivals" sub="Scheduled days in range">
           <ArrivalsDonut totals={totals} />
         </ChartCard>
-        <ChartCard title="Arrivals by day" className="lg:col-span-2">
+        <ChartCard title="Arrivals by day" sub="Hover a day for who was late or out; click it for everyone" className="lg:col-span-2">
           <DailyArrivalsChart daily={report.daily} />
         </ChartCard>
         <ChartCard title="Clock-in vs. shift start" sub="On time = within 59 seconds">
