@@ -76,14 +76,20 @@ function processNewMail(props, secret) {
 
   // Search a little before lastSeen (Gmail's `after:` is whole seconds),
   // then keep only messages strictly newer than it. `in:anywhere` because
-  // forwarding often archives or trashes Gmail's copy right away.
+  // forwarding often archives or trashes Gmail's copy right away. Sent mail
+  // and drafts are skipped per message, not with -in:sent/-in:drafts: Gmail
+  // applies those to the whole conversation, which hid every reply to a
+  // thread this mailbox started.
   const after = Math.floor(lastSeen / 1000) - 120;
-  const query = `in:anywhere after:${after} -in:sent -in:drafts -in:spam`;
+  const query = `in:anywhere after:${after} -in:spam`;
+  const me = mailbox_();
   const threads = GmailApp.search(query, 0, 100);
   const fresh = [];
   threads.forEach((t) =>
     t.getMessages().forEach((m) => {
-      if (m.getDate().getTime() > lastSeen && !m.isDraft()) fresh.push({ m, t });
+      if (m.getDate().getTime() <= lastSeen || m.isDraft()) return;
+      if (m.getFrom().toLowerCase().includes(me)) return; // sent by this mailbox
+      fresh.push({ m, t });
     }),
   );
   fresh.sort((a, b) => a.m.getDate() - b.m.getDate());
