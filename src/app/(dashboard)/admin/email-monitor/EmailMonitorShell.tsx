@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,18 @@ export interface Person {
   email: string;
   office: string | null;
 }
+
+// One alert the automation fired. No email content is kept.
+export interface Fire {
+  id: string;
+  received_at: string;
+  mailbox: string;
+  slack_posted: boolean;
+  slack_error: string | null;
+  case_id: string | null;
+}
+
+const LOG_PAGE = 25;
 
 export interface SenderRule {
   pattern: string;
@@ -43,10 +56,14 @@ export default function EmailMonitorShell({
   health,
   senders,
   people,
+  fires,
+  days,
 }: {
   health: RetiredMailHealth;
   senders: SenderRule[];
   people: Person[];
+  fires: Fire[];
+  days: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -54,6 +71,7 @@ export default function EmailMonitorShell({
   const [showHealth, setShowHealth] = useState(false);
   const [editing, setEditing] = useState<MailboxHealth | null>(null);
   const [panel, setPanel] = useState<"rules" | "how" | null>(null);
+  const [shown, setShown] = useState(LOG_PAGE);
 
   const issues = health.checks.filter((c) => c.status !== "ok");
   const overall = worst(health.checks);
@@ -143,6 +161,42 @@ export default function EmailMonitorShell({
           );
         })}
       </Card>
+
+      <div>
+        <h2 className="mb-2 text-sm font-medium">
+          Alerts fired <span className="font-normal text-muted-foreground">· last {days} days · {fires.length}</span>
+        </h2>
+        <Card className="gap-0 divide-y py-0">
+          {fires.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">No alerts yet.</p>
+          ) : (
+            fires.slice(0, shown).map((f) => (
+              <div key={f.id} className="flex items-center gap-3 px-4 py-1.5 text-sm">
+                <span className={cn("size-2 shrink-0 rounded-full", f.slack_posted ? "bg-emerald-500" : "bg-red-500")} />
+                <span className="w-36 shrink-0 text-muted-foreground">{fmtWhen(f.received_at)}</span>
+                <span className="w-40 shrink-0 truncate">{shortMailbox(f.mailbox)}</span>
+                <span className={cn("min-w-0 flex-1 truncate", !f.slack_posted && "text-destructive")}>
+                  {f.slack_posted ? "Posted to Slack" : `Slack failed: ${f.slack_error ?? "unknown error"}`}
+                </span>
+                {f.case_id && (
+                  <Link href={`/offboarding/${f.case_id}`} className="shrink-0 text-xs text-muted-foreground underline">
+                    Case
+                  </Link>
+                )}
+              </div>
+            ))
+          )}
+          {fires.length > shown && (
+            <button
+              type="button"
+              onClick={() => setShown(shown + LOG_PAGE)}
+              className="w-full px-4 py-2 text-center text-sm text-muted-foreground hover:bg-muted/50"
+            >
+              Show more ({fires.length - shown} left)
+            </button>
+          )}
+        </Card>
+      </div>
 
       <div className="flex gap-4 text-sm">
         <button
