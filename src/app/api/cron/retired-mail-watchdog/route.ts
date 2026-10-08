@@ -10,8 +10,7 @@ import { MAILBOXES, shortMailbox } from "@/lib/offboarding/mailboxes";
 // Daily check on the Email monitor (each watched mailbox → Slack), so nobody
 // has to remember to look:
 //   - anything broken → tag the launcher admins with what and how to fix it
-//   - Mondays → a one-line weekly summary pointing at /admin/email-monitor,
-//     where filtered mail can be reviewed
+//   - Mondays → a one-line weekly summary pointing at /admin/email-monitor
 async function handle() {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) return NextResponse.json({ ok: false, error: "SLACK_BOT_TOKEN not set" });
@@ -44,7 +43,7 @@ async function handle() {
     });
     lines.push(`:bar_chart: *Email monitor, last 7 days:* ${parts.join(" | ")}. All systems OK.`);
   }
-  lines.push(`Review filtered mail and settings in ${page}.`);
+  lines.push(`Settings in ${page}.`);
   // Only page the admins when something is actually wrong.
   if (broken.length) {
     const tags = await slackTags(token, (admins ?? []) as { email: string; name: string | null }[], slackEscape);

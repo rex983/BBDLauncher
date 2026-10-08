@@ -131,8 +131,7 @@ interface AlertInput {
   recipients: string[];
 }
 
-// Posts the Slack alert for one email. Used for new mail and when an admin
-// pushes a filtered email through from /admin/email-monitor.
+// Posts the Slack alert for one email.
 export async function postAlert(mail: AlertInput, employee?: Employee | null) {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) return { ok: false, error: "SLACK_BOT_TOKEN not set" };
@@ -238,22 +237,15 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{
         senderRule(mail.from).then((rule) => rule ?? classifyMail({ ...mail, recipients })),
       ])
     : [null, { junk: false, reason: `every ${shortMailbox(mail.mailbox)} email alerts`, by: "rules" } satisfies MailVerdict];
-  const sentTo = retired
-    ? (recipients.find((a) => a.endsWith("@bigbuildingsdirect.com")) ?? recipients[0] ?? null)
-    : mail.mailbox;
   const internal = verdict.reason === INTERNAL_REASON;
 
+  // Only the verdict and Slack outcome are kept (dedupe, health, weekly
+  // counts). The email itself stays in Gmail; the launcher doesn't archive it.
   const { data: row, error: insertError } = await supabase
     .from("retired_mail_log")
     .insert({
       mailbox: mail.mailbox,
       message_id: mail.message_id,
-      from_text: mail.from,
-      subject: mail.subject,
-      preview: mail.preview.slice(0, 2000),
-      recipients,
-      sent_to: employee?.email ?? sentTo,
-      employee_name: employee?.name ?? null,
       case_id: employee?.caseId ?? null,
       junk: verdict.junk,
       reason: verdict.reason,

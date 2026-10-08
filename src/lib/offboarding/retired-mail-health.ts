@@ -124,14 +124,14 @@ export async function loadRetiredMailHealth(now = Date.now()): Promise<RetiredMa
               label: `${name} tags`,
               status: "bad",
               detail: "Nobody picked, so alerts for former employees tag nobody.",
-              fix: "Pick who gets tagged under Who gets tagged below.",
+              fix: "Click Edit next to the mailbox and pick people.",
             }
           : {
               id: `tags:${box.address}`,
               label: `${name} tags`,
               status: "warn",
               detail: "Nobody picked, so alerts post without tagging anyone.",
-              fix: "Pick who gets tagged under Who gets tagged below.",
+              fix: "Click Edit next to the mailbox and pick people.",
             },
     );
   });
@@ -162,7 +162,7 @@ export async function loadRetiredMailHealth(now = Date.now()): Promise<RetiredMa
       label: "Slack",
       status: "bad",
       detail: `${failures.length} alert${failures.length === 1 ? "" : "s"} failed this week (latest: ${failures[0].slack_error}).`,
-      fix: "If it says not_in_channel, invite bbd-bot to the channel. Then resend the failed emails below.",
+      fix: "If it says not_in_channel, invite bbd-bot to the channel. The emails that failed are still in Gmail.",
     });
   } else {
     checks.push({ id: "slack", label: "Slack", status: "ok", detail: "Posting as bbd-bot." });
@@ -174,7 +174,7 @@ export async function loadRetiredMailHealth(now = Date.now()): Promise<RetiredMa
           id: "ai",
           label: "Spam filter",
           status: "ok",
-          detail: "retiredemployees@ only (every orders@ email alerts). Rules: BCC'd mass mail, Gmail's Promotions/Social tabs, unsubscribe headers, no-reply senders and your sender rules. Cold pitches from real people still alert; mute them below.",
+          detail: "retiredemployees@ only (every orders@ email alerts). Rules: BCC'd mass mail, Gmail's Promotions/Social tabs, unsubscribe headers, no-reply senders and your sender rules. Cold pitches from real people still alert; mute them under Sender rules.",
         }
       : aiMisses
         ? {
