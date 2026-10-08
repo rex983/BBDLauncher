@@ -9,7 +9,8 @@
  * as that mailbox, then:
  *   1. Project Settings → Script properties → add
  *        LAUNCHER_SECRET = <same value as RETIRED_MAIL_SECRET on Vercel>
- *   2. Select `setup` in the toolbar and click Run once (approve access).
+ *   2. Pick `setup` in the toolbar's function dropdown and click Run once
+ *      (approve access).
  * From then on `checkMail` runs every minute and sends each new email's
  * sender, subject, recipients, a short preview and its bulk-mail headers to
  * the launcher. The launcher decides whether it's real (Slack alert) or junk
@@ -23,8 +24,11 @@
 const LAUNCHER = "https://bbd-launcher.vercel.app";
 const ENDPOINT = `${LAUNCHER}/api/integrations/retired-mail`;
 const HEARTBEAT = `${ENDPOINT}/heartbeat`;
-// The account this script runs as, i.e. the mailbox it watches.
-const MAILBOX = () => Session.getEffectiveUser().getEmail().toLowerCase();
+// The account this script runs as, i.e. the mailbox it watches. The
+// trailing _ keeps it out of the Run menu, so only setup/checkMail show.
+function mailbox_() {
+  return Session.getEffectiveUser().getEmail().toLowerCase();
+}
 const HEARTBEAT_EVERY_MS = 5 * 60 * 1000;
 const JUNK_LABEL = "Launcher/Junk";
 const ADDRESS_HEADERS = ["X-Gm-Original-To", "To", "Cc", "Delivered-To", "X-Original-To", "X-Forwarded-To", "X-Forwarded-For"];
@@ -44,7 +48,7 @@ function post(url, secret, body) {
     contentType: "application/json",
     headers: { Authorization: `Bearer ${secret}` },
     muteHttpExceptions: true,
-    payload: JSON.stringify({ mailbox: MAILBOX(), ...body }),
+    payload: JSON.stringify({ mailbox: mailbox_(), ...body }),
   });
 }
 
