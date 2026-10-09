@@ -34,6 +34,8 @@ const JUNK_LABEL = "Launcher/Junk";
 const ADDRESS_HEADERS = ["X-Gm-Original-To", "To", "Cc", "Delivered-To", "X-Original-To", "X-Forwarded-To", "X-Forwarded-For"];
 // Signals the spam filter uses to tell newsletters from people.
 const BULK_HEADERS = ["List-Unsubscribe", "List-Id", "Precedence", "Auto-Submitted", "Return-Path", "X-Mailer"];
+// Sent as "none" when missing, so the launcher can spot a fake "RE:" subject.
+const THREAD_HEADERS = ["In-Reply-To", "References"];
 
 function setup() {
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
@@ -110,6 +112,10 @@ function processNewMail(props, secret) {
     BULK_HEADERS.forEach((h) => {
       const v = m.getHeader(h);
       if (v) headers[h] = String(v).slice(0, 2000);
+    });
+    THREAD_HEADERS.forEach((h) => {
+      const v = m.getHeader(h);
+      headers[h] = v ? String(v).slice(0, 500) : "none";
     });
     const res = post(ENDPOINT, secret, {
       message_id: m.getId(),

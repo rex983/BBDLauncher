@@ -6,6 +6,9 @@
 //   2. Mail that names none of our addresses was BCC'd to a list (a vendor's
 //      "we've moved" blast); real mail is addressed to the person.
 //   3. Gmail's Promotions / Social tabs are trusted as junk (Adobe, Pinterest…).
+//   3b. Cold sales pitches: typical pitch phrases, or a fake "RE:" subject on a
+//      message that replies to nothing plus one phrase. Mail that talks about
+//      buildings, orders or payments needs an unmistakable pitch (3 phrases).
 //   4. If enabled, everything else goes to Gemini with the bulk-mail signals attached, so
 //      it can also catch cold sales pitches written by real people.
 //   5. Otherwise (or if Gemini fails), bulk-mail headers alone decide.
@@ -65,6 +68,43 @@ function bulkSignals(m: MailSignals): string[] {
   return out;
 }
 
+// Cold sales pitches from real people: no bulk headers, addressed to one
+// person, often with a fake "RE:" subject. Phrases are matched on the subject
+// and the start of the body. Rules only — no AI.
+const PITCH_PHRASES: Array<[RegExp, string]> = [
+  [/recorded a (?:quick|short|brief) (?:video|loom|walkthrough)/, "recorded a quick video"],
+  [/\bopen to (?:me )?(?:sending|sharing|a quick|a short|hopping on|chatting|connecting)/, "open to me sending…"],
+  [/\bworth a (?:quick |short |brief )?(?:chat|call|conversation|look)\b/, "worth a quick chat"],
+  [/\b(?:10|15|20|30)[- ]?min(?:ute)?s?\b[^.?!]{0,20}\b(?:call|chat|meeting|demo)\b/, "15-minute call"],
+  [/\b(?:book|schedule|grab|set up) (?:a |some )?(?:quick |short )?(?:call|meeting|demo|time)\b/, "book a call"],
+  [/\b(?:just )?(?:bumping|circling back|following up on my (?:last |previous )?(?:email|note|message))\b/, "follow-up bump"],
+  [/\bcustom (?:apparel|merch|swag|t-?shirts|hats)|branded (?:merch|apparel|swag)|promotional products\b/, "branded merch"],
+  [/\b(?:seo|search rankings?|rank (?:higher|on google)|google (?:ranking|reviews|business profile))\b/, "SEO"],
+  [/\b(?:lead generation|more (?:qualified )?leads|(?:exclusive|qualified) leads|appointment setting)\b/, "lead generation"],
+  [/\bwe help (?:companies|businesses|contractors|builders|brands|teams) (?:like yours )?\w+/, "we help companies like yours"],
+  [/\b(?:working capital|merchant cash advance|business (?:funding|loan|line of credit)|get funded)\b/, "business funding"],
+  [/\b(?:virtual assistants?|offshore (?:team|staff)|outsourc(?:e|ing) your)\b/, "outsourcing"],
+  [/\b(?:website redesign|web design services|new website for)\b/, "web design"],
+  [/\b(?:partnership opportunity|case study|free (?:audit|trial|consultation|sample))\b/, "free audit / partnership"],
+  [/\b(?:reply|respond) (?:with )?["“]?(?:stop|no|unsubscribe)["”]?\b|\bnot the right person\b/, "opt-out line"],
+];
+
+// A customer or partner talking about an order still alerts unless the pitch is unmistakable.
+const BUSINESS_WORDS =
+  /\b(?:carport|garage|barn|workshop|building|quote|order|deposit|payment|refund|invoice|permit|delivery|install(?:ation|er)?|lean-?to|steel)\b/;
+
+/** Why this looks like a cold pitch, or null. Exported for tests. */
+export function coldPitch(m: MailSignals): string | null {
+  const text = `${m.subject}\n${m.preview.slice(0, 1500)}`.toLowerCase().replace(/[’‘]/g, "'");
+  const hits = PITCH_PHRASES.filter(([re]) => re.test(text)).map(([, label]) => label);
+  // "RE:" with no message it replies to (the script sends "none" when there isn't one).
+  const fakeReply = /^\s*re\s*:/i.test(m.subject) && header(m, "In-Reply-To") === "none";
+  const business = BUSINESS_WORDS.test(text);
+  const needed = business ? 3 : fakeReply ? 1 : 2;
+  if (hits.length < needed) return null;
+  return `cold sales pitch: ${[fakeReply ? "fake RE: subject" : null, ...hits.map((h) => `"${h}"`)].filter(Boolean).join(", ")}`;
+}
+
 function byRules(m: MailSignals): MailVerdict | null {
   if (senderAddress(m.from).endsWith(OUR_DOMAIN)) return { junk: true, reason: INTERNAL_REASON, by: "rules" };
   if (/^(mailer-daemon|postmaster)@/.test(senderAddress(m.from)) || /^auto-replied/i.test(header(m, "Auto-Submitted"))) {
@@ -76,6 +116,8 @@ function byRules(m: MailSignals): MailVerdict | null {
   if (m.category === "promotions" || m.category === "social") {
     return { junk: true, reason: `Gmail filed it under ${m.category[0].toUpperCase()}${m.category.slice(1)}`, by: "rules" };
   }
+  const pitch = coldPitch(m);
+  if (pitch) return { junk: true, reason: pitch, by: "rules" };
   return null;
 }
 
