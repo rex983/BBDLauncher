@@ -51,34 +51,40 @@ export default async function EmployeeMemoPage({
 
   const supabase = createAdminClient();
 
-  const [{ data: recipient }, { data: memo }, { data: profile }] = await Promise.all([
+  // The viewer's full_name (the signed-ack name match) and the author's
+  // name ride along as embeds, so the page needs one read stage. Not
+  // session.user.name — for Google sign-ins that's the Google account
+  // name, not profiles.full_name.
+  const [{ data: recipientRow }, { data: memoRow }] = await Promise.all([
     supabase
       .from("office_memo_recipients")
-      .select("id, delivered_at, read_at, acknowledged_at, signature_text")
+      .select(
+        "id, delivered_at, read_at, acknowledged_at, signature_text, profile:profiles!profile_id(full_name)",
+      )
       .eq("memo_id", id)
       .eq("profile_id", session.user.profileId)
       .single(),
     supabase
       .from("office_memos")
       .select(
-        "id, number, title, body, category, priority, acknowledgement_mode, effective_date, published_at, attachments, author_profile_id, document_hash, author_signature_hash, edit_count, last_edited_at",
+        "id, number, title, body, category, priority, acknowledgement_mode, effective_date, published_at, attachments, author_profile_id, document_hash, author_signature_hash, edit_count, last_edited_at, author:profiles!author_profile_id(full_name)",
       )
       .eq("id", id)
       .eq("status", "published")
       .single(),
-    supabase
-      .from("profiles")
-      .select("full_name")
-      .eq("id", session.user.profileId)
-      .single(),
   ]);
   // Only recipients of a published memo can open it.
-  if (!recipient || !memo) notFound();
+  if (!recipientRow || !memoRow) notFound();
+  const { profile: profileEmbed, ...recipient } = recipientRow;
+  const { author: authorEmbed, ...memo } = memoRow;
+  // Many-to-one embeds come back as a single object (or null); the
+  // generic client types them as arrays.
+  const profile = profileEmbed as unknown as { full_name: string | null } | null;
+  const author = authorEmbed as unknown as { full_name: string | null } | null;
 
-  // Stamp read_at on first view (in parallel with the author lookup).
-  // Informational memos skip this — no receipt required for those.
-  const stampRead = async () => {
-    if (recipient.read_at || memo.acknowledgement_mode === "informational") return;
+  // Stamp read_at on first view. Informational memos skip this — no
+  // receipt required for those.
+  if (!recipient.read_at && memo.acknowledgement_mode !== "informational") {
     const now = new Date().toISOString();
     await supabase
       .from("office_memo_recipients")
@@ -92,18 +98,7 @@ export default async function EmployeeMemoPage({
       actorUa: "page-view",
     }).catch(() => undefined);
     recipient.read_at = now;
-  };
-
-  const [{ data: author }] = await Promise.all([
-    memo.author_profile_id
-      ? supabase
-          .from("profiles")
-          .select("full_name")
-          .eq("id", memo.author_profile_id)
-          .single()
-      : Promise.resolve({ data: null }),
-    stampRead(),
-  ]);
+  }
 
   const data: EmployeeMemoPageData = {
     ...memo,

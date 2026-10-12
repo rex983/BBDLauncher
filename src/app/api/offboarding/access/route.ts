@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { isAdmin } from "@/lib/auth/permissions";
+import { revalidateSessionProfiles } from "@/lib/auth/session-profile";
 
 const schema = z.object({
   profile_id: z.string().uuid(),
@@ -38,5 +39,6 @@ export async function PUT(req: NextRequest) {
     })
     .eq("id", parsed.data.profile_id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateSessionProfiles();
   return NextResponse.json({ ok: true });
 }

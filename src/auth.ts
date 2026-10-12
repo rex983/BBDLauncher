@@ -1,4 +1,6 @@
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
+import { SESSION_PROFILE_TAG } from "@/lib/auth/session-profile";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
@@ -20,18 +22,37 @@ function applyOrgClaims(token: JWT, row: Record<string, unknown>) {
   token.can_offboard = (row.can_offboard as boolean | null) ?? false;
 }
 
-// The jwt callback runs on every auth() call, and a single render calls auth()
-// from several layouts/pages. React's per-request cache collapses those into
-// one profiles read per request; outside a React render (e.g. middleware) it
-// calls straight through. Either way every request reads fresh is_active /
-// signed_out_at / session_version values.
-const loadSessionProfile = cache(async (profileId: string) => {
+// The jwt callback runs on every auth() call (every page render and API
+// request), so the profiles read it needs is cached across requests for a
+// short while. Anything that changes these fields calls
+// revalidateSessionProfiles() (user edits, offboarding, the midnight
+// sign-out), so those take effect at once; edits made outside the launcher
+// (another app on the shared database, the Supabase dashboard) show up
+// within SESSION_PROFILE_TTL seconds. React's cache() then collapses the
+// several auth() calls in one render into one lookup.
+const SESSION_PROFILE_TTL = 30;
+
+async function readSessionProfile(profileId: string) {
   const { data } = await createAdminClient()
     .from("profiles")
     .select("role, office, department, is_it, can_offboard, is_active, session_version, signed_out_at")
     .eq("id", profileId)
     .single();
   return data;
+}
+
+const readSessionProfileCached = unstable_cache(readSessionProfile, ["session-profile-v1"], {
+  tags: [SESSION_PROFILE_TAG],
+  revalidate: SESSION_PROFILE_TTL,
+});
+
+const loadSessionProfile = cache(async (profileId: string) => {
+  try {
+    return await readSessionProfileCached(profileId);
+  } catch {
+    // No data cache outside a request (middleware): read it directly.
+    return readSessionProfile(profileId);
+  }
 });
 
 // Dev bypass ONLY in actual development, never via env var in production.

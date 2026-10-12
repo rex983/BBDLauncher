@@ -155,21 +155,32 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
     today: { scheduled: 0, on_time: 0, late: 0, not_in: 0, time_off: 0, on_clock: 0, on_clock_people: [] },
   };
 
-  const { data: profiles } = await scopeProfilesQuery(
-    supabase
-      .from("profiles")
-      .select("id, name:full_name, email, office, department"),
-    params.scope,
-    { department: params.departmentOverride, office: params.officeOverride },
-  ).order("full_name");
-  if (!profiles?.length) return empty;
-  const ids = profiles.map((p) => p.id as string);
-
   // Weekly overtime needs whole weeks, so punches start at the Sunday on or
   // before the range.
   const weekStarts = buildWeekStarts(anchor(fromKey), now);
+  const lookBackISO = weekStarts[0].toISOString();
+
+  // The embedded time_punches (at most one, before the punch window) answers
+  // "has this person ever clocked in before?" for the absence cut-off below,
+  // in the same round trip instead of one query per person.
+  const { data: profiles } = await scopeProfilesQuery(
+    supabase
+      .from("profiles")
+      .select("id, name:full_name, email, office, department, time_punches!profile_id(id)"),
+    params.scope,
+    { department: params.departmentOverride, office: params.officeOverride },
+  )
+    .lt("time_punches.occurred_at", lookBackISO)
+    .limit(1, { referencedTable: "time_punches" })
+    .order("full_name");
+  if (!profiles?.length) return empty;
+  const ids = profiles.map((p) => p.id as string);
+  const hasEarlier = new Set(
+    profiles.filter((p) => (p.time_punches as unknown[] | null)?.length).map((p) => p.id as string),
+  );
+
   const [punchesRes, schedulesRes, timeOffRes] = await Promise.all([
-    fetchPunchesPaged(supabase, ids, weekStarts[0].toISOString()),
+    fetchPunchesPaged(supabase, ids, lookBackISO),
     supabase
       .from("work_schedules")
       .select("profile_id, weekday, start_time, end_time, timezone")
@@ -205,24 +216,17 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
   // Absences only count from someone's first-ever clock-in: before that
   // they weren't on the time clock yet (new hire, or an account that
   // doesn't clock in at all). Only people with no punch on or before their
-  // first scheduled day in the range need the extra look back.
+  // first scheduled day in the range need the look back (fetched with the
+  // profiles above).
   const countsFromBy = new Map<string, string>();
-  await Promise.all(
-    ids.map(async (id) => {
-      const first = punchesBy.get(id)?.[0];
-      const firstKey = first ? localDateInZone(new Date(first.occurred_at)) : null;
-      const week = buildWeekView(schedulesBy.get(id) ?? []);
-      const firstScheduled = keys.find((k) => week[new Date(`${k}T00:00:00Z`).getUTCDay()].scheduled);
-      if (!firstScheduled || (firstKey && firstKey <= firstScheduled)) return;
-      const { data } = await supabase
-        .from("time_punches")
-        .select("id")
-        .eq("profile_id", id)
-        .lt("occurred_at", weekStarts[0].toISOString())
-        .limit(1);
-      if (!data?.length) countsFromBy.set(id, firstKey ?? "9999-12-31");
-    }),
-  );
+  for (const id of ids) {
+    const first = punchesBy.get(id)?.[0];
+    const firstKey = first ? localDateInZone(new Date(first.occurred_at)) : null;
+    const week = buildWeekView(schedulesBy.get(id) ?? []);
+    const firstScheduled = keys.find((k) => week[new Date(`${k}T00:00:00Z`).getUTCDay()].scheduled);
+    if (!firstScheduled || (firstKey && firstKey <= firstScheduled)) continue;
+    if (!hasEarlier.has(id)) countsFromBy.set(id, firstKey ?? "9999-12-31");
+  }
 
   const report = empty;
   const dailyBy = new Map(report.daily.map((d) => [d.date, d]));

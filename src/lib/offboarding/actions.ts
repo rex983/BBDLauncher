@@ -5,6 +5,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isClockedIn } from "@/lib/timesheets/server";
 import { EXPORT_BUCKET } from "./service";
+import { revalidateSessionProfiles } from "@/lib/auth/session-profile";
 
 // Same effect as unticking "Active" in /admin/users (is_active=false +
 // session_version bump + signed_out_at) so the launcher and every
@@ -31,6 +32,7 @@ export async function deactivateLauncherAccount(
     })
     .eq("id", profileId);
   if (error) return { ok: false, error: error.message };
+  revalidateSessionProfiles();
 
   let clockedOut = false;
   if (await isClockedIn(profileId)) {

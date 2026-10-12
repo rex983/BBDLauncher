@@ -78,14 +78,37 @@ export default async function ManagerMemoDetailPage({
   if (!canViewTimeData(session.user.role)) redirect("/dashboard");
 
   const supabase = createAdminClient();
-  const { data: memo } = await supabase
-    .from("office_memos")
-    .select(
-      "id, number, title, body, category, priority, acknowledgement_mode, audience_scope, audience_office, audience_department, effective_date, published_at, status, attachments, edit_count, last_edited_at, document_hash, author_signature_text, author_signature_hash, author_signed_at, author_profile_id",
-    )
-    .eq("id", id)
-    .single();
-  if (!memo) notFound();
+  // One read stage: the author, recipient and actor profiles ride along as
+  // embeds, and the recipient/event reads run alongside the memo read —
+  // the scope check below runs before any of them reach the page.
+  const [{ data: memoRow }, recipRes, eventsRes] = await Promise.all([
+    supabase
+      .from("office_memos")
+      .select(
+        "id, number, title, body, category, priority, acknowledgement_mode, audience_scope, audience_office, audience_department, effective_date, published_at, status, attachments, edit_count, last_edited_at, document_hash, author_signature_text, author_signature_hash, author_signed_at, author_profile_id, author:profiles!author_profile_id(id, full_name, email)",
+      )
+      .eq("id", id)
+      .single(),
+    supabase
+      .from("office_memo_recipients")
+      .select(
+        "id, profile_id, delivered_at, read_at, acknowledged_at, signature_text, person:profiles!profile_id(id, full_name, email, department, office, is_active)",
+      )
+      .eq("memo_id", id)
+      .order("delivered_at", { ascending: true }),
+    supabase
+      .from("office_memo_events")
+      .select(
+        "id, event_type, actor_profile_id, details, created_at, person:profiles!actor_profile_id(id, full_name, email, department, office, is_active)",
+      )
+      .eq("memo_id", id)
+      .order("created_at", { ascending: true }),
+  ]);
+  if (!memoRow) notFound();
+  const { author: authorEmbed, ...memo } = memoRow;
+  // Many-to-one embeds come back as a single object (or null); the
+  // generic client types them as arrays.
+  const author = authorEmbed as unknown as ProfileSlice | null;
 
   // Scope: author + admin always see; other manager-tier only see if
   // published AND their scope overlaps the audience.
@@ -102,42 +125,13 @@ export default async function ManagerMemoDetailPage({
     if (!overlaps) notFound();
   }
 
-  const [recipRes, eventsRes, authorRes] = await Promise.all([
-    supabase
-      .from("office_memo_recipients")
-      .select("id, profile_id, delivered_at, read_at, acknowledged_at, signature_text")
-      .eq("memo_id", id)
-      .order("delivered_at", { ascending: true }),
-    supabase
-      .from("office_memo_events")
-      .select("id, event_type, actor_profile_id, details, created_at")
-      .eq("memo_id", id)
-      .order("created_at", { ascending: true }),
-    memo.author_profile_id
-      ? supabase
-          .from("profiles")
-          .select("id, full_name, email")
-          .eq("id", memo.author_profile_id)
-          .single<ProfileSlice>()
-      : Promise.resolve({ data: null as ProfileSlice | null }),
-  ]);
-
-  const profileIds = new Set<string>();
-  for (const r of recipRes.data || []) profileIds.add(r.profile_id);
-  for (const e of eventsRes.data || []) {
-    if (e.actor_profile_id) profileIds.add(e.actor_profile_id);
-  }
   const nameMap = new Map<string, string>();
   const peopleMap = new Map<string, MemoPerson>();
-  if (profileIds.size > 0) {
-    const { data: profs } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, department, office, is_active")
-      .in("id", Array.from(profileIds));
-    for (const p of profs || []) {
-      nameMap.set(p.id, p.full_name || p.email || p.id);
-      peopleMap.set(p.id, p);
-    }
+  for (const row of [...(recipRes.data || []), ...(eventsRes.data || [])]) {
+    const p = row.person as unknown as (ProfileSlice & MemoPerson) | null;
+    if (!p) continue;
+    nameMap.set(p.id, p.full_name || p.email || p.id);
+    peopleMap.set(p.id, p);
   }
 
   // Non-author managers only see tracking for their own team.
@@ -145,7 +139,12 @@ export default async function ManagerMemoDetailPage({
   const recipients = (recipRes.data || [])
     .filter((r) => !visible || visible(peopleMap.get(r.profile_id)))
     .map((r) => ({
-      ...r,
+      id: r.id,
+      profile_id: r.profile_id,
+      delivered_at: r.delivered_at,
+      read_at: r.read_at,
+      acknowledged_at: r.acknowledged_at,
+      signature_text: r.signature_text,
       name: nameMap.get(r.profile_id) || null,
     }));
   const events = (eventsRes.data || [])
@@ -157,15 +156,17 @@ export default async function ManagerMemoDetailPage({
         visible(peopleMap.get(e.actor_profile_id)),
     )
     .map((e) => ({
-      ...e,
+      id: e.id,
+      event_type: e.event_type,
+      actor_profile_id: e.actor_profile_id,
+      details: e.details,
+      created_at: e.created_at,
       actor_name: e.actor_profile_id ? nameMap.get(e.actor_profile_id) || null : null,
     }));
 
   const data: ManagerMemoPageData = {
     ...memo,
-    author: authorRes.data
-      ? { id: authorRes.data.id, name: authorRes.data.full_name, email: authorRes.data.email }
-      : null,
+    author: author ? { id: author.id, name: author.full_name, email: author.email } : null,
     recipients,
     events,
     stats: {

@@ -3,10 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { getBrowserClient } from "@/lib/supabase/browser";
 import {
   canAccessAdminPath,
   canAccessManagementPath,
@@ -88,52 +87,52 @@ interface NavSection {
   items: NavItem[];
 }
 
-// Keep a pending-count badge live via a Supabase realtime subscription on
-// `table`. Any INSERT/UPDATE/DELETE triggers a re-fetch of `endpoint` (which
-// enforces scope + pending-only server-side, so the filter can't live in the
-// channel itself). Beats the old 60s poll on every open tab, and a manager
-// acting on one tab clears the badge on all the others.
-function usePendingCount(
-  enabled: boolean,
-  endpoint: string,
-  channelName: string,
-  table: string,
-): number {
+// Pending-count badge. Fetched on load, then re-checked when the person
+// comes back to the tab or moves to another page, at most once a minute.
+// (These used to be Supabase realtime subscriptions, but none of the
+// tables are in the realtime publication, so they never fired: the
+// badges only updated on a full reload.)
+const BADGE_REFRESH_MS = 60_000;
+
+function usePendingCount(enabled: boolean, endpoint: string, pathname: string): number {
   const [count, setCount] = useState(0);
-  useEffect(() => {
-    if (!enabled) { setCount(0); return; }
-    let cancelled = false;
-    const fetchCount = async () => {
+  const fetchedAt = useRef(0);
+
+  const refresh = useCallback(
+    async (force = false) => {
+      if (!force && Date.now() - fetchedAt.current < BADGE_REFRESH_MS) return;
+      fetchedAt.current = Date.now();
       try {
         const res = await fetch(endpoint, { cache: "no-store" });
-        if (!res.ok || cancelled) return;
+        if (!res.ok) return;
         const body = await res.json();
         setCount(typeof body?.count === "number" ? body.count : 0);
       } catch {
         // Sidebar badge is decorative — swallow errors.
       }
-    };
-    fetchCount();
+    },
+    [endpoint],
+  );
 
-    const supabase = getBrowserClient();
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table },
-        () => { fetchCount(); },
-      )
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
+  useEffect(() => {
+    if (!enabled) { setCount(0); fetchedAt.current = 0; return; }
+    refresh(true);
+    const onBack = () => {
+      if (document.visibilityState === "visible") refresh();
     };
-  }, [enabled, endpoint, channelName, table]);
+    document.addEventListener("visibilitychange", onBack);
+    return () => document.removeEventListener("visibilitychange", onBack);
+  }, [enabled, refresh]);
+
+  // A manager who just handled a request expects the badge to move.
+  useEffect(() => {
+    if (enabled) refresh();
+  }, [enabled, refresh, pathname]);
+
   return count;
 }
 
-function NavLink({
+const NavLink = memo(function NavLink({
   item,
   href,
   active,
@@ -180,7 +179,7 @@ function NavLink({
       )}
     </Link>
   );
-}
+});
 
 export function Sidebar({ initialState }: { initialState: SidebarState }) {
   const pathname = usePathname();
@@ -196,27 +195,12 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
     isPreviewing ? viewAsUser!.can_offboard : session?.user?.can_offboard,
   );
   const preview = isPreviewing ? viewAsUser : null;
-  const pendingCount = usePendingCount(
-    showManagementNav,
-    "/api/management/timeoff/pending-count",
-    "sidebar-pending-count",
-    "time_off_requests",
-  );
+  const pendingCount = usePendingCount(showManagementNav, "/api/management/timeoff/pending-count", pathname);
   // Incidents awaiting either the manager's or the employee's signature.
-  const pendingIncidents = usePendingCount(
-    showManagementNav,
-    "/api/management/incidents/pending-count",
-    "sidebar-pending-incidents",
-    "incident_reports",
-  );
+  const pendingIncidents = usePendingCount(showManagementNav, "/api/management/incidents/pending-count", pathname);
   // Admins only: failing Email monitor health checks, so a
   // stopped script shows up without anyone visiting the page.
-  const retiredMailProblems = usePendingCount(
-    isAdminRole(effectiveRole),
-    "/api/admin/retired-mail/status",
-    "sidebar-retired-mail",
-    "mail_monitor_mailboxes",
-  );
+  const retiredMailProblems = usePendingCount(isAdminRole(effectiveRole), "/api/admin/retired-mail/status", pathname);
   const badges: Record<string, number> = {
     "/management/timeoff": pendingCount,
     "/management/incidents": pendingIncidents,

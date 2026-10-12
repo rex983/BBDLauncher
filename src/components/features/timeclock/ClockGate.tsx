@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlarmClock, CalendarCheck, Clock, LogIn, LogOut } from "lucide-react";
 import { fmtTime } from "@/components/shared/format";
 import type { LiveState, PunchEventType } from "@/lib/timesheets/state";
+import type { TodayScheduleData } from "@/lib/timesheets/server";
 import {
   TIME_OFF_TYPE_LABEL,
   todayISO,
@@ -27,11 +29,25 @@ import {
 // keeping their own copies — separate copies drifted apart after a punch
 // (the gate would unlock while the dashboard card still showed "clocked
 // out", and a second clock-in then 409'd).
+// Today's schedule rides along: ShiftEndPrompt counts down to its effective
+// end and TimeClockShell shows it, and both used to fetch it on their own.
+export type ScheduleData = Pick<
+  TodayScheduleData,
+  "scheduled" | "end_of_day_iso" | "extension_until_iso" | "effective_end_iso"
+>;
+
 interface TimeClockContextValue {
   state: LiveState | null;
   loading: boolean;
   punch: (event_type: PunchEventType) => Promise<string | null>;
+  schedule: ScheduleData | null;
+  setSchedule: (schedule: ScheduleData | null) => void;
 }
+
+// Coming back to the tab re-checks the clock (the midnight cron may have
+// clocked them out, or an extension was granted elsewhere), but not more
+// often than this. Alt-tabbing used to fire a request every time.
+const REFRESH_EVERY_MS = 60_000;
 
 const TimeClockContext = createContext<TimeClockContextValue | null>(null);
 
@@ -64,13 +80,17 @@ interface MyTimeOffRow {
 export function ClockGate({
   children,
   initialState = null,
+  initialSchedule = null,
 }: {
   children: React.ReactNode;
   // Server-fetched in the layout so the gate paints correctly on the first
   // frame instead of flashing the app (or the overlay) while /me resolves.
   initialState?: LiveState | null;
+  initialSchedule?: ScheduleData | null;
 }) {
   const [state, setState] = useState<LiveState | null>(initialState);
+  const [schedule, setSchedule] = useState<ScheduleData | null>(initialSchedule);
+  const loadedAt = useRef(initialState === null ? 0 : Date.now());
   const [loading, setLoading] = useState(initialState === null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,11 +99,13 @@ export function ClockGate({
   const [lateReason, setLateReason] = useState("");
 
   const load = useCallback(async () => {
+    loadedAt.current = Date.now();
     try {
       const res = await fetch("/api/timeclock/me", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setState(data.state ?? null);
+        if (data.schedule) setSchedule(data.schedule);
       }
     } catch {
       // Fail-open: if we can't reach the API, don't lock the user out of
@@ -103,14 +125,17 @@ export function ClockGate({
   }, []);
 
   useEffect(() => {
-    if (initialState === null) load();
-    // Re-check when the tab regains focus — if the midnight cron clocked
-    // them out while the tab was in the background, the overlay should
-    // reappear on the next focus.
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [load, initialState]);
+    if (loadedAt.current === 0) load();
+    const onBack = () => {
+      if (document.visibilityState === "visible" && Date.now() - loadedAt.current > REFRESH_EVERY_MS) load();
+    };
+    window.addEventListener("focus", onBack);
+    document.addEventListener("visibilitychange", onBack);
+    return () => {
+      window.removeEventListener("focus", onBack);
+      document.removeEventListener("visibilitychange", onBack);
+    };
+  }, [load]);
 
   // Returns an error message, or null on success. A 409 means our state
   // was stale (e.g. punched from another tab) — resync so the UI matches
@@ -174,7 +199,10 @@ export function ClockGate({
   const reasonReady = lateReason.trim().length >= 3;
 
   const locked = !loading && (state === null || state.status === "clocked_out");
-  const ctx = useMemo(() => ({ state, loading, punch }), [state, loading, punch]);
+  const ctx = useMemo(
+    () => ({ state, loading, punch, schedule, setSchedule }),
+    [state, loading, punch, schedule],
+  );
 
   return (
     <TimeClockContext.Provider value={ctx}>

@@ -70,11 +70,20 @@ export default async function UserProfile360Page({
 
   const [timeResult, scheduleRes, incidentsRes] = await Promise.all([
     hasTimeDataRole
-      ? getEmployeeDetail(
-          id,
-          days,
-          session.user,
-        )
+      ? getEmployeeDetail(id, days, session.user, {
+          // Already loaded above — trimmed to EMPLOYEE_COLUMNS so the payload
+          // matches what the helper's own read returns.
+          profile: {
+            id: profile.id,
+            email: profile.email,
+            name: profile.name,
+            role: profile.role,
+            office: profile.office,
+            department: profile.department,
+            is_active: profile.is_active,
+            created_at: profile.created_at,
+          },
+        })
       : Promise.resolve({ ok: false as const, status: 403, message: "No time-data role" }),
     hasTimeDataRole
       ? supabase

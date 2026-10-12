@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,13 +11,6 @@ import {
 import { fmtTime } from "@/components/shared/format";
 import { useTimeClock } from "./ClockGate";
 
-export interface ScheduleData {
-  scheduled: boolean;
-  end_of_day_iso: string | null;
-  extension_until_iso: string | null;
-  effective_end_iso: string | null;
-}
-
 const PROMPT_LEAD_MS = 5 * 60_000;
 const EXTENSION_OPTIONS = [15, 30, 60];
 const DISMISSED_KEY = "bbd-shift-prompt-dismissed";
@@ -27,8 +20,7 @@ const DISMISSED_KEY = "bbd-shift-prompt-dismissed";
 // The shadcn Dialog overlay already blurs + dims the entire viewport, so
 // there's no need for extra chrome here.
 export function ShiftEndPrompt() {
-  const { state } = useTimeClock();
-  const [schedule, setSchedule] = useState<ScheduleData | null>(null);
+  const { state, schedule, setSchedule } = useTimeClock();
   const [promptOpen, setPromptOpen] = useState(false);
   const [phase, setPhase] = useState<"ask" | "pick" | "custom">("ask");
   const [customMinutes, setCustomMinutes] = useState("");
@@ -37,21 +29,9 @@ export function ShiftEndPrompt() {
 
   const isClockedOut = !state || state.status === "clocked_out";
 
-  // Live state comes from <ClockGate>; only the schedule is fetched here.
-  // Refetch on clock-in/out (effective end can change) and on focus (an
-  // extension may have been granted from another tab).
-  const loadSchedule = useCallback(async () => {
-    const res = await fetch("/api/timeclock/schedule", { cache: "no-store" });
-    if (res.ok) setSchedule(await res.json());
-  }, []);
-
-  useEffect(() => {
-    loadSchedule().catch(() => {});
-    const onFocus = () => loadSchedule().catch(() => {});
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [loadSchedule, isClockedOut]);
-
+  // Live state and the schedule both come from <ClockGate>, which refreshes
+  // them when the tab comes back (an extension may have been granted from
+  // another tab).
   useEffect(() => {
     if (promptTimer.current) clearTimeout(promptTimer.current);
     promptTimer.current = null;
@@ -103,15 +83,13 @@ export function ShiftEndPrompt() {
         return;
       }
       const data = await res.json();
-      setSchedule((prev) =>
-        prev
-          ? {
-              ...prev,
-              extension_until_iso: data.effective_end_iso,
-              effective_end_iso: data.effective_end_iso,
-            }
-          : prev,
-      );
+      if (schedule) {
+        setSchedule({
+          ...schedule,
+          extension_until_iso: data.effective_end_iso,
+          effective_end_iso: data.effective_end_iso,
+        });
+      }
       sessionStorage.removeItem(DISMISSED_KEY);
       setPromptOpen(false);
       setPhase("ask");

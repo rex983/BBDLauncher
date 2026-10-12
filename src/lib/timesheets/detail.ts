@@ -201,19 +201,28 @@ export async function getEmployeeDetail(
   days: number,
   viewer: Pick<Session["user"], "role" | "department" | "office">,
   // YTD overtime reads a year of punches; only the timesheet page shows it.
-  { includeOvertime = false }: { includeOvertime?: boolean } = {},
+  // Callers that already loaded the target's EMPLOYEE_COLUMNS row pass it
+  // as `profile` to skip the re-read (one less sequential roundtrip).
+  {
+    includeOvertime = false,
+    profile,
+  }: { includeOvertime?: boolean; profile?: EmployeeDetailProfile } = {},
 ): Promise<EmployeeDetailResult> {
   const access = resolveTimeDataScope(viewer, "view");
   if (!access.ok) return access;
 
   const supabase = createAdminClient();
-  const { data: target, error: targetErr } = await supabase
-    .from("profiles")
-    .select(EMPLOYEE_COLUMNS)
-    .eq("id", profileId)
-    .single<EmployeeDetailProfile>();
-  if (targetErr || !target) {
-    return { ok: false, status: 404, message: "Not found" };
+  let target = profile ?? null;
+  if (!target) {
+    const { data, error: targetErr } = await supabase
+      .from("profiles")
+      .select(EMPLOYEE_COLUMNS)
+      .eq("id", profileId)
+      .single<EmployeeDetailProfile>();
+    if (targetErr || !data) {
+      return { ok: false, status: 404, message: "Not found" };
+    }
+    target = data;
   }
   if (!access.viewerIsAdmin && !isTargetInScope(access.scope, target)) {
     return { ok: false, status: 403, message: "Out of scope" };

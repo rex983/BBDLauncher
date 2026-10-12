@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { RefreshCw, Quote as QuoteIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getBrowserClient } from "@/lib/supabase/browser";
 import type { MotivationalQuote } from "@/types/quote";
 
 interface Props {
@@ -21,25 +20,33 @@ export function QuoteBanner({ initial, canRefresh }: Props) {
   // updates the moment an admin refreshes or the weekly cron fires — no
   // reload required.
   useEffect(() => {
-    const supabase = getBrowserClient();
-    const channel = supabase
-      .channel("launcher-motivational-quotes")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "launcher_motivational_quotes",
-          filter: "is_active=eq.true",
-        },
-        (payload) => {
-          setQuote(payload.new as MotivationalQuote);
-        }
-      )
-      .subscribe();
+    // Loaded after the page is up, not in the dashboard's first download.
+    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    import("@/lib/supabase/browser").then(({ getBrowserClient }) => {
+      if (cancelled) return;
+      const supabase = getBrowserClient();
+      const channel = supabase
+        .channel("launcher-motivational-quotes")
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "launcher_motivational_quotes",
+            filter: "is_active=eq.true",
+          },
+          (payload) => {
+            setQuote(payload.new as MotivationalQuote);
+          }
+        )
+        .subscribe();
+      cleanup = () => supabase.removeChannel(channel);
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      cleanup?.();
     };
   }, []);
 

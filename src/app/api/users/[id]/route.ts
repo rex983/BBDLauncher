@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
 import { USER_COLUMNS } from "@/app/api/_lib/users";
+import { revalidateSessionProfiles } from "@/lib/auth/session-profile";
 
 const updateSchema = z.object({
   name: z.string().nullable().optional(),
@@ -147,6 +148,7 @@ export async function PUT(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  revalidateSessionProfiles();
 
   return NextResponse.json(data);
 }
@@ -188,6 +190,7 @@ export async function DELETE(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  revalidateSessionProfiles();
 
   return NextResponse.json({ success: true });
 }

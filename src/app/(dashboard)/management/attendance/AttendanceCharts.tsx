@@ -24,20 +24,8 @@ import type {
   AttendanceReport,
   EmployeeAttendance,
 } from "@/lib/timesheets/attendance";
-import { fmtTime } from "@/components/shared/format";
-import { formatClockTime } from "@/lib/timesheets/schedule";
 import { cn } from "@/lib/utils";
-
-// Fixed status colours (readable on light and dark): the same status is
-// always the same colour on every chart and badge.
-export const STATUS_COLOR = {
-  on_time: "#16a34a",
-  late: "#f59e0b",
-  absent: "#dc2626",
-  not_in: "#dc2626",
-  time_off: "#3b82f6",
-  overtime: "#8b5cf6",
-} as const;
+import { DAY_GROUPS, STATUS_COLOR } from "./attendance-constants";
 
 const AXIS = { fontSize: 12, fill: "var(--muted-foreground)" };
 const TOOLTIP = {
@@ -50,28 +38,6 @@ const TOOLTIP = {
   },
   cursor: { fill: "var(--muted)", opacity: 0.5 },
 };
-
-export function ChartCard({
-  title,
-  sub,
-  className,
-  children,
-}: {
-  title: string;
-  sub?: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`rounded-lg border bg-card p-4 ${className ?? ""}`}>
-      <div className="mb-3">
-        <div className="text-sm font-semibold">{title}</div>
-        {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 function Empty() {
   return (
@@ -121,24 +87,6 @@ function WhoList({ people, counts }: { people: { profile_id: string; name: strin
       {more > 0 && <div>+{more} more</div>}
     </div>
   );
-}
-
-export const DAY_GROUPS: { status: AttendanceDayPerson["status"]; label: string }[] = [
-  { status: "late", label: "Late" },
-  { status: "not_in", label: "Not in yet" },
-  { status: "absent", label: "Didn't clock in" },
-  { status: "time_off", label: "Time off" },
-  { status: "on_time", label: "On time / early" },
-];
-
-export function arrivalNote(p: AttendanceDayPerson): string {
-  if (p.status === "not_in") return p.scheduled ? `shift started ${formatClockTime(p.scheduled)}` : "";
-  if (p.status === "absent") return p.scheduled ? `due ${formatClockTime(p.scheduled)}` : "";
-  if (p.status === "time_off") return "full day";
-  const time = p.at ? fmtTime(p.at) : "";
-  if (p.status === "late") return `${time} · ${p.minutes} min late`;
-  if (p.partial_off) return `${time} · partial day off`;
-  return p.minutes <= -1 ? `${time} · ${-p.minutes} min early` : `${time} · on time`;
 }
 
 export function ArrivalsDonut({

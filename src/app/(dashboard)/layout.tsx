@@ -7,9 +7,10 @@ import { ClockGate } from "@/components/features/timeclock/ClockGate";
 import { ShiftEndPrompt } from "@/components/features/timeclock/ShiftEndPrompt";
 import { Suspense } from "react";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { auth } from "@/auth";
-import { getMyStateToday } from "@/lib/timesheets/server";
+import { getMyScheduleToday, getMyStateToday } from "@/lib/timesheets/server";
 import { SIDEBAR_COOKIE, parseSidebarState } from "@/components/layout/sidebar-state";
 
 function SidebarSkeleton({ collapsed }: { collapsed: boolean }) {
@@ -31,19 +32,26 @@ export default async function DashboardLayout({
   // Hydrate the clock gate server-side so it paints the right state on the
   // first frame (no flash of the app before the clocked-out overlay).
   const session = await auth();
-  const [clock, cookieStore] = await Promise.all([
-    session?.user?.profileId
-      ? getMyStateToday(session.user.profileId).catch(() => null)
-      : null,
+  // Middleware only checks that a session cookie exists; auth() is what
+  // notices a deactivated or signed-out account.
+  if (!session?.user) redirect("/login");
+  const profileId = session?.user?.profileId;
+  const [clock, schedule, cookieStore] = await Promise.all([
+    profileId ? getMyStateToday(profileId).catch(() => null) : null,
+    profileId ? getMyScheduleToday(profileId).catch(() => null) : null,
     cookies(),
   ]);
   const sidebarState = parseSidebarState(cookieStore.get(SIDEBAR_COOKIE)?.value);
 
   return (
-    <SessionProvider>
+    // The server already has the session: hand it over instead of letting the
+    // client fetch /api/auth/session on mount and again on every tab focus
+    // (each one a profiles read, and the sidebar's admin sections popped in
+    // late while it loaded).
+    <SessionProvider session={session} refetchOnWindowFocus={false}>
       <Suspense>
         <RolePreviewProvider>
-          <ClockGate initialState={clock?.state ?? null}>
+          <ClockGate initialState={clock?.state ?? null} initialSchedule={schedule}>
             <div className="min-h-screen bg-background">
               <Header />
               <div className="flex">

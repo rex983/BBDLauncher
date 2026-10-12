@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 import { canAccessAdminPath } from "@/lib/auth/permissions";
 
 const publicPaths = [
@@ -89,20 +90,34 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Dynamically import auth to avoid blowing up if AUTH_SECRET is missing
   try {
-    const { auth } = await import("@/auth");
-    const session = await auth();
-
-    // Redirect unauthenticated users to login
-    if (!session?.user) {
+    // Most requests only need "is this a signed-in browser?", which the
+    // encrypted session cookie answers on its own. A full auth() also reads
+    // the profiles row (deactivated / signed out / role changed), and doing
+    // that here as well as in the page or API route cost a database round
+    // trip on every click. Pages and API routes still call auth(), which
+    // returns no session for deactivated or signed-out people.
+    const token = await getToken({
+      req,
+      secret: process.env.AUTH_SECRET,
+      // Same rule Auth.js uses to name the cookie: AUTH_URL's scheme, else
+      // the request's.
+      secureCookie: (process.env.AUTH_URL ?? req.url).startsWith("https:"),
+    });
+    if (!token) {
       const loginUrl = new URL("/login", req.url);
       loginUrl.searchParams.set("callbackUrl", sanitizeCallbackUrl(pathname));
       return NextResponse.redirect(loginUrl);
     }
 
-    // Admin routes — admins get all; managers get a curated subset.
+    // Admin routes — admins get all; managers get a curated subset. The
+    // per-path rule lives only here, so it gets the fresh role from auth().
     if (pathname.startsWith("/admin")) {
+      const { auth } = await import("@/auth");
+      const session = await auth();
+      if (!session?.user) {
+        return NextResponse.redirect(new URL("/login", req.url));
+      }
       if (!canAccessAdminPath(session.user.role, pathname)) {
         return NextResponse.redirect(new URL("/dashboard", req.url));
       }

@@ -5,7 +5,6 @@
 // src/lib/incidents/queries.ts.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { scopeProfilesQuery } from "@/lib/auth/scope-check";
 import type {
   TimeOffAttachment,
   TimeOffStatus,
@@ -52,28 +51,22 @@ export async function loadTimeoffQueue(
 ): Promise<TimeOffQueueRow[]> {
   const { supabase, scope, statuses = ["pending"] } = params;
 
-  const { data: profiles } = await scopeProfilesQuery(
-    supabase.from("profiles").select("id, email, name:full_name, office, department"),
-    scope,
-    { department: params.departmentOverride, office: params.officeOverride },
-  );
-  const profileIds = (profiles || []).map((p) => p.id);
-  if (profileIds.length === 0) return [];
-
-  const { data: requests } = await supabase
+  // Inner-join on profiles applies the scope (is_active, department,
+  // office) in the same roundtrip as the request read — same pattern as
+  // /api/management/timeoff/pending-count — instead of fetching scoped
+  // profile IDs first and then `.in("profile_id", ids)`.
+  const dept = scope.department ?? params.departmentOverride;
+  const off = scope.office ?? params.officeOverride;
+  let query = supabase
     .from("time_off_requests")
     .select(
-      "id, profile_id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_by, decided_at, created_at, attachments",
+      "id, profile_id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_by, decided_at, created_at, attachments, profile:profiles!profile_id!inner(id, email, name:full_name, office, department)",
     )
-    .in("profile_id", profileIds)
     .in("status", statuses)
-    .order("start_date", { ascending: true });
+    .eq("profile.is_active", true);
+  if (dept) query = query.eq("profile.department", dept);
+  if (off) query = query.eq("profile.office", off);
 
-  const profileMap = new Map<string, TimeOffProfileSlice>(
-    (profiles || []).map((p) => [p.id, p as TimeOffProfileSlice]),
-  );
-  return (requests || []).map((r) => ({
-    ...(r as Omit<TimeOffQueueRow, "profile">),
-    profile: profileMap.get(r.profile_id) || null,
-  }));
+  const { data: requests } = await query.order("start_date", { ascending: true });
+  return (requests || []) as unknown as TimeOffQueueRow[];
 }

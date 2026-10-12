@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Clock, Coffee, LogOut } from "lucide-react";
 import { fmtTime } from "@/components/shared/format";
 import { useTimeClock } from "./ClockGate";
-import type { ScheduleData } from "./ShiftEndPrompt";
 
 interface Props {
   children: React.ReactNode;
-  // Server-fetched so the "Scheduled until" label paints on the first frame.
-  initialSchedule?: ScheduleData | null;
 }
 
 // Dashboard status bar: current clock status + break / clock-out buttons.
@@ -18,33 +15,13 @@ interface Props {
 // clocked-out lock — so there's no second overlay here.
 // The T-5 min "keep working?" prompt lives in <ShiftEndPrompt>; ignoring
 // it lets /api/cron/auto-clockout fire clock_out at the scheduled time.
-export function TimeClockShell({ children, initialSchedule = null }: Props) {
-  const { state, loading, punch } = useTimeClock();
-  const [schedule, setSchedule] = useState<ScheduleData | null>(initialSchedule);
+export function TimeClockShell({ children }: Props) {
+  // Live state and today's schedule (for "Scheduled until") both come from
+  // <ClockGate>, hydrated server-side in the layout.
+  const { state, loading, punch, schedule } = useTimeClock();
   const [busy, setBusy] = useState(false);
 
   const status = state?.status ?? "clocked_out";
-
-  // A punch can change the effective end (e.g. clock_out silences it), so
-  // refetch the schedule whenever the status changes. Skip the first run
-  // when the server already hydrated it.
-  const skipFirst = useRef(initialSchedule !== null);
-  useEffect(() => {
-    if (skipFirst.current) {
-      skipFirst.current = false;
-      return;
-    }
-    let cancelled = false;
-    fetch("/api/timeclock/schedule")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((s) => {
-        if (!cancelled && s) setSchedule(s);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [status]);
 
   const doPunch = async (event_type: "clock_out" | "break_start" | "break_end") => {
     if (busy) return;

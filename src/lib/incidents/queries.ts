@@ -4,7 +4,6 @@
 // of a "Loading…" flash + client-side round-trip).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { scopeProfilesQuery } from "@/lib/auth/scope-check";
 import type {
   IncidentAttachment,
   IncidentCategory,
@@ -64,39 +63,29 @@ const DEFAULT_STATUSES = [
   "cancelled",
 ];
 
-// Runs the two queries incidents management needs (profiles-in-scope, then
-// incidents for those profiles), folds the profile map into each row, and
-// returns the enriched summary list. The profile scope drives which
-// incidents are visible, so the second query waits on the first.
+// Returns the enriched summary list in one roundtrip: an inner-join on
+// profiles applies the scope (is_active, department, office) and embeds
+// the employee slice — same pattern as
+// /api/management/incidents/pending-count — instead of fetching scoped
+// profile IDs first and then `.in("employee_profile_id", ids)`.
 export async function listScopedIncidentSummaries(
   params: ListParams,
 ): Promise<IncidentSummary[]> {
   const { supabase, scope, statuses = DEFAULT_STATUSES } = params;
 
-  const { data: profiles } = await scopeProfilesQuery(
-    supabase.from("profiles").select("id, email, name:full_name, office, department"),
-    scope,
-    { department: params.departmentOverride, office: params.officeOverride },
-  );
-  const profileIds = (profiles || [])
-    .map((p) => p.id)
-    .filter((pid) => pid !== params.excludeProfileId);
-  if (profileIds.length === 0) return [];
-
-  const { data: reports } = await supabase
+  const dept = scope.department ?? params.departmentOverride;
+  const off = scope.office ?? params.officeOverride;
+  let query = supabase
     .from("incident_reports")
     .select(
-      "id, number, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, attachments, manager_signed_at, employee_signed_at, cancelled_at, created_at, updated_at",
+      "id, number, employee_profile_id, reporter_profile_id, title, severity, category, status, occurred_at, attachments, manager_signed_at, employee_signed_at, cancelled_at, created_at, updated_at, employee:profiles!employee_profile_id!inner(id, email, name:full_name, office, department)",
     )
-    .in("employee_profile_id", profileIds)
     .in("status", statuses)
-    .order("created_at", { ascending: false });
+    .eq("employee.is_active", true);
+  if (dept) query = query.eq("employee.department", dept);
+  if (off) query = query.eq("employee.office", off);
+  if (params.excludeProfileId) query = query.neq("employee_profile_id", params.excludeProfileId);
 
-  const profileMap = new Map<string, IncidentEmployeeSlice>(
-    (profiles || []).map((p) => [p.id, p as IncidentEmployeeSlice]),
-  );
-  return (reports || []).map((r) => ({
-    ...(r as Omit<IncidentSummary, "employee">),
-    employee: profileMap.get(r.employee_profile_id) || null,
-  }));
+  const { data: reports } = await query.order("created_at", { ascending: false });
+  return (reports || []) as unknown as IncidentSummary[];
 }

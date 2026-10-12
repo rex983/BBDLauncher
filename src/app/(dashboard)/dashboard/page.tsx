@@ -8,7 +8,6 @@ import { allowedAppIds, personalGrants } from "@/lib/launcher/access";
 import { QuoteBanner } from "@/components/features/launcher/quote-banner";
 import { TimeClockShell } from "@/components/features/timeclock/TimeClockShell";
 import { canManageContent, isAdmin as isAdminRole } from "@/lib/auth/permissions";
-import { getMyScheduleToday } from "@/lib/timesheets/server";
 import {
   getCachedApps,
   getCachedRoleAppAccess,
@@ -17,25 +16,35 @@ import {
   getCachedLinks,
   getCachedRoles,
   getCachedActiveQuote,
+  LAUNCHER_TAGS,
 } from "@/lib/launcher/cache";
+import { unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
 import type { LauncherApp, LauncherSection } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
 import type { MotivationalQuote } from "@/types/quote";
 import type { Office } from "@/types/auth";
 
-// Everyone an admin can preview the launcher as.
-async function loadPreviewUsers(): Promise<PreviewUser[]> {
-  const [roles, { data }] = await Promise.all([
-    getCachedRoles(),
-    createAdminClient()
+// Active people for View as. Nothing busts this — a new or offboarded
+// person shows up (or drops off) within a minute.
+const getCachedPreviewProfiles = unstable_cache(
+  async () => {
+    const { data } = await createAdminClient()
       .from("profiles")
       .select("id, full_name, email, role, office, department, can_offboard")
       .eq("is_active", true)
-      .order("full_name"),
-  ]);
+      .order("full_name");
+    return data ?? [];
+  },
+  ["launcher-preview-users"],
+  { tags: [LAUNCHER_TAGS.previewUsers], revalidate: 60 },
+);
+
+// Everyone an admin can preview the launcher as.
+async function loadPreviewUsers(): Promise<PreviewUser[]> {
+  const [roles, data] = await Promise.all([getCachedRoles(), getCachedPreviewProfiles()]);
   const label = new Map(roles.map((r) => [r.name, r.display_name]));
-  return (data ?? []).map((p) => ({
+  return data.map((p) => ({
     id: p.id,
     name: p.full_name || p.email,
     role: p.role,
@@ -64,15 +73,10 @@ export default async function DashboardPage({
   let links: ImportantLink[] = [];
   let previewUsers: PreviewUser[] = [];
   let quote: MotivationalQuote | null = null;
-  // Server-fetch today's schedule so TimeClockShell's "Scheduled until"
-  // label paints on the first frame. Live clock state comes from
-  // <ClockGate> in the layout.
-  // Started now, awaited below, so it overlaps the cached launcher reads.
-  const schedulePromise = getMyScheduleToday(session.user.profileId).catch(() => null);
   try {
     // Everything below is cached (see src/lib/launcher/cache.ts). On a
-    // cache hit this whole block is zero Supabase round-trips, apart from
-    // the people list admins get for View as.
+    // cache hit this whole block is zero Supabase round-trips (the View as
+    // people list is cached for a minute).
     const [allApps, accessRows, userAccessRows, sectionsData, linksData, people, quoteData] =
       await Promise.all([
         getCachedApps(),
@@ -122,8 +126,6 @@ export default async function DashboardPage({
     console.error("Dashboard data fetch error:", err);
   }
 
-  const initialSchedule = await schedulePromise;
-
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -147,7 +149,7 @@ export default async function DashboardPage({
       )}
       {/* Preview banner is rendered globally in (dashboard)/layout.tsx so
           it stays visible on every route while a preview is active. */}
-      <TimeClockShell initialSchedule={initialSchedule}>
+      <TimeClockShell>
         <SectionedAppGrid apps={apps} sections={sections} isAdmin={canEditDashboard} />
         {links.length > 0 && (
           <>

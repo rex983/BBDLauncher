@@ -4,7 +4,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { taggedFor } from "./retired-mail";
+import { activeTaggedProfiles } from "./retired-mail";
 import { MAILBOXES, RETIRED_MAILBOX, shortMailbox } from "./mailboxes";
 import { AI_FALLBACK_PREFIX, aiEnabled } from "./mail-filter";
 
@@ -57,7 +57,7 @@ function ago(iso: string, now: number): string {
 export async function loadRetiredMailHealth(now = Date.now()): Promise<RetiredMailHealth> {
   const supabase = createAdminClient();
   const weekAgo = new Date(now - 7 * 86_400_000).toISOString();
-  const [{ data: beats }, { data: failures }, { count: aiMisses }, tagged] = await Promise.all([
+  const [{ data: beats }, { data: failures }, { count: aiMisses }] = await Promise.all([
     supabase.from("mail_monitor_mailboxes").select("*"),
     supabase
       .from("retired_mail_log")
@@ -72,8 +72,15 @@ export async function loadRetiredMailHealth(now = Date.now()): Promise<RetiredMa
       .select("id", { count: "exact", head: true })
       .like("reason", `${AI_FALLBACK_PREFIX}%`)
       .gte("received_at", weekAgo),
-    Promise.all(MAILBOXES.map((m) => taggedFor(m.address))),
   ]);
+  // Tagged people for every mailbox in one read, from the rows above.
+  const people = await activeTaggedProfiles(
+    (beats ?? []).flatMap((b) => (b.tag_profile_ids as string[] | null) ?? []),
+  );
+  const tagged = MAILBOXES.map((box) => {
+    const ids = new Set<string>(beats?.find((b) => b.mailbox === box.address)?.tag_profile_ids ?? []);
+    return people.filter((p) => ids.has(p.id)).map(({ email, name }) => ({ email, name }));
+  });
 
   const checks: HealthCheck[] = [];
   const mailboxes: MailboxHealth[] = [];

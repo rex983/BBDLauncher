@@ -5,8 +5,9 @@ import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OFFICES } from "@/lib/org/constants";
-import { ACCESS_OFFICES, cellsFromRows, officesWithAccess, rowsFromCells } from "@/lib/launcher/access";
-import { setUserIds, userIdsByTarget } from "@/lib/launcher/user-access";
+import { ACCESS_OFFICES, rowsFromCells } from "@/lib/launcher/access";
+import { loadAdminApps } from "@/lib/launcher/admin-apps";
+import { setUserIds } from "@/lib/launcher/user-access";
 import { httpUrl, ssoConfigSchema } from "@/lib/launcher/app-schema";
 
 const appSchema = z.object({
@@ -52,50 +53,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ audit: auditData || [] });
     }
 
-    const { data: apps, error: appsError } = await supabase
-      .from("launcher_apps")
-      .select("*")
-      .order("display_order", { ascending: true });
-
-    if (appsError) {
-      return NextResponse.json({ error: appsError.message }, { status: 500 });
-    }
-
-    const appIds = (apps || []).map((a) => a.id);
-
-    const usersPromise = userIdsByTarget("app_id", appIds);
     // Sign-on settings (including OAuth client secrets) are admin-only.
-    const viewerIsAdmin = isAdmin(session.user.role);
-    const [accessRes, ssoRes] = appIds.length
-      ? await Promise.all([
-          supabase
-            .from("launcher_role_app_access")
-            .select("*")
-            .in("app_id", appIds),
-          viewerIsAdmin
-            ? supabase.from("launcher_sso_configs").select("*").in("app_id", appIds)
-            : Promise.resolve({ data: [] as { app_id: string }[] }),
-        ])
-      : [{ data: [] as { app_id: string; role_name: string }[] }, { data: [] as { app_id: string }[] }];
-    const usersByAppId = await usersPromise;
-
-    const rowsByAppId = new Map<string, Array<{ role_name: string; office: string | null }>>();
-    for (const a of (accessRes.data || []) as Array<{ app_id: string; role_name: string; office?: string | null }>) {
-      const list = rowsByAppId.get(a.app_id) ?? [];
-      list.push({ role_name: a.role_name, office: a.office ?? null });
-      rowsByAppId.set(a.app_id, list);
+    const { data: appsWithAccess, error: appsError } = await loadAdminApps(
+      isAdmin(session.user.role),
+    );
+    if (appsError) {
+      return NextResponse.json({ error: appsError }, { status: 500 });
     }
-    const ssoByAppId = new Map<string, unknown>();
-    for (const c of ssoRes.data || []) ssoByAppId.set(c.app_id, c);
-
-    const appsWithAccess = (apps || []).map((app) => ({
-      ...app,
-      roles: [...new Set((rowsByAppId.get(app.id) || []).map((r) => r.role_name))],
-      access: cellsFromRows(rowsByAppId.get(app.id) || []),
-      access_offices: officesWithAccess(rowsByAppId.get(app.id) || []),
-      user_ids: usersByAppId.get(app.id) || [],
-      sso_config: ssoByAppId.get(app.id) || null,
-    }));
 
     return NextResponse.json(appsWithAccess);
   } catch (err) {

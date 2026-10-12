@@ -20,9 +20,8 @@ export default async function AttendancePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await auth();
+  const [session, sp] = await Promise.all([auth(), searchParams]);
   if (!session?.user) redirect("/login");
-  const sp = await searchParams;
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : null);
 
   // Admin "View as": show the team that person would see.

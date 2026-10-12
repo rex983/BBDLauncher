@@ -40,8 +40,8 @@ export async function getMyStateToday(profileId: string): Promise<{
 }
 
 // Today's schedule + effective end-of-day (for the T-5 prompt and the
-// auto-clockout cron). Served by /api/timeclock/schedule and used directly
-// by /dashboard to hydrate TimeClockShell without a client round-trip.
+// auto-clockout cron). Loaded by the (dashboard) layout to hydrate
+// <ClockGate>, and refreshed through /api/timeclock/me.
 export async function getMyScheduleToday(
   profileId: string,
 ): Promise<TodayScheduleData> {

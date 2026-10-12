@@ -12,7 +12,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getBrowserClient } from "@/lib/supabase/browser";
 import { fmtRelative } from "@/components/shared/format";
 
 interface Notification {
@@ -63,25 +62,35 @@ export function NotificationsBell() {
   useEffect(() => {
     if (sessionStatus !== "authenticated" || !session?.user?.profileId) return;
     fetchCount();
-    const supabase = getBrowserClient();
-    const channel = supabase
-      .channel(`notifications-${session.user.profileId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${session.user.profileId}`,
-        },
-        () => {
-          fetchCount();
-          if (openRef.current) fetchList();
-        },
-      )
-      .subscribe();
+    const profileId = session.user.profileId;
+    // supabase-js (with realtime) loads after the page is up instead of
+    // riding in every page's first download.
+    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    import("@/lib/supabase/browser").then(({ getBrowserClient }) => {
+      if (cancelled) return;
+      const supabase = getBrowserClient();
+      const channel = supabase
+        .channel(`notifications-${profileId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${profileId}`,
+          },
+          () => {
+            fetchCount();
+            if (openRef.current) fetchList();
+          },
+        )
+        .subscribe();
+      cleanup = () => supabase.removeChannel(channel);
+    });
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      cleanup?.();
     };
   }, [session?.user?.profileId, sessionStatus, fetchCount, fetchList]);
 

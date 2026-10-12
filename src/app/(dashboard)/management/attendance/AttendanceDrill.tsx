@@ -18,7 +18,7 @@ import type {
   AttendanceEventKind,
   AttendanceReport,
 } from "@/lib/timesheets/attendance";
-import { DAY_GROUPS, STATUS_COLOR, arrivalNote } from "./AttendanceCharts";
+import { DAY_GROUPS, STATUS_COLOR, arrivalNote } from "./attendance-constants";
 
 export const KIND: Record<AttendanceEventKind, { label: string; color: string }> = {
   late: { label: "Late", color: STATUS_COLOR.late },

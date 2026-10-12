@@ -86,21 +86,26 @@ async function findEmployee(candidates: string[]): Promise<Employee | null> {
 // The people an admin picked for this mailbox on /admin/email-monitor,
 // still active.
 export async function taggedFor(mailbox: string) {
-  const supabase = createAdminClient();
-  const { data: box } = await supabase
+  const { data: box } = await createAdminClient()
     .from("mail_monitor_mailboxes")
     .select("tag_profile_ids")
     .eq("mailbox", mailbox)
     .maybeSingle();
   const ids: string[] = box?.tag_profile_ids ?? [];
+  return (await activeTaggedProfiles(ids)).map(({ email, name }) => ({ email, name }));
+}
+
+// Active profiles among these ids, ordered by name — one read for any number
+// of mailboxes (the health page passes every mailbox's ids at once).
+export async function activeTaggedProfiles(ids: string[]) {
   if (!ids.length) return [];
-  const { data } = await supabase
+  const { data } = await createAdminClient()
     .from("profiles")
-    .select("email, name:full_name")
-    .in("id", ids)
+    .select("id, email, name:full_name")
+    .in("id", [...new Set(ids)])
     .eq("is_active", true)
     .order("full_name");
-  return (data ?? []) as { email: string; name: string | null }[];
+  return (data ?? []) as { id: string; email: string; name: string | null }[];
 }
 
 // An admin's "always alert" / "never alert" rule for this sender's address

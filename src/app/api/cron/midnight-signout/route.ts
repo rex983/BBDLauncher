@@ -4,6 +4,7 @@ import { localDateInZone, scheduledTimeInZone } from "@/lib/timesheets/tz";
 import { NextResponse } from "next/server";
 import { cronRoute } from "@/lib/cron";
 import { fetchAllPages } from "@/app/api/_lib/paged";
+import { revalidateSessionProfiles } from "@/lib/auth/session-profile";
 
 export const maxDuration = 60;
 
@@ -103,6 +104,7 @@ async function handle() {
   if (bumpErr) {
     return NextResponse.json({ error: bumpErr.message }, { status: 500 });
   }
+  revalidateSessionProfiles();
 
   return NextResponse.json({
     ok: true,

@@ -7,7 +7,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { scopeProfilesQuery } from "@/lib/auth/scope-check";
 import { computeState, type TimePunch, type LiveState } from "@/lib/timesheets/state";
 import { computeWeeklyHours } from "@/lib/timesheets/weekly";
-import { fetchPunchesPaged } from "@/lib/timesheets/punches";
 import { startOfDayInZone, startOfWeekSundayInZone } from "@/lib/timesheets/tz";
 import type { Department, Office } from "@/types/auth";
 
@@ -39,10 +38,59 @@ export interface TodayParams {
   now?: Date;
 }
 
-// Two DB reads: profiles-in-scope, then time_punches-for-those-profiles.
-// Can't collapse to one query cleanly — the second filter depends on the
-// first's output — but keeping it in a helper means the two callers
-// (server page + API) each pay one function call, not two ad-hoc reads.
+const PUNCH_PAGE_SIZE = 1000;
+
+// Same paging as fetchPunchesPaged (see src/lib/timesheets/punches.ts —
+// PostgREST caps rows, so page on a stable (occurred_at, id) order), but
+// scoped through an inner-join on profiles instead of `.in("profile_id",
+// ids)`, so it doesn't have to wait on the profiles read.
+async function fetchScopedPunchesPaged(
+  supabase: SupabaseClient,
+  dept: string | null | undefined,
+  off: string | null | undefined,
+  fromISO: string,
+): Promise<TimePunch[]> {
+  const page = (from: number) => {
+    let q = supabase
+      .from("time_punches")
+      .select("id, profile_id, event_type, occurred_at, source, note, profile:profiles!profile_id!inner(id)")
+      .gte("occurred_at", fromISO)
+      .eq("profile.is_active", true);
+    if (dept) q = q.eq("profile.department", dept);
+    if (off) q = q.eq("profile.office", off);
+    return q
+      .order("occurred_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + PUNCH_PAGE_SIZE - 1);
+  };
+
+  const out: TimePunch[] = [];
+  // First page alone (the common single-page case), then small batches.
+  for (let next = 0, batch = 1; ; batch = 4) {
+    const offsets = Array.from({ length: batch }, (_, i) => next + i * PUNCH_PAGE_SIZE);
+    next += batch * PUNCH_PAGE_SIZE;
+    for (const res of await Promise.all(offsets.map(page))) {
+      if (res.error) return [];
+      const rows = res.data || [];
+      // Drop the join-only `profile` embed so rows match fetchPunchesPaged's.
+      for (const r of rows) {
+        out.push({
+          id: r.id,
+          profile_id: r.profile_id,
+          event_type: r.event_type,
+          occurred_at: r.occurred_at,
+          source: r.source,
+          note: r.note,
+        } as TimePunch);
+      }
+      if (rows.length < PUNCH_PAGE_SIZE) return out;
+    }
+  }
+}
+
+// Profiles-in-scope and time_punches-for-those-profiles run in parallel:
+// the punch read applies the same scope via an inner-join on profiles
+// rather than waiting for the profile IDs.
 export async function loadTimesheetsToday(
   params: TodayParams,
 ): Promise<TimesheetTodayRow[]> {
@@ -51,19 +99,20 @@ export async function loadTimesheetsToday(
   const startOfDay = startOfDayInZone(now);
   const weekStart = startOfWeekSundayInZone(now);
 
-  const { data: profiles } = await scopeProfilesQuery(
-    supabase.from("profiles").select("id, email, name:full_name, role, office, department"),
-    scope,
-    { department: params.departmentOverride, office: params.officeOverride },
-  ).order("email");
-  const profileIds = (profiles || []).map((p) => p.id);
-  if (profileIds.length === 0) return [];
-
-  const { data: punches } = await fetchPunchesPaged(
-    supabase,
-    profileIds,
-    weekStart.toISOString(),
-  );
+  const [{ data: profiles }, punches] = await Promise.all([
+    scopeProfilesQuery(
+      supabase.from("profiles").select("id, email, name:full_name, role, office, department"),
+      scope,
+      { department: params.departmentOverride, office: params.officeOverride },
+    ).order("email"),
+    fetchScopedPunchesPaged(
+      supabase,
+      scope.department ?? params.departmentOverride,
+      scope.office ?? params.officeOverride,
+      weekStart.toISOString(),
+    ),
+  ]);
+  if ((profiles || []).length === 0) return [];
 
   const punchesByProfile = new Map<string, TimePunch[]>();
   for (const p of punches) {

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,16 +36,7 @@ import type {
   AttendanceReport,
   EmployeeAttendance,
 } from "@/lib/timesheets/attendance";
-import {
-  ArrivalTimesChart,
-  ArrivalsDonut,
-  ChartCard,
-  DailyArrivalsChart,
-  arrivalNote,
-  LeaderChart,
-  STATUS_COLOR,
-  WeekdayChart,
-} from "./AttendanceCharts";
+import { STATUS_COLOR, arrivalNote } from "./attendance-constants";
 import {
   AttendanceDrill,
   KIND,
@@ -58,6 +50,34 @@ import {
   rowsForWeekday,
   type DrillView,
 } from "./AttendanceDrill";
+
+// Recharts is heavy and the charts are client-only anyway, so they load
+// after first paint behind a fixed-height placeholder; the stat cards and
+// tables render straight away.
+const ArrivalsDonut = dynamic(() => import("./AttendanceCharts").then((m) => m.ArrivalsDonut), {
+  ssr: false,
+  loading: () => <ChartLoading />,
+});
+const DailyArrivalsChart = dynamic(() => import("./AttendanceCharts").then((m) => m.DailyArrivalsChart), {
+  ssr: false,
+  loading: () => <ChartLoading />,
+});
+const ArrivalTimesChart = dynamic(() => import("./AttendanceCharts").then((m) => m.ArrivalTimesChart), {
+  ssr: false,
+  loading: () => <ChartLoading />,
+});
+const WeekdayChart = dynamic(() => import("./AttendanceCharts").then((m) => m.WeekdayChart), {
+  ssr: false,
+  loading: () => <ChartLoading />,
+});
+const LeaderChart = dynamic(() => import("./AttendanceCharts").then((m) => m.LeaderChart), {
+  ssr: false,
+  loading: () => <ChartLoading />,
+});
+
+function ChartLoading() {
+  return <div className="h-64 animate-pulse rounded-md bg-muted/40" />;
+}
 
 const ALL = "__all__";
 const PAGE = 50;
@@ -587,6 +607,28 @@ const STATUS_TITLE: Record<AttendanceDayPerson["status"], string> = {
   time_off: "Time off",
   not_in: "Not in yet",
 };
+
+function ChartCard({
+  title,
+  sub,
+  className,
+  children,
+}: {
+  title: string;
+  sub?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`rounded-lg border bg-card p-4 ${className ?? ""}`}>
+      <div className="mb-3">
+        <div className="text-sm font-semibold">{title}</div>
+        {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
 
 function ClickCard({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (

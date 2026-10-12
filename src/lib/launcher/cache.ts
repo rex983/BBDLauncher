@@ -25,6 +25,8 @@ export const LAUNCHER_TAGS = {
   links: "launcher-links",
   roles: "launcher-roles",
   activeQuote: "launcher-active-quote",
+  // Not busted by any route — the View as people list lags up to a minute.
+  previewUsers: "launcher-preview-users",
 } as const;
 
 interface RoleAccessRow {
@@ -105,16 +107,24 @@ export const getCachedLinks = unstable_cache(
   { tags: [LAUNCHER_TAGS.links], revalidate: REVALIDATE_SECONDS },
 );
 
+export interface CachedRole {
+  name: string;
+  display_name: string;
+  description: string | null;
+  is_admin: boolean;
+}
+
 export const getCachedRoles = unstable_cache(
-  async (): Promise<{ name: string; display_name: string }[]> => {
+  async (): Promise<CachedRole[]> => {
     const supabase = createAdminClient();
     const { data } = await supabase
       .from("launcher_roles")
-      .select("name, display_name")
+      .select("name, display_name, description, is_admin")
       .order("name");
-    return (data || []) as { name: string; display_name: string }[];
+    return (data || []) as CachedRole[];
   },
-  ["launcher-roles"],
+  // v2: description + is_admin added for the /admin/roles server render.
+  ["launcher-roles-v2"],
   { tags: [LAUNCHER_TAGS.roles], revalidate: REVALIDATE_SECONDS },
 );
 

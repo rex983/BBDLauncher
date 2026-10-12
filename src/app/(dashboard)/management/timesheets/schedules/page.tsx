@@ -38,22 +38,27 @@ export default async function SchedulesPage() {
 
   const supabase = createAdminClient();
 
-  const { data: profiles } = await scopeProfilesQuery(
-    supabase.from("profiles").select("id, email, name:full_name, office"),
+  // Schedules ride along as an embed on the roster read — one roundtrip
+  // instead of profiles first, then `.in("profile_id", ids)`.
+  const { data: rows } = await scopeProfilesQuery(
+    supabase
+      .from("profiles")
+      .select(
+        "id, email, name:full_name, office, work_schedules(profile_id, weekday, start_time, end_time, timezone)",
+      ),
     scope,
   ).order("email");
-  const profileIds = (profiles || []).map((p) => p.id);
-  const schedulesRes = profileIds.length
-    ? await supabase
-        .from("work_schedules")
-        .select("profile_id, weekday, start_time, end_time, timezone")
-        .in("profile_id", profileIds)
-    : { data: [] as Schedule[] };
+  const profiles: Profile[] = [];
+  const schedules: Schedule[] = [];
+  for (const { work_schedules, ...profile } of rows || []) {
+    profiles.push(profile as Profile);
+    schedules.push(...((work_schedules || []) as Schedule[]));
+  }
 
   return (
     <SchedulesShell
-      initialProfiles={(profiles || []) as Profile[]}
-      initialSchedules={(schedulesRes.data || []) as Schedule[]}
+      initialProfiles={profiles}
+      initialSchedules={schedules}
     />
   );
 }
