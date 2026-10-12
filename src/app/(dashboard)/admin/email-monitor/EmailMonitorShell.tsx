@@ -149,7 +149,7 @@ export default function EmailMonitorShell({
                 <div className="text-xs text-muted-foreground">
                   {b.lastCheckAt ? `Checked ${fmtRelative(b.lastCheckAt, fmtWhen)}` : "Script not set up yet"}
                   {" · "}
-                  {mailboxInfo(b.address)?.filtered ? "junk filtered out" : "every email alerts"}
+                  {mailboxInfo(b.address)?.filtered ? "junk filtered out" : "every email alerts except managers'"}
                   {" · tags "}
                   <span className="text-foreground">{b.tagged.length ? b.tagged.map(nameOf).join(", ") : "nobody"}</span>
                 </div>
@@ -318,7 +318,7 @@ function HowItWorks() {
           Launcher/Junk in Gmail); anything that looks like a person writing alerts. Sender rules always win.
         </li>
         <li>
-          <b>orders@</b>: every email alerts, no filter.
+          <b>orders@</b>: every email alerts except mail sent by a manager or admin (they already know about it).
         </li>
         <li>
           <b>Slack</b>: bbd-bot posts in #bot-notifications and tags the people picked for that mailbox.

@@ -2,7 +2,7 @@
 // the admin page uses it too.
 //
 //   retiredemployees@  mail for offboarded staff. Spam-filtered.
-//   orders@            every email alerts.
+//   orders@            every email alerts, except mail from managers.
 // Each tags whoever an admin picked for it on /admin/email-monitor.
 
 export const RETIRED_MAILBOX = "retiredemployees@bigbuildingsdirect.com";

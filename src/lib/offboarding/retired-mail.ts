@@ -4,7 +4,7 @@
 //   retiredemployees@  mail for offboarded staff: screen out junk
 //                      (mail-filter.ts), work out which ex-employee it was
 //                      for.
-//   orders@            every email alerts.
+//   orders@            every email alerts, except mail from managers.
 // Each mailbox tags the people an admin picked for it.
 // Admins monitor all of it at /admin/email-monitor.
 //
@@ -19,6 +19,8 @@ import { slackEscape } from "@/lib/slack/escape";
 import { classifyMail, INTERNAL_REASON, senderAddress, type MailVerdict } from "./mail-filter";
 import { slackName } from "./notify";
 import { RETIRED_MAILBOX, shortMailbox } from "./mailboxes";
+import { MANAGER_TIER_ROLES } from "@/lib/auth/permissions";
+import type { UserRole } from "@/types/auth";
 
 export const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
 export { RETIRED_MAILBOX };
@@ -207,6 +209,23 @@ async function postMailboxAlert(token: string, mail: AlertInput) {
   return { ok: res.ok, error: res.error };
 }
 
+// Managers already know what they sent, so their mail to a shared mailbox
+// (orders@) is logged without a Slack alert.
+export const MANAGER_REASON = "sent by a manager";
+
+async function sentByManager(from: string): Promise<boolean> {
+  const email = senderAddress(from);
+  if (!email.endsWith("@bigbuildingsdirect.com")) return false;
+  const { data } = await createAdminClient()
+    .from("profiles")
+    .select("role")
+    .eq("email", email)
+    .eq("is_active", true)
+    .maybeSingle();
+  const role = data?.role as UserRole | undefined;
+  return role === "admin" || (!!role && MANAGER_TIER_ROLES.has(role));
+}
+
 export async function handleRetiredMail(mail: RetiredMail): Promise<{
   posted: boolean;
   junk: boolean;
@@ -234,15 +253,21 @@ export async function handleRetiredMail(mail: RetiredMail): Promise<{
     };
   }
 
-  // Shared mailboxes (orders@) alert on every email: no spam filter and no
-  // ex-employee to look up.
+  // Shared mailboxes (orders@) alert on every email except a manager's: no
+  // spam filter and no ex-employee to look up.
   const [employee, verdict] = retired
     ? await Promise.all([
         findEmployee(recipients),
         senderRule(mail.from).then((rule) => rule ?? classifyMail({ ...mail, recipients })),
       ])
-    : [null, { junk: false, reason: `every ${shortMailbox(mail.mailbox)} email alerts`, by: "rules" } satisfies MailVerdict];
-  const internal = verdict.reason === INTERNAL_REASON;
+    : [
+        null,
+        (await sentByManager(mail.from))
+          ? ({ junk: true, reason: MANAGER_REASON, by: "rules" } satisfies MailVerdict)
+          : ({ junk: false, reason: `every ${shortMailbox(mail.mailbox)} email alerts`, by: "rules" } satisfies MailVerdict),
+      ];
+  // Staff and manager mail isn't junk, it just doesn't need an alert.
+  const internal = verdict.reason === INTERNAL_REASON || verdict.reason === MANAGER_REASON;
 
   // Only the verdict and Slack outcome are kept (dedupe, health, weekly
   // counts). The email itself stays in Gmail; the launcher doesn't archive it.
