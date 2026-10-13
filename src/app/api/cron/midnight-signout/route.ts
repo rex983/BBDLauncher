@@ -106,10 +106,25 @@ async function handle() {
   }
   revalidateSessionProfiles();
 
+  // Step 3: purge spent SSO replay-guard rows (migration 045). Best-effort:
+  // a failure here (or the table not existing yet) must not fail the
+  // sign-out run above.
+  let jtiPurged: number | null = null;
+  const { count: purged, error: purgeErr } = await supabase
+    .from("sso_consumed_jti")
+    .delete({ count: "exact" })
+    .lt("expires_at", now.toISOString());
+  if (purgeErr) {
+    console.warn("sso_consumed_jti purge skipped:", purgeErr.message);
+  } else {
+    jtiPurged = purged ?? 0;
+  }
+
   return NextResponse.json({
     ok: true,
     clocked_out: clockedOut,
     sessions_invalidated: bumped ?? 0,
+    sso_jti_purged: jtiPurged,
     ran_at: now.toISOString(),
   });
 }
