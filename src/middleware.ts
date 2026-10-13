@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { canAccessAdminPath } from "@/lib/auth/permissions";
+import type { UserRole } from "@/types/auth";
 
 const publicPaths = [
   "/login",
@@ -110,15 +111,15 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Admin routes — admins get all; managers get a curated subset. The
-    // per-path rule lives only here, so it gets the fresh role from auth().
+    // Admin routes — admins get all; managers get a curated subset. This is
+    // a cheap first gate on the role carried in the session cookie (no
+    // database read). It is not the authoritative check: the role in the
+    // cookie can lag a demotion until the session is rewritten, so
+    // admin/layout.tsx (canManageContent), the admin-only pages and layouts
+    // (isAdmin), and every API route behind them re-check with auth().
     if (pathname.startsWith("/admin")) {
-      const { auth } = await import("@/auth");
-      const session = await auth();
-      if (!session?.user) {
-        return NextResponse.redirect(new URL("/login", req.url));
-      }
-      if (!canAccessAdminPath(session.user.role, pathname)) {
+      const role = token.role as UserRole | undefined;
+      if (!canAccessAdminPath(role, pathname)) {
         return NextResponse.redirect(new URL("/dashboard", req.url));
       }
     }
