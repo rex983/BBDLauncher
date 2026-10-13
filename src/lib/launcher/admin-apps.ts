@@ -7,6 +7,9 @@ import { cellsFromRows, officesWithAccess } from "@/lib/launcher/access";
 import { getCachedRoleAppAccess, getCachedUserAccess } from "@/lib/launcher/cache";
 import type { AppWithAccess } from "@/types/app";
 
+const SSO_CONFIG_COLUMNS =
+  "id, app_id, sp_entity_id, acs_url, slo_url, sp_cert, name_id_format, attribute_mapping, jwt_acs_url, jwt_audience, created_at, updated_at";
+
 export async function loadAdminApps(
   viewerIsAdmin: boolean,
 ): Promise<{ data: AppWithAccess[]; error: string | null }> {
@@ -14,13 +17,14 @@ export async function loadAdminApps(
 
   // One stage: the access grid and people come from the launcher cache (app
   // CRUD busts both), and SSO configs don't need the app ids up front.
-  // Sign-on settings (including OAuth client secrets) are admin-only.
+  // Sign-on settings are admin-only. Columns are listed explicitly so
+  // retired fields (the old OAuth client secret) never reach the browser.
   const [appsRes, accessRows, userAccessRows, ssoRes] = await Promise.all([
     supabase.from("launcher_apps").select("*").order("display_order", { ascending: true }),
     getCachedRoleAppAccess(),
     getCachedUserAccess(),
     viewerIsAdmin
-      ? supabase.from("launcher_sso_configs").select("*")
+      ? supabase.from("launcher_sso_configs").select(SSO_CONFIG_COLUMNS)
       : Promise.resolve({ data: [] as { app_id: string }[] }),
   ]);
   if (appsRes.error) return { data: [], error: appsRes.error.message };

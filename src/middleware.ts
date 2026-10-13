@@ -20,13 +20,12 @@ const publicPaths = [
 // Paths where cross-origin POST is legitimate and expected. The Origin
 // check below refuses cross-origin state-changing requests everywhere else.
 //   - /api/auth: NextAuth OAuth callbacks (Google POSTs here).
-//   - /api/saml/sso + /api/saml/acs: SAML SP-initiated flow — service
-//     providers submit forms to us from their own origin.
+//   - /api/saml/sso: SAML SP-initiated flow — service providers submit
+//     forms to us from their own origin.
 //   - /api/cron: server-to-server, no browser session at all.
 const csrfExemptPrefixes = [
   "/api/auth",
   "/api/saml/sso",
-  "/api/saml/acs",
   "/api/cron",
   "/api/integrations",
 ];

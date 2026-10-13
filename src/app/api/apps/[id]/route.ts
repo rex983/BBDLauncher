@@ -14,7 +14,7 @@ const appUpdateSchema = z.object({
   description: z.string().nullable().optional(),
   url: httpUrl.optional(),
   icon_url: z.string().nullable().optional(),
-  sso_type: z.enum(["none", "saml", "oauth", "direct_link", "jwt"]).optional(),
+  sso_type: z.enum(["none", "saml", "direct_link", "jwt"]).optional(),
   status: z.enum(["active", "inactive", "maintenance"]).optional(),
   display_order: z.number().optional(),
   open_in_new_tab: z.boolean().optional(),
@@ -108,7 +108,7 @@ export async function PUT(
   // Update SSO config
   if (sso_config !== undefined && viewerIsAdmin) {
     await supabase.from("launcher_sso_configs").delete().eq("app_id", id);
-    if (sso_config && (appData.sso_type === "saml" || appData.sso_type === "oauth" || appData.sso_type === "jwt")) {
+    if (sso_config && (appData.sso_type === "saml" || appData.sso_type === "jwt")) {
       await supabase.from("launcher_sso_configs").insert({
         app_id: id,
         ...sso_config,

@@ -15,10 +15,6 @@ export const ssoConfigSchema = z.object({
   sp_entity_id: z.string().optional(),
   acs_url: endpoint,
   slo_url: endpoint,
-  oauth_client_id: z.string().optional(),
-  oauth_client_secret: z.string().optional(),
-  oauth_authorize_url: endpoint,
-  oauth_token_url: endpoint,
   jwt_acs_url: endpoint,
   jwt_audience: z.string().optional(),
 });

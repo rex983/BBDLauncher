@@ -1,6 +1,6 @@
 import type { Office } from "@/types/auth";
 
-export type SsoType = "none" | "saml" | "oauth" | "direct_link" | "jwt";
+export type SsoType = "none" | "saml" | "direct_link" | "jwt";
 export type AppStatus = "active" | "inactive" | "maintenance";
 
 export interface LauncherApp {
@@ -43,10 +43,6 @@ export interface SsoConfig {
   sp_cert: string | null;
   name_id_format: string;
   attribute_mapping: Record<string, string> | null;
-  oauth_client_id: string | null;
-  oauth_client_secret: string | null;
-  oauth_authorize_url: string | null;
-  oauth_token_url: string | null;
   jwt_acs_url: string | null;
   jwt_audience: string | null;
   created_at: string;

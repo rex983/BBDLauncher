@@ -52,12 +52,6 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [acsUrl, setAcsUrl] = useState(app?.sso_config?.acs_url || "");
   const [sloUrl, setSloUrl] = useState(app?.sso_config?.slo_url || "");
 
-  // OAuth fields
-  const [oauthClientId, setOauthClientId] = useState(app?.sso_config?.oauth_client_id || "");
-  const [oauthClientSecret, setOauthClientSecret] = useState(app?.sso_config?.oauth_client_secret || "");
-  const [oauthAuthorizeUrl, setOauthAuthorizeUrl] = useState(app?.sso_config?.oauth_authorize_url || "");
-  const [oauthTokenUrl, setOauthTokenUrl] = useState(app?.sso_config?.oauth_token_url || "");
-
   // JWT fields
   const [jwtAcsUrl, setJwtAcsUrl] = useState(app?.sso_config?.jwt_acs_url || "");
   const [jwtAudience, setJwtAudience] = useState(app?.sso_config?.jwt_audience || "");
@@ -93,16 +87,9 @@ export function AppForm({ app, onSaved }: AppFormProps) {
         ? undefined
         : ssoType === "saml"
           ? { sp_entity_id: spEntityId, acs_url: acsUrl, slo_url: sloUrl }
-          : ssoType === "oauth"
-            ? {
-                oauth_client_id: oauthClientId,
-                oauth_client_secret: oauthClientSecret,
-                oauth_authorize_url: oauthAuthorizeUrl,
-                oauth_token_url: oauthTokenUrl,
-              }
-            : ssoType === "jwt"
-              ? { jwt_acs_url: jwtAcsUrl, jwt_audience: jwtAudience }
-              : null,
+          : ssoType === "jwt"
+            ? { jwt_acs_url: jwtAcsUrl, jwt_audience: jwtAudience }
+            : null,
     };
 
     const res = app
@@ -298,7 +285,6 @@ export function AppForm({ app, onSaved }: AppFormProps) {
               <SelectItem value="none">None</SelectItem>
               <SelectItem value="direct_link">Direct Link</SelectItem>
               <SelectItem value="saml">SAML</SelectItem>
-              <SelectItem value="oauth">OAuth</SelectItem>
               <SelectItem value="jwt">JWT</SelectItem>
             </SelectContent>
           </Select>
@@ -380,34 +366,6 @@ export function AppForm({ app, onSaved }: AppFormProps) {
               <li>Create an API route that validates the <code>sso_token</code> query param using JWKS</li>
               <li>On valid token, create a local session and redirect to your app</li>
             </ol>
-          </div>
-        </div>
-      )}
-
-      {canEditSso && ssoType === "oauth" && (
-        <div className="space-y-4 border rounded-lg p-4">
-          <h3 className="font-semibold">OAuth Configuration</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Client ID</Label>
-              <Input value={oauthClientId} onChange={(e) => setOauthClientId(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Client Secret</Label>
-              <Input
-                type="password"
-                value={oauthClientSecret}
-                onChange={(e) => setOauthClientSecret(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Authorize URL</Label>
-            <Input value={oauthAuthorizeUrl} onChange={(e) => setOauthAuthorizeUrl(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Token URL</Label>
-            <Input value={oauthTokenUrl} onChange={(e) => setOauthTokenUrl(e.target.value)} />
           </div>
         </div>
       )}

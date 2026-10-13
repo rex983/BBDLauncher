@@ -54,10 +54,9 @@ export async function GET(
   // Log the launch. Fail closed if the audit row can't be written — the
   // audit trail is the only forensic record of SSO token issuance and we'd
   // rather deny a launch than mint an untraceable token. The sign-on config
-  // (only needed for saml/jwt/oauth) is read alongside; it isn't used
+  // (only needed for saml/jwt) is read alongside; it isn't used
   // unless the audit write succeeds.
-  const needsConfig =
-    app.sso_type === "saml" || app.sso_type === "jwt" || app.sso_type === "oauth";
+  const needsConfig = app.sso_type === "saml" || app.sso_type === "jwt";
   const [{ error: auditErr }, configRes] = await Promise.all([
     supabase.from("launcher_sso_audit_log").insert({
       user_id: session.user.profileId,
@@ -71,7 +70,7 @@ export async function GET(
       ? supabase
           .from("launcher_sso_configs")
           .select(
-            "acs_url, sp_entity_id, name_id_format, attribute_mapping, jwt_acs_url, jwt_audience, oauth_authorize_url, oauth_client_id",
+            "acs_url, sp_entity_id, name_id_format, attribute_mapping, jwt_acs_url, jwt_audience",
           )
           .eq("app_id", appId)
           .single()
@@ -163,26 +162,6 @@ export async function GET(
       const acsUrl = new URL(ssoConfig.jwt_acs_url);
       acsUrl.searchParams.set("sso_token", token);
       return NextResponse.redirect(acsUrl.toString());
-    }
-
-    case "oauth": {
-      if (!ssoConfig?.oauth_authorize_url || !ssoConfig?.oauth_client_id) {
-        return NextResponse.json(
-          { error: "OAuth not configured for this application" },
-          { status: 500 }
-        );
-      }
-
-      const authUrl = new URL(ssoConfig.oauth_authorize_url);
-      authUrl.searchParams.set("client_id", ssoConfig.oauth_client_id);
-      authUrl.searchParams.set("response_type", "code");
-      authUrl.searchParams.set(
-        "redirect_uri",
-        `${process.env.AUTH_URL}/api/oauth/callback/${appId}`
-      );
-      authUrl.searchParams.set("scope", "openid email profile");
-
-      return NextResponse.redirect(authUrl.toString());
     }
 
     default:

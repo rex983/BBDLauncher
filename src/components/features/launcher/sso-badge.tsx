@@ -7,7 +7,6 @@ import type { LauncherApp } from "@/types/app";
 
 const VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   saml: "default",
-  oauth: "secondary",
   jwt: "default",
   direct_link: "outline",
   none: "outline",

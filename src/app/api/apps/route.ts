@@ -15,7 +15,7 @@ const appSchema = z.object({
   description: z.string().nullable().optional(),
   url: httpUrl,
   icon_url: z.string().nullable().optional(),
-  sso_type: z.enum(["none", "saml", "oauth", "direct_link", "jwt"]).default("none"),
+  sso_type: z.enum(["none", "saml", "direct_link", "jwt"]).default("none"),
   status: z.enum(["active", "inactive", "maintenance"]).default("active"),
   display_order: z.number().default(0),
   open_in_new_tab: z.boolean().default(true),
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ audit: auditData || [] });
     }
 
-    // Sign-on settings (including OAuth client secrets) are admin-only.
+    // Sign-on settings are admin-only.
     const { data: appsWithAccess, error: appsError } = await loadAdminApps(
       isAdmin(session.user.role),
     );
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     // Single sign-on decides where launch tokens get sent — admins only.
     if (
       !isAdmin(session.user.role) &&
-      (appData.sso_type === "saml" || appData.sso_type === "oauth" || appData.sso_type === "jwt")
+      (appData.sso_type === "saml" || appData.sso_type === "jwt")
     ) {
       return NextResponse.json({ error: "Only admins can set up single sign-on." }, { status: 403 });
     }
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
           if (userError) console.error("User access insert error:", userError);
         }),
       sso_config &&
-        (appData.sso_type === "saml" || appData.sso_type === "oauth" || appData.sso_type === "jwt") &&
+        (appData.sso_type === "saml" || appData.sso_type === "jwt") &&
         supabase
           .from("launcher_sso_configs")
           .insert({ app_id: app.id, ...sso_config })
