@@ -8,10 +8,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table, TableBody, TableCell, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { TimeOffLedgerDialog } from "@/components/features/timeoff/TimeOffLedgerDialog";
+import { SortHeader } from "@/components/ui/sort-header";
+import { useSortableRows } from "@/lib/hooks/use-sortable-rows";
 import {
   emptyTimeOffByType,
   requestDays,
@@ -77,6 +79,22 @@ interface EmployeeRow {
   totalApproved: number;
   upcoming: UpcomingEntry[];
 }
+
+type SortKey = "employee" | TimeOffType | "approved" | "pending" | "upcoming";
+
+// Module-level so the getter map is stable across renders (useSortableRows
+// memoizes on it). Zero/empty cells return null so they sink either way.
+const SORT_GETTERS: Record<SortKey, (r: EmployeeRow) => string | number | null> = {
+  employee: (r) => (r.profile.name || r.profile.email).toLowerCase(),
+  vacation: (r) => r.approvedByType.vacation || null,
+  sick: (r) => r.approvedByType.sick || null,
+  personal: (r) => r.approvedByType.personal || null,
+  parental: (r) => r.approvedByType.parental || null,
+  other: (r) => r.approvedByType.other || null,
+  approved: (r) => r.totalApproved || null,
+  pending: (r) => r.pending || null,
+  upcoming: (r) => r.upcoming[0]?.start_date ?? null,
+};
 
 export function TimeOffSummary({
   refreshKey = 0,
@@ -200,6 +218,13 @@ export function TimeOffSummary({
       });
   }, [profiles, requests]);
 
+  // Default matches the old fixed order: soonest upcoming first, the rest
+  // keep the base order (most approved days) below.
+  const { sorted, sort, toggle } = useSortableRows<EmployeeRow, SortKey>(rows, SORT_GETTERS, {
+    key: "upcoming",
+    direction: "asc",
+  });
+
   const totals = useMemo(() => {
     let approved = 0, pending = 0, denied = 0;
     const byType = emptyTimeOffByType();
@@ -272,19 +297,29 @@ export function TimeOffSummary({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Employee</TableHead>
-              <TableHead className="text-right">Vacation</TableHead>
-              <TableHead className="text-right">Sick</TableHead>
-              <TableHead className="text-right">Personal</TableHead>
-              <TableHead className="text-right">Parental</TableHead>
-              <TableHead className="text-right">Other</TableHead>
-              <TableHead className="text-right">Approved</TableHead>
-              <TableHead className="text-right">Pending</TableHead>
-              <TableHead>Upcoming approved time off</TableHead>
+              <SortHeader columnKey="employee" label="Employee" sort={sort} onToggle={toggle} />
+              {TYPES.map((t) => (
+                <SortHeader
+                  key={t}
+                  columnKey={t}
+                  label={t === "vacation" ? "Vacation" : TIME_OFF_TYPE_LABEL[t]}
+                  sort={sort}
+                  onToggle={toggle}
+                  align="right"
+                />
+              ))}
+              <SortHeader columnKey="approved" label="Approved" sort={sort} onToggle={toggle} align="right" />
+              <SortHeader columnKey="pending" label="Pending" sort={sort} onToggle={toggle} align="right" />
+              <SortHeader
+                columnKey="upcoming"
+                label="Upcoming approved time off"
+                sort={sort}
+                onToggle={toggle}
+              />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => (
+            {sorted.map((r) => (
               <TableRow
                 key={r.profile.id}
                 className="cursor-pointer hover:bg-muted/50"
