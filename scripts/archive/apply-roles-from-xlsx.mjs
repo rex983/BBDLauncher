@@ -8,23 +8,34 @@
 // (case- and whitespace-insensitive on full_name) are logged and SKIPPED —
 // no new profiles are ever created.
 //
-// Usage:
-//   DRY_RUN=1 node scripts/apply-roles-from-xlsx.mjs     # preview only
-//   node scripts/apply-roles-from-xlsx.mjs               # apply changes
+// ARCHIVED one-off for the 2026-08-19 roles workbook. Kept for reference.
+//
+// Usage (from the repo root):
+//   DRY_RUN=1 node scripts/archive/apply-roles-from-xlsx.mjs     # preview only
+//   node scripts/archive/apply-roles-from-xlsx.mjs               # apply changes
 
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { createClient } from "@supabase/supabase-js";
 
-const require = createRequire(import.meta.url);
-const { createClient } = require("C:/Users/Redir/asc-pricing/node_modules/@supabase/supabase-js");
-
-// Reuse ASC's shared-DB credentials — this writes to profiles which ASC owns.
+// Shared-DB credentials from this repo's .env.local, with real environment
+// variables taking precedence.
 function loadEnv() {
-  const raw = readFileSync("C:/Users/Redir/asc-pricing/.env.local", "utf8");
   const env = {};
-  for (const line of raw.split(/\r?\n/)) {
-    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-    if (m) env[m[1]] = m[2];
+  const envPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".env.local");
+  if (existsSync(envPath)) {
+    for (const line of readFileSync(envPath, "utf8").split(/\r?\n/)) {
+      const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+      if (m) env[m[1]] = m[2].trim().replace(/^"|"$/g, "");
+    }
+  }
+  for (const k of ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]) {
+    if (process.env[k]) env[k] = process.env[k];
+  }
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+    process.exit(1);
   }
   return env;
 }
