@@ -28,14 +28,15 @@ interface Notification {
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString();
 
+const NOTIFICATIONS_REFRESH_MS = 60_000;
+
 export function NotificationsBell() {
   const { data: session, status: sessionStatus } = useSession();
   const [items, setItems] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  // Read by the realtime handler so toggling the dropdown doesn't tear
-  // down and re-open the channel.
+  // Read by the poller so toggling the dropdown doesn't restart it.
   const openRef = useRef(open);
   openRef.current = open;
 
@@ -56,46 +57,31 @@ export function NotificationsBell() {
     setUnreadCount(typeof body?.count === "number" ? body.count : 0);
   }, []);
 
-  // Subscribe once we know who the user is. Any INSERT/UPDATE on their
-  // notifications refreshes the count immediately, and the full list if
-  // the dropdown is open.
+  // Poll instead of realtime: the notifications table has RLS with no
+  // policy for the browser's anon client, so a realtime subscription never
+  // received anything. Same approach as the sidebar badges: fetch on load,
+  // when the tab regains focus / becomes visible, and every minute while
+  // it's visible.
   useEffect(() => {
     if (sessionStatus !== "authenticated" || !session?.user?.profileId) return;
-    fetchCount();
-    const profileId = session.user.profileId;
-    // supabase-js (with realtime) loads after the page is up instead of
-    // riding in every page's first download.
-    let cleanup: (() => void) | undefined;
-    let cancelled = false;
-    import("@/lib/supabase/browser").then(({ getBrowserClient }) => {
-      if (cancelled) return;
-      const supabase = getBrowserClient();
-      const channel = supabase
-        .channel(`notifications-${profileId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${profileId}`,
-          },
-          () => {
-            fetchCount();
-            if (openRef.current) fetchList();
-          },
-        )
-        .subscribe();
-      cleanup = () => supabase.removeChannel(channel);
-    });
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      fetchCount().catch(() => {});
+      if (openRef.current) fetchList().catch(() => {});
+    };
+    refresh();
+    const timer = window.setInterval(refresh, NOTIFICATIONS_REFRESH_MS);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
     return () => {
-      cancelled = true;
-      cleanup?.();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
     };
   }, [session?.user?.profileId, sessionStatus, fetchCount, fetchList]);
 
   // Load the list when the user opens the dropdown so we always show the
-  // freshest data (in case the realtime subscription missed anything).
+  // freshest data, not the last poll's.
   useEffect(() => {
     if (open) fetchList();
   }, [open, fetchList]);
