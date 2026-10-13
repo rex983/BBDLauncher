@@ -29,13 +29,9 @@ export async function GET(
       { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
     );
   }
-  const supabase = createAdminClient();
-
-  const gate = await checkAppLaunch(supabase, session, appId);
+  const gate = await checkAppLaunch(session, appId);
   if (!gate.ok) {
     switch (gate.reason) {
-      case "deactivated":
-        return NextResponse.redirect(new URL("/login?deactivated=1", req.url));
       case "clock_required": {
         // Refusing to mint tokens keeps downstream apps out of reach while a
         // rep is off the clock.
@@ -53,6 +49,7 @@ export async function GET(
     }
   }
   const { app } = gate;
+  const supabase = createAdminClient();
 
   // Log the launch. Fail closed if the audit row can't be written — the
   // audit trail is the only forensic record of SSO token issuance and we'd
