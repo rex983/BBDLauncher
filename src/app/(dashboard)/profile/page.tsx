@@ -13,6 +13,7 @@ import {
   buildWeekView,
   formatClockTime,
   WEEKDAY_LABELS,
+  workdaysFrom,
   type WorkScheduleRow,
 } from "@/lib/timesheets/schedule";
 import { TimeOffPanel, type TimeOffRequest } from "@/components/features/timeoff/TimeOffPanel";
@@ -133,12 +134,13 @@ export default async function ProfilePage() {
   const incidents = (incidentsRes.data || []) as IncidentSummary[];
 
   // Fold approved rows into days-per-type. `requestDays` handles
-  // full-day (business-day count) vs partial-day (hours/8) semantics.
+  // full-day (scheduled-workday count) vs partial-day (hours/8) semantics.
+  const workdays = workdaysFrom(schedules);
   const daysByType = new Map<TimeOffType, number>();
   for (const t of TIME_OFF_TYPES) daysByType.set(t.value, 0);
   let totalDaysOff = 0;
   for (const r of ytdApproved) {
-    const d = requestDays(r);
+    const d = requestDays(r, workdays);
     daysByType.set(r.type, (daysByType.get(r.type) || 0) + d);
     totalDaysOff += d;
   }

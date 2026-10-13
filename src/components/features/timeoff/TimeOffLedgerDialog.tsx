@@ -35,6 +35,7 @@ interface LedgerProfile {
   name: string | null;
   office: string | null;
   department: string | null;
+  workdays: number[]; // weekdays (0 = Sun) they work — from the range API
 }
 
 interface LedgerRequest {
@@ -138,18 +139,20 @@ export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }
     [requests],
   );
 
+  const workdays = useMemo(() => new Set(profile?.workdays), [profile]);
+
   const totals = useMemo(() => {
     let approved = 0;
     let pending = 0;
     let denied = 0;
     for (const r of sorted) {
-      const d = requestDays(r);
+      const d = requestDays(r, workdays);
       if (r.status === "approved") approved += d;
       else if (r.status === "pending") pending += d;
       else if (r.status === "denied") denied += d;
     }
     return { approved, pending, denied };
-  }, [sorted]);
+  }, [sorted, workdays]);
 
   return (
     <Dialog open={!!profile} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -235,7 +238,7 @@ export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }
                     )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {requestDays(r).toFixed(1)}
+                    {requestDays(r, workdays).toFixed(1)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={TIME_OFF_STATUS_VARIANT[r.status]}>{r.status}</Badge>

@@ -28,6 +28,7 @@ interface Profile {
   name: string | null;
   office: string | null;
   department: string | null;
+  workdays: number[]; // weekdays (0 = Sun) they work — from the range API
 }
 
 interface Request {
@@ -167,7 +168,7 @@ export function TimeOffSummary({
     for (const r of sortedByStart) {
       const row = byId.get(r.profile_id);
       if (!row) continue;
-      const days = requestDays(r);
+      const days = requestDays(r, new Set(row.profile.workdays));
       if (r.status === "approved") {
         row.approvedByType[r.type] += days;
         row.totalApproved += days;
@@ -340,7 +341,8 @@ export function TimeOffSummary({
         </Table>
       )}
       <p className="text-xs text-muted-foreground">
-        Days = business days (Mon–Fri) for full-day requests; partial days credit hours ÷ 8.
+        Days = scheduled workdays (Mon–Fri unless the person has a custom schedule) for
+        full-day requests; partial days credit hours ÷ 8.
         Click a row to open the full ledger.
       </p>
 

@@ -132,17 +132,22 @@ export const TIME_OFF_MANAGER_REASONS = [
   "Other",
 ] as const;
 
-// Business-day counter used by the manager summary. Excludes Sat/Sun so a
-// Friday–Monday request counts as 2 days, not 4. For partial-day requests
-// we credit `hours / 8` days rounded to one decimal.
-export function countBusinessDays(startISO: string, endISO: string): number {
+// Workday counter used by every "days off" total. Counts only the days the
+// employee is scheduled to work (see workdaysFrom — Mon–Fri unless they have
+// a custom schedule), so a Fri–Mon request is 2 days for a Mon–Fri worker,
+// and a Saturday off counts for someone who works Tue–Sat. For partial-day
+// requests we credit `hours / 8` days rounded to one decimal.
+export function countBusinessDays(
+  startISO: string,
+  endISO: string,
+  workdays: ReadonlySet<number> = DEFAULT_WORKDAYS,
+): number {
   const start = new Date(startISO + "T00:00:00");
   const end = new Date(endISO + "T00:00:00");
   let count = 0;
   const cursor = new Date(start);
   while (cursor <= end) {
-    const dow = cursor.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    if (workdays.has(cursor.getDay())) count++;
     cursor.setDate(cursor.getDate() + 1);
   }
   return count;
@@ -157,11 +162,14 @@ export interface TimeOffDaysRow {
   hours: number | null;
 }
 
-export function requestDays(r: Omit<TimeOffDaysRow, "type">): number {
+export function requestDays(
+  r: Omit<TimeOffDaysRow, "type">,
+  workdays?: ReadonlySet<number>,
+): number {
   if (!r.full_day && r.hours) {
     return Math.round((r.hours / 8) * 10) / 10;
   }
-  return countBusinessDays(r.start_date, r.end_date);
+  return countBusinessDays(r.start_date, r.end_date, workdays);
 }
 
 // Today's date in local time as YYYY-MM-DD. Local — not UTC — because
@@ -176,6 +184,7 @@ export function todayISO(): string {
 }
 
 import type { BadgeVariant } from "@/lib/badge-variant";
+import { DEFAULT_WORKDAYS } from "@/lib/timesheets/schedule";
 
 // Shared status→Badge variant mapping so the same request looks identical
 // across the employee panel, manager queue, ledger dialog, and detail view.
