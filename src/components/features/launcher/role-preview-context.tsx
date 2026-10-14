@@ -10,8 +10,10 @@ import {
   useState,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 
-// The person an admin is previewing the launcher as.
+// The person an admin or manager is previewing the launcher as (who they may
+// pick is migration 052's rule, enforced server-side).
 export interface PreviewUser {
   id: string;
   name: string;
@@ -27,8 +29,10 @@ export interface PreviewUser {
 
 type RolePreview = {
   viewAsUser: PreviewUser | null;
-  // The previewed person's role and office, for components that only care
-  // about those.
+  // The previewed person's role and office, for components that render
+  // beyond the dashboard as them (nav, management/time pages, SSO badges).
+  // Admins only: a manager's preview covers the dashboard and app launches,
+  // and every other page stays the manager's own view.
   viewAs: string | null;
   viewAsOffice: string | null;
   setViewAsUser: (user: PreviewUser | null) => void;
@@ -40,6 +44,8 @@ const RolePreviewContext = createContext<RolePreview | null>(null);
 
 export function RolePreviewProvider({ children }: { children: React.ReactNode }) {
   const [viewAsUser, setViewAsUser] = useState<PreviewUser | null>(null);
+  const { data: session } = useSession();
+  const fullPreview = session?.user?.role === "admin";
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -80,12 +86,12 @@ export function RolePreviewProvider({ children }: { children: React.ReactNode })
   const value = useMemo(
     () => ({
       viewAsUser,
-      viewAs: viewAsUser?.role ?? null,
-      viewAsOffice: viewAsUser?.office ?? null,
+      viewAs: (fullPreview && viewAsUser?.role) || null,
+      viewAsOffice: (fullPreview && viewAsUser?.office) || null,
       setViewAsUser,
       exitPreview,
     }),
-    [viewAsUser, exitPreview],
+    [viewAsUser, fullPreview, exitPreview],
   );
 
   return <RolePreviewContext.Provider value={value}>{children}</RolePreviewContext.Provider>;

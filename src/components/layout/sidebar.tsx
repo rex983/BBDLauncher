@@ -191,6 +191,8 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
   const actualRole = session?.user?.permRole;
   const isAdmin = isAdminRole(actualRole);
   const { viewAsUser, exitPreview } = useRolePreview();
+  // Admins' previews take the nav too; a manager's preview is the dashboard
+  // and app launches only, so their nav stays their own.
   const isPreviewing = isAdmin && !!viewAsUser;
   // Permission roles (acts_as ?? role) decide which nav shows.
   const effectiveRole = (isPreviewing ? viewAsUser!.perm_role : actualRole) as UserRole | undefined;
@@ -278,7 +280,7 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
           <NavLink
             key={item.href}
             item={item}
-            href={buildPreviewHref(item.href, preview)}
+            href={buildPreviewHref(item.href, viewAsUser)}
             active={pathname === item.href}
             collapsed={collapsed}
           />
@@ -328,7 +330,7 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
           );
         })}
 
-        {isPreviewing && (
+        {!!viewAsUser && (
           <button
             type="button"
             onClick={exitPreview}

@@ -7,7 +7,13 @@ import type { PreviewUser } from "@/components/features/launcher/role-preview-co
 import { allowedAppIds, personalGrants } from "@/lib/launcher/access";
 import { QuoteBanner } from "@/components/features/launcher/quote-banner";
 import { TimeClockShell } from "@/components/features/timeclock/TimeClockShell";
-import { canManageContent, isAdmin as isAdminRole, permRoleFor } from "@/lib/auth/permissions";
+import {
+  MANAGER_TIER_ROLES,
+  canManageContent,
+  isAdmin as isAdminRole,
+  permRoleFor,
+} from "@/lib/auth/permissions";
+import { viewAsTargets } from "@/lib/launcher/view-as";
 import { getOfficeNames } from "@/lib/org/lists";
 import {
   getCachedApps,
@@ -40,22 +46,36 @@ const getCachedPreviewProfiles = unstable_cache(
   { tags: [LAUNCHER_TAGS.previewUsers], revalidate: 60 },
 );
 
-// Everyone an admin can preview the launcher as.
-async function loadPreviewUsers(): Promise<PreviewUser[]> {
-  const [roles, data] = await Promise.all([getCachedRoles(), getCachedPreviewProfiles()]);
+// The people this viewer may View as (migration 052), plus themselves (the
+// "(you)" row exits the preview). Admins: every active person, no RPC
+// needed. Managers: whoever launcher_view_as_targets returns — none if it
+// fails. Anyone else: nobody.
+async function loadPreviewUsers(
+  viewer: { profileId: string; role: string; permRole: string },
+): Promise<PreviewUser[]> {
+  const admin = viewer.role === "admin";
+  const manager = !admin && MANAGER_TIER_ROLES.has(viewer.permRole);
+  if (!admin && !manager) return [];
+  const [roles, data, targets] = await Promise.all([
+    getCachedRoles(),
+    getCachedPreviewProfiles(),
+    manager ? viewAsTargets(viewer.profileId) : Promise.resolve(null),
+  ]);
+  if (targets && targets.size === 0) return [];
   const label = new Map(roles.map((r) => [r.name, r.display_name]));
-  return data.map((p) => ({
-    id: p.id,
-    name: p.full_name || p.email,
-    role: p.role,
-    perm_role: permRoleFor(p.role, roles),
-    role_label: label.get(p.role) ?? p.role,
-    office: p.office,
-    department: p.department,
-    can_offboard: !!p.can_offboard,
-  }));
+  return data
+    .filter((p) => !targets || p.id === viewer.profileId || targets.has(p.id))
+    .map((p) => ({
+      id: p.id,
+      name: p.full_name || p.email,
+      role: p.role,
+      perm_role: permRoleFor(p.role, roles),
+      role_label: label.get(p.role) ?? p.role,
+      office: p.office,
+      department: p.department,
+      can_offboard: !!p.can_offboard,
+    }));
 }
-
 
 export default async function DashboardPage({
   searchParams,
@@ -66,7 +86,6 @@ export default async function DashboardPage({
   if (!session?.user) redirect("/login");
 
   const { viewAsUser, clock_required } = await searchParams;
-  const isAdmin = session.user.role === "admin";
   const canEditDashboard = canManageContent(session.user.permRole);
 
   let apps: LauncherApp[] = [];
@@ -85,16 +104,20 @@ export default async function DashboardPage({
         getCachedUserAccess(),
         getCachedSections(),
         getCachedLinks(),
-        isAdmin ? loadPreviewUsers() : Promise.resolve([] as PreviewUser[]),
+        loadPreviewUsers(session.user),
         getCachedActiveQuote(),
         getOfficeNames(),
       ]);
     previewUsers = people;
 
-    // View as: an admin sees exactly what that person sees — their role,
-    // their office and anything granted to them by name. Only ids from the
-    // active-people list are honoured.
-    const target = (isAdmin && viewAsUser && previewUsers.find((u) => u.id === viewAsUser)) || null;
+    // View as: an admin or manager sees exactly what that person sees —
+    // their role, their office and anything granted to them by name. Only
+    // ids from this viewer's own View as list (above) are honoured.
+    const target =
+      (viewAsUser &&
+        viewAsUser !== session.user.profileId &&
+        previewUsers.find((u) => u.id === viewAsUser)) ||
+      null;
     const effectiveRole = target?.role ?? session.user.role;
     const effectiveOffice = target ? target.office : session.user.office;
     const bypassOffice = effectiveRole === "admin";
@@ -137,7 +160,7 @@ export default async function DashboardPage({
             Welcome back, {session.user.name || session.user.email}
           </p>
         </div>
-        {isAdmin && (
+        {previewUsers.some((u) => u.id !== session.user.profileId) && (
           <div className="flex items-center gap-2">
             <ViewAsUser users={previewUsers} selfId={session.user.profileId} />
           </div>

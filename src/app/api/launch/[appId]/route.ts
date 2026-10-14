@@ -3,9 +3,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSamlAssertion, generateAutoSubmitForm } from "@/lib/saml/idp";
 import { generateSsoToken } from "@/lib/sso/jwt-issuer";
 import { checkAppLaunch } from "@/lib/launcher/launch-gate";
+import { canViewAs } from "@/lib/launcher/view-as";
 import { rateLimit } from "@/lib/rate-limit";
 import { applyAttributeMapping } from "@/app/api/_lib/saml-attributes";
 import { NextRequest, NextResponse } from "next/server";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(
   req: NextRequest,
@@ -29,9 +32,11 @@ export async function GET(
       { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
     );
   }
-  // View as: an admin previewing the launcher as someone opens the app as
-  // that person (JWT apps only; read-only on the app's side). Access is that
-  // person's, the clock gate is the admin's.
+  // View as: an admin or manager previewing the launcher as someone opens the
+  // app as that person (JWT apps only; read-only on the app's side). Who may
+  // View as whom is launcher_can_view_as (migration 052) — admins anyone,
+  // managers the people below them in their office. Access is that person's;
+  // the clock gate is skipped.
   const viewAsId = req.nextUrl.searchParams.get("viewAsUser");
   let viewAs: {
     id: string;
@@ -43,8 +48,12 @@ export async function GET(
     is_it: boolean | null;
   } | null = null;
   if (viewAsId && viewAsId !== session.user.profileId) {
-    if (session.user.role !== "admin") {
-      return NextResponse.json({ error: "Only admins can view as someone else" }, { status: 403 });
+    const allowed = UUID.test(viewAsId) ? await canViewAs(session.user.profileId, viewAsId) : false;
+    if (allowed === undefined) {
+      return NextResponse.json({ error: "Couldn't check View as — try again" }, { status: 503 });
+    }
+    if (!allowed) {
+      return NextResponse.json({ error: "You can't view as this person" }, { status: 403 });
     }
     const { data: target } = await createAdminClient()
       .from("profiles")

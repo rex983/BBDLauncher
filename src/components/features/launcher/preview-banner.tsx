@@ -1,6 +1,5 @@
 "use client";
 
-import { useSession } from "next-auth/react";
 import { Eye } from "lucide-react";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 
@@ -8,10 +7,11 @@ import { useRolePreview } from "@/components/features/launcher/role-preview-cont
 // to lose visually. Also gives users an Exit button on non-dashboard pages
 // (the sidebar has one too, but this is always in the main flow of view).
 export function PreviewBanner() {
-  const { data: session } = useSession();
+  // Only the View as picker sets this, and it only lists people the viewer
+  // may View as (admins and managers).
   const { viewAsUser, exitPreview } = useRolePreview();
 
-  if (session?.user?.permRole !== "admin" || !viewAsUser) return null;
+  if (!viewAsUser) return null;
   const where = [viewAsUser.office, viewAsUser.department].filter(Boolean).join(" · ");
 
   return (

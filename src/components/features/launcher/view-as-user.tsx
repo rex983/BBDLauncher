@@ -11,8 +11,9 @@ import {
   type PreviewUser,
 } from "@/components/features/launcher/role-preview-context";
 
-// Admin-only: see the launcher exactly as one person does (their role,
-// office and the apps/links granted to them by name).
+// Admins and managers: see the launcher exactly as one person does (their
+// role, office and the apps/links granted to them by name). `users` is the
+// server-filtered list of people this viewer may View as (migration 052).
 export function ViewAsUser({ users, selfId }: { users: PreviewUser[]; selfId: string }) {
   const router = useRouter();
   const { viewAsUser, setViewAsUser } = useRolePreview();
