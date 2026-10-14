@@ -146,7 +146,7 @@ export const getCachedRoles = unstable_cache(
 // served so deploy order doesn't matter. Other errors throw, so a transient
 // failure is never cached; getOffices() / getDepartments() in
 // src/lib/org/lists.ts fall back for that one request.
-function isMissingTable(code: string | undefined): boolean {
+export function isMissingTable(code: string | undefined): boolean {
   return code === "PGRST205" || code === "42P01";
 }
 

@@ -1,16 +1,15 @@
 import { auth } from "@/auth";
-import { isAdmin } from "@/lib/auth/permissions";
 import { getCachedRoleAppAccess, getCachedRoles } from "@/lib/launcher/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { RolesShell, type RoleCounts } from "./RolesShell";
 
-// Admin-only (middleware enforces it too). Counts used to come from the
+// Admin-only on the real role (middleware enforces it too). Counts used to come from the
 // full /api/users and /api/apps lists; now one role-only profiles read plus
 // the cached role × app grid.
 export default async function AdminRolesPage() {
   const session = await auth();
-  if (!isAdmin(session?.user?.permRole)) redirect("/dashboard");
+  if (session?.user?.role !== "admin") redirect("/dashboard");
 
   const [roles, accessRows, { data: profiles }] = await Promise.all([
     getCachedRoles(),
