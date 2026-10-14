@@ -21,7 +21,7 @@ export async function fetchPunchesPaged(
   toISO?: string,
 ): Promise<{ data: TimePunch[]; error: string | null }> {
   if (profileIds.length === 0) return { data: [], error: null };
-  const page = (from: number) => {
+  return pageAll((from) => {
     let q = supabase
       .from("time_punches")
       .select(PUNCH_COLUMNS)
@@ -32,8 +32,36 @@ export async function fetchPunchesPaged(
       .order("occurred_at", { ascending: true })
       .order("id", { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
-  };
+  });
+}
 
+// Same as fetchPunchesPaged, but for everyone in a (office, department,
+// active) scope — the scope is applied in SQL (get_scoped_time_punches,
+// migration 047) instead of sending every profile id in the URL.
+export async function fetchScopedPunchesPaged(
+  supabase: SupabaseClient,
+  scope: { office: string | null; department: string | null; includeInactive: boolean },
+  fromISO: string,
+): Promise<{ data: TimePunch[]; error: string | null }> {
+  return pageAll((from) =>
+    supabase
+      .rpc("get_scoped_time_punches", {
+        p_since: fromISO,
+        p_office: scope.office,
+        p_department: scope.department,
+        p_include_inactive: scope.includeInactive,
+      })
+      .select(PUNCH_COLUMNS)
+      .order("occurred_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1),
+  );
+}
+
+async function pageAll(
+  // `data: unknown` because untyped .rpc() results are typed as row-or-array.
+  page: (from: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<{ data: TimePunch[]; error: string | null }> {
   const out: TimePunch[] = [];
   // First page alone (the common single-page case), then batches.
   for (let next = 0, batch = 1; ; batch = PAGE_CONCURRENCY) {

@@ -67,7 +67,7 @@ export default function IncidentsShell({
 }) {
   const { data: session } = useSession();
   const viewerFullName = session?.user?.name || null;
-  const isAdmin = session?.user?.role === "admin";
+  const isAdmin = session?.user?.permRole === "admin";
 
   const [rows, setRows] = useState<ManagerIncidentSummary[]>(initialRows);
   const [loading, setLoading] = useState(false);

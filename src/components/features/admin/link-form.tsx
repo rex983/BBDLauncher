@@ -13,23 +13,28 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ImportantLink } from "@/types/link";
-import type { Office } from "@/types/auth";
+import type { OrgItem } from "@/lib/org/constants";
 import { PeoplePicker } from "@/components/features/admin/people-picker";
 
 interface LinkFormProps {
   link?: ImportantLink | null;
+  offices: OrgItem[];
   onSaved: () => void;
 }
 
-export function LinkForm({ link, onSaved }: LinkFormProps) {
+// Select sentinels; office names are letters/digits only, so they can't clash.
+const EVERYONE = "__everyone__";
+const PEOPLE = "__people__";
+
+export function LinkForm({ link, offices, onSaved }: LinkFormProps) {
   const [name, setName] = useState(link?.name || "");
   const [description, setDescription] = useState(link?.description || "");
   const [url, setUrl] = useState(link?.url || "");
   const [iconUrl, setIconUrl] = useState(link?.icon_url || "");
   const [displayOrder, setDisplayOrder] = useState(link?.display_order ?? 0);
-  // "people" = shown only to the people listed below.
-  const [office, setOffice] = useState<Office | "none" | "people">(
-    link?.people_only ? "people" : (link?.office ?? "none"),
+  // PEOPLE = shown only to the people listed below.
+  const [office, setOffice] = useState<string>(
+    link?.people_only ? PEOPLE : (link?.office ?? EVERYONE),
   );
   const [userIds, setUserIds] = useState<string[]>(link?.user_ids || []);
   const [saving, setSaving] = useState(false);
@@ -44,8 +49,8 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
       url,
       icon_url: iconUrl || null,
       display_order: displayOrder,
-      office: office === "none" || office === "people" ? null : office,
-      people_only: office === "people",
+      office: office === EVERYONE || office === PEOPLE ? null : office,
+      people_only: office === PEOPLE,
       user_ids: userIds,
     };
 
@@ -128,17 +133,23 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
           <Label>Office</Label>
           <Select
             value={office}
-            onValueChange={(v) => setOffice(v as Office | "none" | "people")}
+            onValueChange={setOffice}
           >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">Everyone</SelectItem>
-              <SelectItem value="Sales">Sales only</SelectItem>
-              <SelectItem value="BST">BST only</SelectItem>
-              <SelectItem value="RnD">RnD only</SelectItem>
-              <SelectItem value="people">Only the people below</SelectItem>
+              <SelectItem value={EVERYONE}>Everyone</SelectItem>
+              {offices.map((o) => (
+                <SelectItem key={o.name} value={o.name}>
+                  {o.display_name} only
+                </SelectItem>
+              ))}
+              {/* An office that was since removed still shows as selected. */}
+              {link?.office && !offices.some((o) => o.name === link.office) && (
+                <SelectItem value={link.office}>{link.office} only</SelectItem>
+              )}
+              <SelectItem value={PEOPLE}>Only the people below</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -147,7 +158,7 @@ export function LinkForm({ link, onSaved }: LinkFormProps) {
       <div className="space-y-2">
         <Label>Individual people</Label>
         <p className="text-xs text-muted-foreground">
-          {office === "people"
+          {office === PEOPLE
             ? "Only these people see the link."
             : "These people see the link whatever their office."}
         </p>

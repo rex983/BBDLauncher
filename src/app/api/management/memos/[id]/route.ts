@@ -23,7 +23,7 @@ export async function GET(
   if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
-  const admin = isAdmin(session.user.role);
+  const admin = isAdmin(session.user.permRole);
 
   const { data: memo, error } = await supabase
     .from("office_memos")
@@ -156,7 +156,7 @@ export async function PATCH(
   }
 
   const supabase = createAdminClient();
-  const admin = isAdmin(session.user.role);
+  const admin = isAdmin(session.user.permRole);
 
   const { data: existing } = await supabase
     .from("office_memos")
@@ -233,7 +233,7 @@ export async function DELETE(
   const session = await requireSession(canEditTimeData);
   if (session instanceof NextResponse) return session;
   const supabase = createAdminClient();
-  const admin = isAdmin(session.user.role);
+  const admin = isAdmin(session.user.permRole);
 
   const { data: existing } = await supabase
     .from("office_memos")

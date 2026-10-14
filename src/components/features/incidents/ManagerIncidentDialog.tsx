@@ -124,7 +124,7 @@ export function ManagerIncidentDialog({
   reporterFullName: string | null;
 }) {
   const { data: session } = useSession();
-  const viewerIsAdmin = isAdminRole(session?.user?.role);
+  const viewerIsAdmin = isAdminRole(session?.user?.permRole);
 
   const [report, setReport] = useState<FullReport | null>(null);
   const [loading, setLoading] = useState(false);

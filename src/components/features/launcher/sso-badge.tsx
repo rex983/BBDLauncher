@@ -7,7 +7,6 @@ import type { LauncherApp } from "@/types/app";
 
 const VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   saml: "default",
-  oauth: "secondary",
   jwt: "default",
   direct_link: "outline",
   none: "outline",
@@ -23,7 +22,7 @@ interface SsoBadgeProps {
 export function SsoBadge({ ssoType, className }: SsoBadgeProps) {
   const { data: session } = useSession();
   const { viewAs } = useRolePreview();
-  const actualRole = session?.user?.role;
+  const actualRole = session?.user?.permRole;
   const effectiveRole = actualRole === "admin" && viewAs ? viewAs : actualRole;
   if (effectiveRole !== "admin" || ssoType === "none") return null;
   return (

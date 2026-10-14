@@ -15,7 +15,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 export interface PreviewUser {
   id: string;
   name: string;
+  /** Real role — the access grid and labels. */
   role: string;
+  /** Permission role (acts_as ?? role) — nav and permission checks. */
+  perm_role: string;
   role_label: string;
   office: string | null;
   department: string | null;

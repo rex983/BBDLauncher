@@ -7,7 +7,7 @@ import {
   startOfYearWeekInZone,
   summarizeWeeks,
 } from "@/lib/timesheets/weekly";
-import { fetchPunchesPaged } from "@/lib/timesheets/punches";
+import { fetchScopedPunchesPaged } from "@/lib/timesheets/punches";
 import { workdaysFrom } from "@/lib/timesheets/schedule";
 import {
   emptyTimeOffByType,
@@ -63,24 +63,36 @@ export async function GET(req: NextRequest) {
   ).order("email");
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
 
-  const profileIds = (profiles || []).map((p) => p.id);
+  // Same scope as the profiles read above, applied in SQL (migration 047)
+  // rather than as a profile-id list in the URL.
+  const sqlScope = {
+    office: scope.office ?? (officeFilter || null),
+    department: scope.department ?? (departmentFilter || null),
+    includeInactive,
+  };
 
   // Punches reach back to whichever is earlier: the selected range or the
-  // start of the year (YTD overtime). Paged — see fetchPunchesPaged.
+  // start of the year (YTD overtime). Paged — see fetchScopedPunchesPaged.
   const [punchesRes, { data: yearOffs, error: toErr }, { data: schedRows, error: schedErr }] = await Promise.all([
-    fetchPunchesPaged(supabase, profileIds, allWeekStarts[0].toISOString()),
+    fetchScopedPunchesPaged(supabase, sqlScope, allWeekStarts[0].toISOString()),
     // YTD approved time-off — used for per-employee breakdown + the
     // aggregate summary. Kept independent of the `weeks` selector
     // because "days off this year" is what managers ask about, not
     // "days off in the last 4 weeks".
     supabase
-      .from("time_off_requests")
+      .rpc("get_scoped_time_off", {
+        p_office: sqlScope.office,
+        p_department: sqlScope.department,
+        p_include_inactive: sqlScope.includeInactive,
+      })
       .select("profile_id, type, start_date, end_date, full_day, hours")
-      .in("profile_id", profileIds)
       .eq("status", "approved")
       .gte("start_date", `${now.getFullYear()}-01-01`),
     // Work schedules so day counts follow each person's workdays.
-    supabase.from("work_schedules").select("profile_id, weekday").in("profile_id", profileIds),
+    supabase
+      .from("work_schedules")
+      .select("profile_id, weekday")
+      .in("profile_id", (profiles || []).map((p) => p.id)),
   ]);
   if (punchesRes.error) return NextResponse.json({ error: punchesRes.error }, { status: 500 });
   if (toErr) return NextResponse.json({ error: toErr.message }, { status: 500 });
@@ -102,7 +114,7 @@ export async function GET(req: NextRequest) {
     schedByProfile.set(s.profile_id, list);
   }
   const timeOffByProfile = new Map<string, TimeOffByType>();
-  for (const t of yearOffs || []) {
+  for (const t of (yearOffs ?? []) as unknown[]) {
     const row = t as {
       profile_id: string;
       type: TimeOffType;

@@ -136,7 +136,7 @@ export function TimeOffCalendar({
 }: { refreshKey?: number; active?: boolean } = {}) {
   const { viewAsOffice } = useRolePreview();
   const { data: session } = useSession();
-  const canManage = canEditTimeData(session?.user?.role);
+  const canManage = canEditTimeData(session?.user?.permRole);
   const [anchor, setAnchor] = useState(() => new Date());
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);

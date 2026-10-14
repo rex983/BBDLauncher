@@ -75,7 +75,7 @@ export default async function ManagerMemoDetailPage({
   const { id } = await params;
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!canViewTimeData(session.user.role)) redirect("/dashboard");
+  if (!canViewTimeData(session.user.permRole)) redirect("/dashboard");
 
   const supabase = createAdminClient();
   // One read stage: the author, recipient and actor profiles ride along as
@@ -112,7 +112,7 @@ export default async function ManagerMemoDetailPage({
 
   // Scope: author + admin always see; other manager-tier only see if
   // published AND their scope overlaps the audience.
-  const admin = isAdmin(session.user.role);
+  const admin = isAdmin(session.user.permRole);
   const isAuthor = memo.author_profile_id === session.user.profileId;
   if (!admin && !isAuthor) {
     if (memo.status !== "published") notFound();

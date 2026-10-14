@@ -29,7 +29,7 @@ import {
   type TimeOffType,
 } from "@/lib/timeoff/types";
 import type { Department, Office } from "@/types/auth";
-import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
+import { orgLabel, type OrgItem } from "@/lib/org/constants";
 
 interface WeekTotal {
   week_start: string;
@@ -163,9 +163,17 @@ const NO_ROWS: Row[] = [];
 // Time-data analytics widget. Rendered inside /admin/analytics as its own
 // tab; sources data from /api/management/analytics/time. Scope is enforced
 // server-side (admin sees all, managers see their office ∩ department).
-export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
+export function TimeAnalytics({
+  active = true,
+  offices,
+  departments,
+}: {
+  active?: boolean;
+  offices: OrgItem[];
+  departments: OrgItem[];
+}) {
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "admin";
+  const isAdmin = session?.user?.permRole === "admin";
   const viewerOffice = session?.user?.office ?? null;
   const viewerDepartment = session?.user?.department ?? null;
   const { viewAsOffice } = useRolePreview();
@@ -252,11 +260,11 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
                 <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>All</SelectItem>
-                  {OFFICES.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                  {offices.map((o) => <SelectItem key={o.name} value={o.name}>{o.display_name}</SelectItem>)}
                 </SelectContent>
               </Select>
             ) : (
-              <Badge variant="outline">{viewerOffice ?? "—"}</Badge>
+              <Badge variant="outline">{orgLabel(offices, viewerOffice)}</Badge>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -266,11 +274,11 @@ export function TimeAnalytics({ active = true }: { active?: boolean } = {}) {
                 <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>All</SelectItem>
-                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  {departments.map((d) => <SelectItem key={d.name} value={d.name}>{d.display_name}</SelectItem>)}
                 </SelectContent>
               </Select>
             ) : (
-              <Badge variant="outline">{viewerDepartment ?? "—"}</Badge>
+              <Badge variant="outline">{orgLabel(departments, viewerDepartment)}</Badge>
             )}
           </div>
           {isAdmin && (

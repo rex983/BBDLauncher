@@ -4,8 +4,9 @@ import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { OFFICES } from "@/lib/org/constants";
-import { ACCESS_OFFICES, rowsFromCells } from "@/lib/launcher/access";
+import { rowsFromCells } from "@/lib/launcher/access";
+import { getOfficeNames } from "@/lib/org/lists";
+import { NO_OFFICE } from "@/lib/org/constants";
 import { loadAdminApps } from "@/lib/launcher/admin-apps";
 import { setUserIds } from "@/lib/launcher/user-access";
 import { httpUrl, ssoConfigSchema } from "@/lib/launcher/app-schema";
@@ -15,16 +16,16 @@ const appSchema = z.object({
   description: z.string().nullable().optional(),
   url: httpUrl,
   icon_url: z.string().nullable().optional(),
-  sso_type: z.enum(["none", "saml", "oauth", "direct_link", "jwt"]).default("none"),
+  sso_type: z.enum(["none", "saml", "direct_link", "jwt"]).default("none"),
   status: z.enum(["active", "inactive", "maintenance"]).default("active"),
   display_order: z.number().default(0),
   open_in_new_tab: z.boolean().default(true),
   section_id: z.string().uuid().nullable().optional(),
-  offices: z.array(z.enum(OFFICES)).optional(),
+  offices: z.array(z.string().min(1)).optional(),
   roles: z.array(z.string()).optional(),
   /** Office × role grid cells that can open the app. Replaces roles + offices. */
   access: z
-    .array(z.object({ role: z.string().min(1), office: z.enum(ACCESS_OFFICES) }))
+    .array(z.object({ role: z.string().min(1), office: z.string().min(1) }))
     .max(500)
     .optional(),
   /** Individual people who can open the app, on top of the grid. */
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
     // Audit log includes IPs/UAs of every launch — admin-only.
     const audit = req.nextUrl.searchParams.get("audit");
     if (audit === "true") {
-      if (!isAdmin(session.user.role)) {
+      if (!isAdmin(session.user.permRole)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       const { data: auditData } = await supabase
@@ -53,9 +54,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ audit: auditData || [] });
     }
 
-    // Sign-on settings (including OAuth client secrets) are admin-only.
+    // Sign-on settings are admin-only.
     const { data: appsWithAccess, error: appsError } = await loadAdminApps(
-      isAdmin(session.user.role),
+      isAdmin(session.user.permRole),
     );
     if (appsError) {
       return NextResponse.json({ error: appsError }, { status: 500 });
@@ -83,10 +84,18 @@ export async function POST(req: NextRequest) {
     }
 
     const { roles, access, user_ids, sso_config, ...appData } = parsed.data;
+    // Offices are admin-managed (migration 051); "none" is the grid's no-office row.
+    const officeNames = await getOfficeNames();
+    const unknownOffice =
+      (appData.offices ?? []).find((o) => !officeNames.includes(o)) ??
+      access?.find((c) => c.office !== NO_OFFICE && !officeNames.includes(c.office))?.office;
+    if (unknownOffice) {
+      return NextResponse.json({ error: `Unknown office "${unknownOffice}"` }, { status: 400 });
+    }
     // Single sign-on decides where launch tokens get sent — admins only.
     if (
-      !isAdmin(session.user.role) &&
-      (appData.sso_type === "saml" || appData.sso_type === "oauth" || appData.sso_type === "jwt")
+      !isAdmin(session.user.permRole) &&
+      (appData.sso_type === "saml" || appData.sso_type === "jwt")
     ) {
       return NextResponse.json({ error: "Only admins can set up single sign-on." }, { status: 403 });
     }
@@ -108,7 +117,7 @@ export async function POST(req: NextRequest) {
     // config are independent child rows — write them together. Failures are
     // logged, not returned: the app itself already exists.
     const accessRows = access
-      ? rowsFromCells(app.id, access)
+      ? rowsFromCells(app.id, access, officeNames)
       : (roles || []).map((role_name) => ({ role_name, app_id: app.id, office: null }));
     await Promise.all([
       accessRows.length > 0 &&
@@ -123,7 +132,7 @@ export async function POST(req: NextRequest) {
           if (userError) console.error("User access insert error:", userError);
         }),
       sso_config &&
-        (appData.sso_type === "saml" || appData.sso_type === "oauth" || appData.sso_type === "jwt") &&
+        (appData.sso_type === "saml" || appData.sso_type === "jwt") &&
         supabase
           .from("launcher_sso_configs")
           .insert({ app_id: app.id, ...sso_config })

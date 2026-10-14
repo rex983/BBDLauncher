@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
-  if (!canEditTimeData(session.user.role)) {
+  if (!canEditTimeData(session.user.permRole)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

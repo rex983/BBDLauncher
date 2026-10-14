@@ -17,17 +17,21 @@ import {
 import type { AppWithAccess, LauncherRole, LauncherSection, SsoType, AppStatus } from "@/types/app";
 import type { AccessCell } from "@/lib/launcher/access";
 import { AppAccessGrid } from "@/components/features/admin/app-access-grid";
+import type { OrgItem } from "@/lib/org/constants";
 import { PeoplePicker } from "@/components/features/admin/people-picker";
 
 interface AppFormProps {
   app?: AppWithAccess | null;
+  /** From the server render (launcher_roles / launcher_offices). */
+  roles: LauncherRole[];
+  offices: OrgItem[];
   onSaved: () => void;
 }
 
-export function AppForm({ app, onSaved }: AppFormProps) {
+export function AppForm({ app, roles, offices, onSaved }: AppFormProps) {
   // Sign-on settings are admin-only; managers see the type but can't change it.
   const { data: session } = useSession();
-  const canEditSso = session?.user?.role === "admin";
+  const canEditSso = session?.user?.permRole === "admin";
   const [name, setName] = useState(app?.name || "");
   const [description, setDescription] = useState(app?.description || "");
   const [url, setUrl] = useState(app?.url || "");
@@ -43,7 +47,6 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [accessCells, setAccessCells] = useState<AccessCell[]>(app?.access || []);
   const [userIds, setUserIds] = useState<string[]>(app?.user_ids || []);
   const [sectionId, setSectionId] = useState<string>(app?.section_id || "none");
-  const [roles, setRoles] = useState<LauncherRole[]>([]);
   const [sections, setSections] = useState<LauncherSection[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -52,21 +55,11 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [acsUrl, setAcsUrl] = useState(app?.sso_config?.acs_url || "");
   const [sloUrl, setSloUrl] = useState(app?.sso_config?.slo_url || "");
 
-  // OAuth fields
-  const [oauthClientId, setOauthClientId] = useState(app?.sso_config?.oauth_client_id || "");
-  const [oauthClientSecret, setOauthClientSecret] = useState(app?.sso_config?.oauth_client_secret || "");
-  const [oauthAuthorizeUrl, setOauthAuthorizeUrl] = useState(app?.sso_config?.oauth_authorize_url || "");
-  const [oauthTokenUrl, setOauthTokenUrl] = useState(app?.sso_config?.oauth_token_url || "");
-
   // JWT fields
   const [jwtAcsUrl, setJwtAcsUrl] = useState(app?.sso_config?.jwt_acs_url || "");
   const [jwtAudience, setJwtAudience] = useState(app?.sso_config?.jwt_audience || "");
 
   useEffect(() => {
-    fetch("/api/roles")
-      .then((r) => r.json())
-      .then(setRoles)
-      .catch(() => {});
     fetch("/api/sections")
       .then((r) => r.json())
       .then(setSections)
@@ -93,16 +86,9 @@ export function AppForm({ app, onSaved }: AppFormProps) {
         ? undefined
         : ssoType === "saml"
           ? { sp_entity_id: spEntityId, acs_url: acsUrl, slo_url: sloUrl }
-          : ssoType === "oauth"
-            ? {
-                oauth_client_id: oauthClientId,
-                oauth_client_secret: oauthClientSecret,
-                oauth_authorize_url: oauthAuthorizeUrl,
-                oauth_token_url: oauthTokenUrl,
-              }
-            : ssoType === "jwt"
-              ? { jwt_acs_url: jwtAcsUrl, jwt_audience: jwtAudience }
-              : null,
+          : ssoType === "jwt"
+            ? { jwt_acs_url: jwtAcsUrl, jwt_audience: jwtAudience }
+            : null,
     };
 
     const res = app
@@ -298,7 +284,6 @@ export function AppForm({ app, onSaved }: AppFormProps) {
               <SelectItem value="none">None</SelectItem>
               <SelectItem value="direct_link">Direct Link</SelectItem>
               <SelectItem value="saml">SAML</SelectItem>
-              <SelectItem value="oauth">OAuth</SelectItem>
               <SelectItem value="jwt">JWT</SelectItem>
             </SelectContent>
           </Select>
@@ -384,37 +369,9 @@ export function AppForm({ app, onSaved }: AppFormProps) {
         </div>
       )}
 
-      {canEditSso && ssoType === "oauth" && (
-        <div className="space-y-4 border rounded-lg p-4">
-          <h3 className="font-semibold">OAuth Configuration</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Client ID</Label>
-              <Input value={oauthClientId} onChange={(e) => setOauthClientId(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Client Secret</Label>
-              <Input
-                type="password"
-                value={oauthClientSecret}
-                onChange={(e) => setOauthClientSecret(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Authorize URL</Label>
-            <Input value={oauthAuthorizeUrl} onChange={(e) => setOauthAuthorizeUrl(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Token URL</Label>
-            <Input value={oauthTokenUrl} onChange={(e) => setOauthTokenUrl(e.target.value)} />
-          </div>
-        </div>
-      )}
-
       <div className="space-y-2">
         <Label>Who can open it</Label>
-        <AppAccessGrid roles={roles} cells={accessCells} onChange={setAccessCells} />
+        <AppAccessGrid roles={roles} offices={offices} cells={accessCells} onChange={setAccessCells} />
       </div>
 
       <div className="space-y-2">

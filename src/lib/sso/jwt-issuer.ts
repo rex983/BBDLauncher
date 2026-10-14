@@ -50,6 +50,12 @@ interface SsoTokenParams {
   isIt?: boolean;
   office?: string | null;
   department?: string | null;
+  /**
+   * Set when an admin launches the app "viewing as" this person. Sent as the
+   * RFC 8693 actor claim; consumer apps sign the admin in as the person,
+   * read-only, and show who is really driving.
+   */
+  actor?: { email: string; profileId: string; name: string };
 }
 
 export async function generateSsoToken(params: SsoTokenParams): Promise<string> {
@@ -63,6 +69,9 @@ export async function generateSsoToken(params: SsoTokenParams): Promise<string> 
     is_it: params.isIt ?? false,
     office: params.office ?? null,
     department: params.department ?? null,
+    ...(params.actor
+      ? { act: { sub: params.actor.email, profile_id: params.actor.profileId, name: params.actor.name } }
+      : {}),
   })
     .setProtectedHeader({ alg: ALG, kid: "bbd-sso-1" })
     .setIssuer("bbd-launcher")

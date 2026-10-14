@@ -44,7 +44,7 @@ export interface ScopedProfile {
   is_active: boolean;
 }
 
-type Viewer = Pick<Session["user"], "role" | "department" | "office">;
+type Viewer = Pick<Session["user"], "permRole" | "department" | "office">;
 
 // Steps 2–3 of the gate below, without the session lookup or a response
 // object, so server components can share the exact same rules.
@@ -53,12 +53,12 @@ export function resolveTimeDataScope(
   need: Need,
 ): { ok: true; scope: AllowedScope; viewerIsAdmin: boolean } | GateFailure {
   const permit = need === "edit" ? canEditTimeData : canViewTimeData;
-  if (!viewer || !permit(viewer.role)) {
+  if (!viewer || !permit(viewer.permRole)) {
     return { ok: false, status: 403, message: "Unauthorized" };
   }
-  const scope = timeDataScope(viewer.role, viewer.department, viewer.office);
+  const scope = timeDataScope(viewer.permRole, viewer.department, viewer.office);
   if (!scope.allowed) return { ok: false, status: 403, message: "No scope" };
-  return { ok: true, scope, viewerIsAdmin: isAdmin(viewer.role) };
+  return { ok: true, scope, viewerIsAdmin: isAdmin(viewer.permRole) };
 }
 
 // Non-admin rule: target must be active and inside both scope axes. Admin

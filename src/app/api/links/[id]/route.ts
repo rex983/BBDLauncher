@@ -5,7 +5,7 @@ import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { httpUrl } from "@/lib/launcher/app-schema";
-import { OFFICES } from "@/lib/org/constants";
+import { isKnownOffice } from "@/lib/org/lists";
 import { setUserIds } from "@/lib/launcher/user-access";
 
 const linkUpdateSchema = z.object({
@@ -14,7 +14,8 @@ const linkUpdateSchema = z.object({
   url: httpUrl.optional(),
   icon_url: z.string().nullable().optional(),
   display_order: z.number().optional(),
-  office: z.enum(OFFICES).nullable().optional(),
+  /** An office from launcher_offices (migration 051); null = every office. */
+  office: z.string().min(1).nullable().optional(),
   /** Shown only to the people in user_ids. */
   people_only: z.boolean().optional(),
   /** Individual people who see the link, on top of the office filter. */
@@ -36,6 +37,9 @@ export async function PUT(
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
     const { user_ids, ...linkData } = parsed.data;
+    if (!(await isKnownOffice(linkData.office))) {
+      return NextResponse.json({ error: "Unknown office" }, { status: 400 });
+    }
     const supabase = createAdminClient();
 
     const { data: link, error } = await supabase

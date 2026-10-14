@@ -8,13 +8,37 @@ import { useSearchParams } from "next/navigation";
 const DEFAULT_WEB = "https://app.slack.com/";
 const FALLBACK_DELAY_MS = 1500;
 
+// Only allow https Slack URLs — anything else (javascript:, other hosts)
+// falls back to DEFAULT_WEB so ?web= can't be used for XSS / open redirect.
+function safeWebUrl(raw: string | null): string {
+  if (!raw) return DEFAULT_WEB;
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    if (
+      url.protocol === "https:" &&
+      (host === "slack.com" || host.endsWith(".slack.com"))
+    ) {
+      return url.toString();
+    }
+  } catch {
+    // fall through
+  }
+  return DEFAULT_WEB;
+}
+
+// Slack team IDs are alphanumeric (e.g. T01ABCDEF).
+function safeTeam(raw: string | null): string | null {
+  return raw && /^[A-Za-z0-9]+$/.test(raw) ? raw : null;
+}
+
 function Launcher() {
   const searchParams = useSearchParams();
   const [showFallback, setShowFallback] = useState(false);
 
   useEffect(() => {
-    const webUrl = searchParams.get("web") || DEFAULT_WEB;
-    const team = searchParams.get("team");
+    const webUrl = safeWebUrl(searchParams.get("web"));
+    const team = safeTeam(searchParams.get("team"));
     const deepLink = team ? `slack://open?team=${team}` : "slack://open";
 
     let cancelled = false;
@@ -51,7 +75,7 @@ function Launcher() {
     };
   }, [searchParams]);
 
-  const webUrl = searchParams.get("web") || DEFAULT_WEB;
+  const webUrl = safeWebUrl(searchParams.get("web"));
 
   return (
     <div className="flex min-h-screen items-center justify-center">

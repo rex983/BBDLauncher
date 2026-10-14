@@ -8,7 +8,7 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (!session?.user || !canManageContent(session.user.role)) {
+  if (!session?.user || !canManageContent(session.user.permRole)) {
     redirect("/dashboard");
   }
   return <>{children}</>;

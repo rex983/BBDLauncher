@@ -7,6 +7,7 @@ import {
   type AnalyticsRange,
 } from "@/lib/analytics/server";
 import AnalyticsShell from "@/components/features/admin/AnalyticsShell";
+import { getOrgLists } from "@/lib/org/lists";
 
 export default async function AdminAnalyticsPage({
   searchParams,
@@ -16,8 +17,8 @@ export default async function AdminAnalyticsPage({
   const { range: rawRange } = await searchParams;
   const range: AnalyticsRange = isAnalyticsRange(rawRange) ? rawRange : "30d";
 
-  const session = await auth();
-  const scope = analyticsScope(session?.user?.role, session?.user?.office ?? null);
+  const [session, { offices, departments }] = await Promise.all([auth(), getOrgLists()]);
+  const scope = analyticsScope(session?.user?.permRole, session?.user?.office ?? null);
 
   let initialData: AnalyticsData | null = null;
   let initialError: string | null = null;
@@ -38,6 +39,8 @@ export default async function AdminAnalyticsPage({
       initialData={initialData}
       initialRange={range}
       initialError={initialError}
+      offices={offices}
+      departments={departments}
     />
   );
 }

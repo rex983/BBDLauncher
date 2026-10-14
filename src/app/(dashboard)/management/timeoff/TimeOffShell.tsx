@@ -81,7 +81,7 @@ export default function TimeOffShell({
   initialQueueRows: Row[];
 }) {
   const { data: session } = useSession();
-  const canManage = canEditTimeData(session?.user?.role);
+  const canManage = canEditTimeData(session?.user?.permRole);
   const { viewAsOffice } = useRolePreview();
   // Bumped by RequestsQueue each time a request is approved, denied,
   // edited, or deleted so the sibling Calendar + Summary tabs pick up the

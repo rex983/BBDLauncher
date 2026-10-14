@@ -10,7 +10,7 @@ const CSV_PATH =
   "C:/Users/Redir/Downloads/OR Business Dashboard 3.0 2026 - Time Off Dashboard.csv";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const envSource = readFileSync(join(__dirname, "..", ".env.local"), "utf8");
+const envSource = readFileSync(join(__dirname, "..", "..", ".env.local"), "utf8");
 for (const line of envSource.split(/\r?\n/)) {
   if (!line || line.startsWith("#") || !line.includes("=")) continue;
   const eq = line.indexOf("=");

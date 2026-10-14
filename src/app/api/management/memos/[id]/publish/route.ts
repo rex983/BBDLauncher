@@ -26,7 +26,7 @@ export async function POST(
   }
 
   const supabase = createAdminClient();
-  const admin = isAdmin(session.user.role);
+  const admin = isAdmin(session.user.permRole);
 
   const { data: memo } = await supabase
     .from("office_memos")

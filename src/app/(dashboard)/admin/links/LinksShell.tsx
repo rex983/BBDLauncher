@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { LinkForm } from "@/components/features/admin/link-form";
+import { orgLabel, type OrgItem } from "@/lib/org/constants";
 import type { ImportantLink } from "@/types/link";
 import { Plus, Pencil, Trash2, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
@@ -38,7 +39,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   return dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
 }
 
-export function LinksShell({ initial }: { initial: ImportantLink[] }) {
+export function LinksShell({ initial, offices }: { initial: ImportantLink[]; offices: OrgItem[] }) {
   const [links, setLinks] = useState<ImportantLink[]>(initial);
   const [editingLink, setEditingLink] = useState<ImportantLink | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -112,7 +113,7 @@ export function LinksShell({ initial }: { initial: ImportantLink[] }) {
                 {editingLink ? "Edit Link" : "New Link"}
               </DialogTitle>
             </DialogHeader>
-            <LinkForm link={editingLink} onSaved={handleSaved} />
+            <LinkForm link={editingLink} offices={offices} onSaved={handleSaved} />
           </DialogContent>
         </Dialog>
       </div>
@@ -167,7 +168,7 @@ export function LinksShell({ initial }: { initial: ImportantLink[] }) {
                 {link.people_only ? (
                   <Badge variant="outline">People only</Badge>
                 ) : link.office ? (
-                  <Badge variant="outline">{link.office}</Badge>
+                  <Badge variant="outline">{orgLabel(offices, link.office)}</Badge>
                 ) : (
                   <span className="text-xs text-muted-foreground">Everyone</span>
                 )}

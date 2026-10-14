@@ -8,5 +8,5 @@ export default async function OffboardingCasePage({ params }: { params: Promise<
   const { id } = await params;
   const [detail, session] = await Promise.all([getCaseDetail(id), auth()]);
   if (!detail) notFound();
-  return <OffboardingCaseShell initial={detail} isAdmin={isAdmin(session?.user?.role)} />;
+  return <OffboardingCaseShell initial={detail} isAdmin={isAdmin(session?.user?.permRole)} />;
 }

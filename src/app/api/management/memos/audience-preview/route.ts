@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const admin = isAdmin(session.user.role);
+  const admin = isAdmin(session.user.permRole);
   if (!admin) {
     if (parsed.data.audience_scope === "company") {
       return NextResponse.json(

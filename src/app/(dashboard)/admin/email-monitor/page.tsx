@@ -12,7 +12,7 @@ const LOG_DAYS = 30;
 // alerts fired. The mail itself stays in Gmail.
 export default async function EmailMonitorPage() {
   const session = await auth();
-  if (!isAdmin(session?.user?.role)) redirect("/dashboard");
+  if (!isAdmin(session?.user?.permRole)) redirect("/dashboard");
 
   const supabase = createAdminClient();
   const since = new Date(Date.now() - LOG_DAYS * 86_400_000).toISOString();

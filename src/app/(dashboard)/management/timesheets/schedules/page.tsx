@@ -25,10 +25,10 @@ interface Schedule {
 export default async function SchedulesPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!canViewTimeData(session.user.role)) redirect("/dashboard");
+  if (!canViewTimeData(session.user.permRole)) redirect("/dashboard");
 
   const scope = timeDataScope(
-    session.user.role,
+    session.user.permRole,
     session.user.department,
     session.user.office,
   );

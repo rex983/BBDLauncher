@@ -13,8 +13,8 @@
 //     CSV row (name-lookup misses)         run that used an email fallback)
 //
 // Usage:
-//   node scripts/import-timeoff-2026.mjs                 # dry-run
-//   node scripts/import-timeoff-2026.mjs --commit        # write changes
+//   node scripts/archive/import-timeoff-2026.mjs                 # dry-run
+//   node scripts/archive/import-timeoff-2026.mjs --commit        # write changes
 //
 // Requires NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in
 // .env.local (auto-loaded).
@@ -68,7 +68,7 @@ const TIME_OFF_SUBCATEGORIES = {
 // Load .env.local
 // ---------------------------------------------------------------------------
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const envPath = join(__dirname, "..", ".env.local");
+const envPath = join(__dirname, "..", "..", ".env.local");
 const envSource = readFileSync(envPath, "utf8");
 for (const line of envSource.split(/\r?\n/)) {
   if (!line || line.startsWith("#") || !line.includes("=")) continue;

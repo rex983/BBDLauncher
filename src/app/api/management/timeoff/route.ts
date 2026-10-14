@@ -1,5 +1,5 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
-import { VALID_DEPARTMENTS, VALID_OFFICES } from "@/lib/org/constants";
+import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
 import { loadTimeoffQueue } from "@/lib/timeoff/queries";
 import { TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
@@ -45,10 +45,10 @@ export async function GET(req: NextRequest) {
   // for manager-tier viewers, so these only apply when scope is unbounded).
   const officeFilter = url.searchParams.get("office");
   const departmentFilter = url.searchParams.get("department");
-  if (officeFilter && !VALID_OFFICES.has(officeFilter)) {
+  if (!(await isKnownOffice(officeFilter))) {
     return NextResponse.json({ error: "Invalid office" }, { status: 400 });
   }
-  if (departmentFilter && !VALID_DEPARTMENTS.has(departmentFilter)) {
+  if (!(await isKnownDepartment(departmentFilter))) {
     return NextResponse.json({ error: "Invalid department" }, { status: 400 });
   }
 

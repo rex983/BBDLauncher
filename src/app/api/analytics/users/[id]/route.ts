@@ -3,20 +3,36 @@ import { analyticsScope } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { sinceIsoForRange } from "@/lib/analytics/ranges";
-import { fetchAllPages } from "@/app/api/_lib/paged";
 
-type AuditRow = {
-  id: string;
-  app_id: string | null;
-  link_id: string | null;
-  event_type: string;
-  created_at: string;
-  ip_address: string | null;
-  user_agent: string | null;
+// Shape returned by get_launcher_user_analytics (migration 047).
+type UserAgg = {
+  totals: {
+    events: number;
+    unique_destinations: number;
+    app_launches: number;
+    link_clicks: number;
+    first_event: string | null;
+    last_event: string | null;
+  };
+  destinations: Array<{
+    id: string;
+    name: string;
+    kind: "app" | "link";
+    count: number;
+    first_used: string;
+    last_used: string;
+  }>;
+  audit_log: Array<{
+    id: string;
+    created_at: string;
+    destination_id: string | null;
+    destination_name: string;
+    kind: "app" | "link";
+    ip_address: string | null;
+    user_agent: string | null;
+  }>;
+  audit_log_truncated: boolean;
 };
-
-type AppRow = { id: string; name: string };
-type LinkRow = { id: string; name: string };
 
 export async function GET(
   req: NextRequest,
@@ -24,7 +40,7 @@ export async function GET(
 ) {
   try {
     const session = await auth();
-    const scope = analyticsScope(session?.user?.role, session?.user?.office ?? null);
+    const scope = analyticsScope(session?.user?.permRole, session?.user?.office ?? null);
     if (!session?.user || !scope.allowed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
@@ -48,102 +64,15 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const paged = await fetchAllPages<AuditRow>((from, to) => {
-      let query = supabase
-        .from("launcher_sso_audit_log")
-        .select("id, app_id, link_id, event_type, created_at, ip_address, user_agent")
-        .eq("user_id", id)
-        .in("event_type", ["app_launch", "link_click"])
-        .order("created_at", { ascending: false })
-        .range(from, to);
-      if (sinceIso) query = query.gte("created_at", sinceIso);
-      return query;
+    // Aggregated in SQL (migration 047) instead of paging raw rows here.
+    const { data: agg, error: aggErr } = await supabase.rpc("get_launcher_user_analytics", {
+      p_user_id: id,
+      p_since: sinceIso,
     });
-    if (paged.error) {
-      return NextResponse.json({ error: paged.error }, { status: 500 });
+    if (aggErr) {
+      return NextResponse.json({ error: aggErr.message }, { status: 500 });
     }
-    const events = paged.data;
-
-    const appIds = [
-      ...new Set(events.map((e) => e.app_id).filter((v): v is string => !!v)),
-    ];
-    const linkIds = [
-      ...new Set(events.map((e) => e.link_id).filter((v): v is string => !!v)),
-    ];
-
-    const [{ data: appsRaw }, { data: linksRaw }] = await Promise.all([
-      appIds.length
-        ? supabase.from("launcher_apps").select("id, name").in("id", appIds)
-        : Promise.resolve({ data: [] as AppRow[] }),
-      linkIds.length
-        ? supabase.from("launcher_links").select("id, name").in("id", linkIds)
-        : Promise.resolve({ data: [] as LinkRow[] }),
-    ]);
-    const appById = new Map<string, AppRow>((appsRaw ?? []).map((a) => [a.id, a]));
-    const linkById = new Map<string, LinkRow>((linksRaw ?? []).map((l) => [l.id, l]));
-
-    type DestAgg = {
-      id: string;
-      name: string;
-      kind: "app" | "link";
-      count: number;
-      first_used: string;
-      last_used: string;
-    };
-    const perDest = new Map<string, DestAgg>();
-    let appLaunches = 0;
-    let linkClicks = 0;
-
-    for (const e of events) {
-      const isApp = e.event_type === "app_launch" && e.app_id;
-      const isLink = e.event_type === "link_click" && e.link_id;
-      if (!isApp && !isLink) continue;
-
-      const destId = isApp ? e.app_id! : e.link_id!;
-      const kind: "app" | "link" = isApp ? "app" : "link";
-      const name = isApp
-        ? appById.get(destId)?.name ?? "(deleted app)"
-        : linkById.get(destId)?.name ?? "(deleted link)";
-      const key = `${kind}:${destId}`;
-
-      if (isApp) appLaunches += 1;
-      else linkClicks += 1;
-
-      const existing = perDest.get(key);
-      if (existing) {
-        existing.count += 1;
-        if (e.created_at > existing.last_used) existing.last_used = e.created_at;
-        if (e.created_at < existing.first_used) existing.first_used = e.created_at;
-      } else {
-        perDest.set(key, {
-          id: destId,
-          name,
-          kind,
-          count: 1,
-          first_used: e.created_at,
-          last_used: e.created_at,
-        });
-      }
-    }
-
-    const destinations = [...perDest.values()].sort((a, b) => b.count - a.count);
-
-    const auditLog = events.slice(0, 500).map((e) => {
-      const isLink = e.event_type === "link_click";
-      const destId = isLink ? e.link_id : e.app_id;
-      const destName = isLink
-        ? linkById.get(destId ?? "")?.name ?? "(deleted link)"
-        : appById.get(destId ?? "")?.name ?? "(deleted app)";
-      return {
-        id: e.id,
-        created_at: e.created_at,
-        destination_id: destId,
-        destination_name: destName,
-        kind: isLink ? ("link" as const) : ("app" as const),
-        ip_address: e.ip_address,
-        user_agent: e.user_agent,
-      };
-    });
+    const result = agg as UserAgg;
 
     return NextResponse.json({
       user: profile
@@ -158,17 +87,10 @@ export async function GET(
       user_id: id,
       range: rangeParam,
       since: sinceIso,
-      totals: {
-        events: events.length,
-        unique_destinations: perDest.size,
-        app_launches: appLaunches,
-        link_clicks: linkClicks,
-        first_event: events.length ? events[events.length - 1].created_at : null,
-        last_event: events.length ? events[0].created_at : null,
-      },
-      destinations,
-      audit_log: auditLog,
-      audit_log_truncated: events.length > 500,
+      totals: result.totals,
+      destinations: result.destinations,
+      audit_log: result.audit_log,
+      audit_log_truncated: result.audit_log_truncated,
     });
   } catch (err) {
     console.error("User analytics error:", err);

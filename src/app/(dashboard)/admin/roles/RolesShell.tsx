@@ -22,7 +22,14 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { MANAGER_TIER_ROLES } from "@/lib/auth/permissions";
+import { BUILTIN_ROLES, MANAGER_TIER_ROLES, isActsAsTarget } from "@/lib/auth/permissions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { CachedRole } from "@/lib/launcher/cache";
 
 type LauncherRole = CachedRole;
@@ -36,9 +43,20 @@ type FormState = {
   name: string;
   display_name: string;
   description: string;
+  /** NONE = least privilege. */
+  acts_as: string;
+  /** Create only; NONE = start with no app access. */
+  copy_access_from: string;
 };
 
-const emptyForm: FormState = { name: "", display_name: "", description: "" };
+const NONE = "__none__";
+const emptyForm: FormState = {
+  name: "",
+  display_name: "",
+  description: "",
+  acts_as: NONE,
+  copy_access_from: NONE,
+};
 
 export function RolesShell({ initial, counts }: { initial: LauncherRole[]; counts: RoleCounts }) {
   const [roles, setRoles] = useState<LauncherRole[]>(initial);
@@ -69,6 +87,8 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
       name: role.name,
       display_name: role.display_name,
       description: role.description ?? "",
+      acts_as: role.acts_as ?? NONE,
+      copy_access_from: NONE,
     });
     setError(null);
     setDialogOpen(true);
@@ -86,6 +106,10 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
           body: JSON.stringify({
             display_name: form.display_name.trim(),
             description: form.description.trim() || null,
+            // Built-in roles keep their own permissions.
+            ...(BUILTIN_ROLES.has(editing.name)
+              ? {}
+              : { acts_as: form.acts_as === NONE ? null : form.acts_as }),
           }),
         })
       : await fetch("/api/roles", {
@@ -95,6 +119,8 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
             name: form.name.trim().toLowerCase(),
             display_name: form.display_name.trim(),
             description: form.description.trim() || null,
+            acts_as: form.acts_as === NONE ? null : form.acts_as,
+            copy_access_from: form.copy_access_from === NONE ? null : form.copy_access_from,
           }),
         });
 
@@ -106,9 +132,16 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
       return;
     }
 
+    const saved = await res.json().catch(() => ({}));
+    if (typeof saved.warning === "string") alert(saved.warning);
     setDialogOpen(false);
     fetchAll();
   };
+
+  const actsAsOptions = roles.filter((r) => isActsAsTarget(r.name));
+  const labelOf = (name: string | null) =>
+    (name && roles.find((r) => r.name === name)?.display_name) || name;
+  const editingBuiltin = !!editing && BUILTIN_ROLES.has(editing.name);
 
   const handleDelete = async (role: LauncherRole) => {
     if (!confirm(`Delete role "${role.display_name}"? Apps assigned to this role will lose that access tag.`))
@@ -128,9 +161,10 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
         <div>
           <h1 className="text-2xl font-bold">Roles</h1>
           <p className="text-muted-foreground">
-            Custom roles tag which apps users see. Admin and manager-tier roles
-            keep their built-in launcher permissions; new roles are app-access
-            labels only.
+            Roles decide which apps people see (the access grid on each app) and,
+            in every app, what they may do. A new role has the least privilege
+            unless you give it &ldquo;Permissions like&rdquo; a built-in role.
+            Changes reach every app within a minute.
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -186,6 +220,64 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label>Permissions like</Label>
+                {editingBuiltin ? (
+                  <p className="text-sm text-muted-foreground">
+                    Built-in role: it keeps its own permissions.
+                  </p>
+                ) : (
+                  <>
+                    <Select
+                      value={form.acts_as}
+                      onValueChange={(v) => setForm({ ...form, acts_as: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>No one (least privilege)</SelectItem>
+                        {actsAsOptions.map((r) => (
+                          <SelectItem key={r.name} value={r.name}>
+                            {r.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      What people with this role may do inside the launcher and every
+                      app. Never grants admin.
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {!editing && (
+                <div className="space-y-2">
+                  <Label>Copy app access from</Label>
+                  <Select
+                    value={form.copy_access_from}
+                    onValueChange={(v) => setForm({ ...form, copy_access_from: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>Nothing (no apps yet)</SelectItem>
+                      {roles.map((r) => (
+                        <SelectItem key={r.name} value={r.name}>
+                          {r.display_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Starts the role with the same apps, office by office. Adjust each
+                    app&apos;s access grid afterwards.
+                  </p>
+                </div>
+              )}
+
               {error && <p className="text-sm text-destructive">{error}</p>}
 
               <div className="flex justify-end">
@@ -239,8 +331,12 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
                     <Badge>admin</Badge>
                   ) : MANAGER_TIER_ROLES.has(role.name) ? (
                     <Badge variant="secondary">manager tier</Badge>
+                  ) : role.acts_as ? (
+                    <Badge variant="secondary">like {labelOf(role.acts_as)}</Badge>
+                  ) : BUILTIN_ROLES.has(role.name) ? (
+                    <Badge variant="outline">built-in</Badge>
                   ) : (
-                    <Badge variant="outline">app-access</Badge>
+                    <Badge variant="outline">least privilege</Badge>
                   )}
                 </TableCell>
                 <TableCell>{userCount}</TableCell>
@@ -251,7 +347,7 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
                       variant="ghost"
                       size="icon"
                       onClick={() => openEdit(role)}
-                      title="Edit display name and description"
+                      title="Edit display name, description and permissions"
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>

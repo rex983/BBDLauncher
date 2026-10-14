@@ -1,14 +1,15 @@
 // Roles are stored as text and are admin-managed via /admin/roles, so this
 // is a string at the type level. The hardcoded permission tiers in
-// src/lib/auth/permissions.ts (isAdmin / MANAGER_TIER_ROLES) still gate admin
-// UI access — new roles created at runtime are app-access labels only.
+// src/lib/auth/permissions.ts (isAdmin / MANAGER_TIER_ROLES) gate admin UI
+// access; a custom role gets a built-in role's permissions through
+// launcher_roles.acts_as (migration 051) — see `permRole` on the session.
 export type UserRole = string;
 
-import type { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
+// Offices and departments are admin-managed (launcher_offices /
+// launcher_departments, migration 051), so any string is possible.
+export type Office = string;
 
-export type Office = (typeof OFFICES)[number];
-
-export type Department = (typeof DEPARTMENTS)[number];
+export type Department = string;
 
 export interface UserProfile {
   id: string;
@@ -31,7 +32,10 @@ declare module "next-auth" {
       email: string;
       name: string | null;
       image: string | null;
+      /** Real role — display, the access grid and launch tokens. */
       role: UserRole;
+      /** Role used for permission checks: acts_as ?? role (migration 051). */
+      permRole: UserRole;
       profileId: string;
       office: Office | null;
       department: Department | null;
@@ -42,6 +46,7 @@ declare module "next-auth" {
 
   interface JWT {
     role: UserRole;
+    permRole?: UserRole;
     profileId: string;
     office: Office | null;
     department?: Department | null;

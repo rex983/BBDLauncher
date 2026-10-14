@@ -10,7 +10,7 @@ import { hashAuthorSignature, hashMemoDocument } from "@/lib/memos/hashing";
 import { listMemosForManagement } from "@/lib/memos/queries";
 import { publishMemo } from "@/lib/memos/service";
 import { extractActorHeaders } from "@/lib/http";
-import { VALID_DEPARTMENTS, VALID_OFFICES } from "@/lib/org/constants";
+import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
     supabase,
     viewer: {
       profileId: session.user.profileId,
-      role: session.user.role || "employee",
+      role: session.user.permRole || "employee",
       office: session.user.office ?? null,
       department: session.user.department ?? null,
     },
@@ -80,17 +80,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const admin = isAdmin(session.user.role);
+  const admin = isAdmin(session.user.permRole);
   const supabase = createAdminClient();
 
   // Audience validation. Managers can target only their own office /
   // department; admins can target anything.
-  if (parsed.data.audience_office && !VALID_OFFICES.has(parsed.data.audience_office)) {
+  if (!(await isKnownOffice(parsed.data.audience_office))) {
     return NextResponse.json({ error: "Invalid audience_office" }, { status: 400 });
   }
   if (
-    parsed.data.audience_department &&
-    !VALID_DEPARTMENTS.has(parsed.data.audience_department)
+    !(await isKnownDepartment(parsed.data.audience_department))
   ) {
     return NextResponse.json({ error: "Invalid audience_department" }, { status: 400 });
   }
