@@ -17,6 +17,9 @@ export interface LaunchApp {
 
 export type LaunchDenied = "clock_required" | "forbidden" | "not_found";
 
+/** Who is launching: the signed-in user, or the person an admin views as. */
+export type LaunchSubject = Pick<Session["user"], "profileId" | "role" | "office">;
+
 // Everything that decides whether this user may sign into this app. Shared by
 // /api/launch (the tile click) and /api/saml/sso (SP-initiated SAML), so a
 // signed login is never issued on a looser rule than the dashboard uses.
@@ -26,15 +29,20 @@ export type LaunchDenied = "clock_required" | "forbidden" | "not_found";
 // that read isn't repeated here. Apps, the role grid and personal grants come
 // from the same tag-busted caches the dashboard renders from; only the clock
 // state is read live.
+//
+// For an admin's "View as", the subject is the previewed person and
+// skipClock is set: the admin is the one launching, so their clock (none —
+// admins bypass it) applies, not the person's.
 export async function checkAppLaunch(
-  session: Session,
+  subject: LaunchSubject,
   appId: string,
+  opts: { skipClock?: boolean } = {},
 ): Promise<{ ok: true; app: LaunchApp } | { ok: false; reason: LaunchDenied }> {
-  const isAdmin = session.user.role === "admin";
+  const isAdmin = subject.role === "admin";
 
   const [clockedIn, apps, roleAccess, userAccess] = await Promise.all([
     // Clock gate: admins bypass so they can debug apps outside work hours.
-    isAdmin ? true : isClockedIn(session.user.profileId),
+    isAdmin || opts.skipClock ? true : isClockedIn(subject.profileId),
     getCachedApps(),
     getCachedRoleAppAccess(),
     getCachedUserAccess(),
@@ -52,10 +60,10 @@ export async function checkAppLaunch(
       }
     : null;
   const accessRows = roleAccess.filter(
-    (r) => r.app_id === appId && r.role_name === session.user.role,
+    (r) => r.app_id === appId && r.role_name === subject.role,
   );
   const personal = userAccess.some(
-    (r) => r.profile_id === session.user.profileId && r.app_id === appId,
+    (r) => r.profile_id === subject.profileId && r.app_id === appId,
   );
 
   if (!clockedIn) return { ok: false, reason: "clock_required" };
@@ -63,7 +71,7 @@ export async function checkAppLaunch(
   // Office × role grid (migration 034): the user's role must be allowed from
   // their office. Admins still need an admin row but aren't limited by office.
   // People added to the app by name (migration 040) skip both office gates.
-  if (!personal && !rowsAllow(accessRows, session.user.role, session.user.office, isAdmin)) {
+  if (!personal && !rowsAllow(accessRows, subject.role, subject.office, isAdmin)) {
     return { ok: false, reason: "forbidden" };
   }
 
@@ -76,7 +84,7 @@ export async function checkAppLaunch(
     appOffices.length > 0 &&
     !personal &&
     !isAdmin &&
-    (!session.user.office || !appOffices.includes(session.user.office))
+    (!subject.office || !appOffices.includes(subject.office))
   ) {
     return { ok: false, reason: "forbidden" };
   }
