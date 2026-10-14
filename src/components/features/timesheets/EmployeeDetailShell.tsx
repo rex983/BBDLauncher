@@ -25,6 +25,7 @@ import {
   type WeekTotals,
 } from "@/lib/timesheets/weekly";
 import { formatWeekOf, localDateInZone } from "@/lib/timesheets/tz";
+import { DEFAULT_WORKDAYS } from "@/lib/timesheets/schedule";
 import { canEditTimeData } from "@/lib/auth/permissions";
 import {
   emptyTimeOffTotals,
@@ -92,14 +93,16 @@ const OVERTIME_WEEK_COLUMNS: ExportColumn<WeekTotals>[] = [
 // Weeks shown before "Show all" — enough for a pay-period glance.
 const OVERTIME_WEEKS_PREVIEW = 6;
 
-const TIME_OFF_WINDOW_COLUMNS: ExportColumn<WindowTimeOffRow>[] = [
+const timeOffWindowColumns = (
+  workdays: ReadonlySet<number>,
+): ExportColumn<WindowTimeOffRow>[] => [
   { key: "start_date", label: "Start date", get: (r) => r.start_date },
   { key: "end_date", label: "End date", get: (r) => r.end_date },
   { key: "type", label: "Type", get: (r) => TIME_OFF_TYPE_LABEL[r.type] },
   { key: "subcategory", label: "Subcategory", get: (r) => r.subcategory ?? "" },
   { key: "full_day", label: "Full day", get: (r) => r.full_day },
   { key: "hours", label: "Hours", get: (r) => r.hours ?? "" },
-  { key: "days", label: "Days", get: (r) => requestDays(r) },
+  { key: "days", label: "Days", get: (r) => requestDays(r, workdays) },
   { key: "status", label: "Status", get: (r) => r.status },
   { key: "reason", label: "Reason", get: (r) => r.reason ?? "" },
 ];
@@ -127,6 +130,11 @@ export default function EmployeeDetailShell({
   );
   const [timeOffYtd, setTimeOffYtd] = useState<YtdBreakdown>(
     initialData?.time_off.ytd ?? emptyTimeOffTotals(),
+  );
+  // Schedule doesn't change with the days selector, so the SSR value holds.
+  const workdays = useMemo(
+    () => new Set(initialData?.time_off.workdays ?? DEFAULT_WORKDAYS),
+    [initialData],
   );
   const [overtime, setOvertime] = useState<EmployeeOvertime | null>(
     initialData?.overtime ?? null,
@@ -463,7 +471,7 @@ export default function EmployeeDetailShell({
               <ExportMenu
                 filename={`timeoff-${employeeSlug}-${days}d`}
                 rows={timeOffWindow}
-                columns={TIME_OFF_WINDOW_COLUMNS}
+                columns={timeOffWindowColumns(workdays)}
                 size="sm"
               />
             </div>
@@ -476,7 +484,7 @@ export default function EmployeeDetailShell({
                     ? fmtDateShort(r.start_date)
                     : `${fmtDateShort(r.start_date)} – ${fmtDateShort(r.end_date)}`;
                 const durationLabel = r.full_day
-                  ? `${formatDays(requestDays(r))} d`
+                  ? `${formatDays(requestDays(r, workdays))} d`
                   : `${r.hours}h`;
                 return (
                   <li

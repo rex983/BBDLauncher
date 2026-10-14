@@ -26,6 +26,13 @@ export interface WeekViewDay {
   tz: string;
 }
 
+// Weekdays (0 = Sun) the profile works, with the same default fallback as
+// buildWeekView. Time-off day counts use this so a Saturday off counts for
+// a Tue–Sat schedule and a Monday off doesn't.
+export function workdaysFrom(schedules: { weekday: number }[]): ReadonlySet<number> {
+  return schedules.length > 0 ? new Set(schedules.map((s) => s.weekday)) : DEFAULT_WORKDAYS;
+}
+
 // Full Sun–Sat schedule with the default fallback applied.
 export function buildWeekView(schedules: WorkScheduleRow[]): WeekViewDay[] {
   const hasAnyOverride = schedules.length > 0;

@@ -135,9 +135,11 @@ export function PunchesTab({
 export function TimeOffTab({
   windowRows,
   ytd,
+  workdays,
 }: {
   windowRows: WindowTimeOffRow[];
   ytd: YtdBreakdown;
+  workdays: ReadonlySet<number>;
 }) {
   return (
     <div className="space-y-4">
@@ -201,7 +203,7 @@ export function TimeOffTab({
                     </TableCell>
                     <TableCell>
                       {r.full_day
-                        ? `${formatDays(requestDays(r))} d`
+                        ? `${formatDays(requestDays(r, workdays))} d`
                         : `${r.hours}h`}
                     </TableCell>
                     <TableCell>

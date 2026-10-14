@@ -49,6 +49,7 @@ import {
   buildWeekView,
   formatClockTime,
   WEEKDAY_LABELS,
+  workdaysFrom,
 } from "@/lib/timesheets/schedule";
 import {
   AppsTab,
@@ -444,7 +445,11 @@ export function UserProfile360Shell({
         </TabsContent>
 
         <TabsContent value="timeoff" className="mt-4">
-          <TimeOffTab windowRows={timeOffWindow} ytd={timeOffYtd} />
+          <TimeOffTab
+            windowRows={timeOffWindow}
+            ytd={timeOffYtd}
+            workdays={workdaysFrom(workSchedule)}
+          />
         </TabsContent>
 
         <TabsContent value="incidents" className="mt-4">

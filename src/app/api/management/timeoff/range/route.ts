@@ -4,6 +4,7 @@ import {
   scopeProfilesQuery,
 } from "@/lib/auth/scope-check";
 import { VALID_DEPARTMENTS, VALID_OFFICES } from "@/lib/org/constants";
+import { workdaysFrom } from "@/lib/timesheets/schedule";
 import { NextRequest, NextResponse } from "next/server";
 
 const MAX_RANGE_MS = 24 * 31 * 24 * 60 * 60 * 1000; // ~24 months
@@ -108,7 +109,8 @@ export async function GET(req: NextRequest) {
   if (profileIds.length === 0) return NextResponse.json({ profiles: [], requests: [] });
 
   // A request overlaps [from, to] iff start_date <= to AND end_date >= from.
-  const { data: requests, error } = await supabase
+  const [{ data: requests, error }, { data: schedRows, error: schedErr }] = await Promise.all([
+    supabase
     .from("time_off_requests")
     .select(
       "id, profile_id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_at, created_at, attachments",
@@ -118,12 +120,26 @@ export async function GET(req: NextRequest) {
     .lte("start_date", to)
     .gte("end_date", from)
     .order("start_date", { ascending: true })
-    .limit(MAX_REQUESTS);
+    .limit(MAX_REQUESTS),
+    // Work schedules so clients count days on each person's workdays.
+    supabase.from("work_schedules").select("profile_id, weekday").in("profile_id", profileIds),
+  ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (schedErr) return NextResponse.json({ error: schedErr.message }, { status: 500 });
+
+  const schedByProfile = new Map<string, { weekday: number }[]>();
+  for (const s of schedRows || []) {
+    const list = schedByProfile.get(s.profile_id) || [];
+    list.push(s);
+    schedByProfile.set(s.profile_id, list);
+  }
 
   return NextResponse.json({
-    profiles,
+    profiles: profiles.map((p) => ({
+      ...p,
+      workdays: [...workdaysFrom(schedByProfile.get(p.id) || [])],
+    })),
     requests: requests || [],
   });
 }
