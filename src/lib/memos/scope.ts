@@ -1,7 +1,7 @@
 import { timeDataScope } from "@/lib/auth/permissions";
 import type { Session } from "next-auth";
 
-type Viewer = Pick<Session["user"], "role" | "department" | "office">;
+type Viewer = Pick<Session["user"], "permRole" | "department" | "office">;
 export interface MemoPerson {
   department: string | null;
   office: string | null;
@@ -17,7 +17,7 @@ export function memoTrackingScope(
   isAuthor: boolean,
 ): ((p: MemoPerson | null | undefined) => boolean) | null {
   if (isAuthor) return null;
-  const scope = timeDataScope(viewer.role, viewer.department, viewer.office);
+  const scope = timeDataScope(viewer.permRole, viewer.department, viewer.office);
   if (scope.allowed && !scope.department && !scope.office) return null;
   if (!scope.allowed) return () => false;
   return (p) =>

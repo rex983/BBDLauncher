@@ -119,7 +119,7 @@ export default function EmployeeDetailShell({
   initialError: string | null;
 }) {
   const { data: session } = useSession();
-  const canEdit = canEditTimeData(session?.user?.role);
+  const canEdit = canEditTimeData(session?.user?.permRole);
 
   const [profile, setProfile] = useState<EmployeeDetailProfile | null>(
     initialData?.profile ?? null,

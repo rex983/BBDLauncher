@@ -6,6 +6,7 @@ import {
   getCachedUserAccess,
 } from "@/lib/launcher/cache";
 import { isClockedIn } from "@/lib/timesheets/server";
+import { getOfficeNames } from "@/lib/org/lists";
 
 export interface LaunchApp {
   id: string;
@@ -40,12 +41,13 @@ export async function checkAppLaunch(
 ): Promise<{ ok: true; app: LaunchApp } | { ok: false; reason: LaunchDenied }> {
   const isAdmin = subject.role === "admin";
 
-  const [clockedIn, apps, roleAccess, userAccess] = await Promise.all([
+  const [clockedIn, apps, roleAccess, userAccess, officeNames] = await Promise.all([
     // Clock gate: admins bypass so they can debug apps outside work hours.
     isAdmin || opts.skipClock ? true : isClockedIn(subject.profileId),
     getCachedApps(),
     getCachedRoleAppAccess(),
     getCachedUserAccess(),
+    getOfficeNames(),
   ]);
 
   // getCachedApps only holds active apps, matching the old status filter.
@@ -71,7 +73,7 @@ export async function checkAppLaunch(
   // Office × role grid (migration 034): the user's role must be allowed from
   // their office. Admins still need an admin row but aren't limited by office.
   // People added to the app by name (migration 040) skip both office gates.
-  if (!personal && !rowsAllow(accessRows, subject.role, subject.office, isAdmin)) {
+  if (!personal && !rowsAllow(accessRows, subject.role, subject.office, officeNames, isAdmin)) {
     return { ok: false, reason: "forbidden" };
   }
 

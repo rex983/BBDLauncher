@@ -13,7 +13,7 @@ export default async function ManagementLayout({
 }) {
   const session = await auth();
   if (!session?.user) notFound();
-  if (!canAccessManagementPath(session.user.role, "/management/timesheets")) {
+  if (!canAccessManagementPath(session.user.permRole, "/management/timesheets")) {
     notFound();
   }
   return <>{children}</>;

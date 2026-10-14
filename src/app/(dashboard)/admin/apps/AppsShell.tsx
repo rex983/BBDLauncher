@@ -1,6 +1,8 @@
 "use client";
 
-import { ACCESS_OFFICE_LABEL } from "@/lib/launcher/access";
+import { accessOfficeLabel } from "@/lib/launcher/access";
+import type { OrgItem } from "@/lib/org/constants";
+import type { LauncherRole } from "@/types/app";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +43,15 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   return dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
 }
 
-export function AppsShell({ initial }: { initial: AppWithAccess[] }) {
+export function AppsShell({
+  initial,
+  roles,
+  offices,
+}: {
+  initial: AppWithAccess[];
+  roles: LauncherRole[];
+  offices: OrgItem[];
+}) {
   const [apps, setApps] = useState<AppWithAccess[]>(initial);
   const [editingApp, setEditingApp] = useState<AppWithAccess | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -134,7 +144,7 @@ export function AppsShell({ initial }: { initial: AppWithAccess[] }) {
                 {editingApp ? "Edit Application" : "New Application"}
               </DialogTitle>
             </DialogHeader>
-            <AppForm app={editingApp} onSaved={handleSaved} />
+            <AppForm app={editingApp} roles={roles} offices={offices} onSaved={handleSaved} />
           </DialogContent>
         </Dialog>
       </div>
@@ -207,7 +217,7 @@ export function AppsShell({ initial }: { initial: AppWithAccess[] }) {
                     <div className="flex flex-wrap gap-1">
                       {app.access_offices.map((o) => (
                         <Badge key={o} variant="outline">
-                          {ACCESS_OFFICE_LABEL[o]}
+                          {accessOfficeLabel(o, offices)}
                         </Badge>
                       ))}
                     </div>

@@ -22,7 +22,7 @@ interface SsoBadgeProps {
 export function SsoBadge({ ssoType, className }: SsoBadgeProps) {
   const { data: session } = useSession();
   const { viewAs } = useRolePreview();
-  const actualRole = session?.user?.role;
+  const actualRole = session?.user?.permRole;
   const effectiveRole = actualRole === "admin" && viewAs ? viewAs : actualRole;
   if (effectiveRole !== "admin" || ssoType === "none") return null;
   return (

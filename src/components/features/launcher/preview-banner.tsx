@@ -11,7 +11,7 @@ export function PreviewBanner() {
   const { data: session } = useSession();
   const { viewAsUser, exitPreview } = useRolePreview();
 
-  if (session?.user?.role !== "admin" || !viewAsUser) return null;
+  if (session?.user?.permRole !== "admin" || !viewAsUser) return null;
   const where = [viewAsUser.office, viewAsUser.department].filter(Boolean).join(" · ");
 
   return (

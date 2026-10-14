@@ -5,6 +5,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cellsFromRows, officesWithAccess } from "@/lib/launcher/access";
 import { getCachedRoleAppAccess, getCachedUserAccess } from "@/lib/launcher/cache";
+import { getOfficeNames } from "@/lib/org/lists";
 import type { AppWithAccess } from "@/types/app";
 
 const SSO_CONFIG_COLUMNS =
@@ -19,13 +20,14 @@ export async function loadAdminApps(
   // CRUD busts both), and SSO configs don't need the app ids up front.
   // Sign-on settings are admin-only. Columns are listed explicitly so
   // retired fields (the old OAuth client secret) never reach the browser.
-  const [appsRes, accessRows, userAccessRows, ssoRes] = await Promise.all([
+  const [appsRes, accessRows, userAccessRows, ssoRes, officeNames] = await Promise.all([
     supabase.from("launcher_apps").select("*").order("display_order", { ascending: true }),
     getCachedRoleAppAccess(),
     getCachedUserAccess(),
     viewerIsAdmin
       ? supabase.from("launcher_sso_configs").select(SSO_CONFIG_COLUMNS)
       : Promise.resolve({ data: [] as { app_id: string }[] }),
+    getOfficeNames(),
   ]);
   if (appsRes.error) return { data: [], error: appsRes.error.message };
 
@@ -48,8 +50,8 @@ export async function loadAdminApps(
   const data = (appsRes.data || []).map((app) => ({
     ...app,
     roles: [...new Set((rowsByAppId.get(app.id) || []).map((r) => r.role_name))],
-    access: cellsFromRows(rowsByAppId.get(app.id) || []),
-    access_offices: officesWithAccess(rowsByAppId.get(app.id) || []),
+    access: cellsFromRows(rowsByAppId.get(app.id) || [], officeNames),
+    access_offices: officesWithAccess(rowsByAppId.get(app.id) || [], officeNames),
     user_ids: usersByAppId.get(app.id) || [],
     sso_config: ssoByAppId.get(app.id) || null,
   })) as AppWithAccess[];

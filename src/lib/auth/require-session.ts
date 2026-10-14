@@ -18,7 +18,7 @@ export async function requireSession(
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: permit ? 403 : 401 });
   }
-  if (permit && !permit(session.user.role)) {
+  if (permit && !permit(session.user.permRole)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
   return session;

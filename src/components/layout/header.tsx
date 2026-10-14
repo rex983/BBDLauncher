@@ -58,7 +58,7 @@ export function Header() {
             <span className="sr-only">Toggle theme</span>
           </Button>
 
-          {canManageContent(user?.role) && (
+          {canManageContent(user?.permRole) && (
             <Button variant="ghost" size="sm" asChild>
               <Link href="/admin/apps">
                 <Shield className="mr-2 h-4 w-4" />
@@ -93,7 +93,7 @@ export function Header() {
                   My Profile
                 </Link>
               </DropdownMenuItem>
-              {canManageContent(user?.role) && (
+              {canManageContent(user?.permRole) && (
                 <DropdownMenuItem asChild>
                   <Link href="/admin/apps">
                     <Settings className="mr-2 h-4 w-4" />

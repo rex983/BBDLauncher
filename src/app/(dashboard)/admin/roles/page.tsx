@@ -10,7 +10,7 @@ import { RolesShell, type RoleCounts } from "./RolesShell";
 // the cached role × app grid.
 export default async function AdminRolesPage() {
   const session = await auth();
-  if (!isAdmin(session?.user?.role)) redirect("/dashboard");
+  if (!isAdmin(session?.user?.permRole)) redirect("/dashboard");
 
   const [roles, accessRows, { data: profiles }] = await Promise.all([
     getCachedRoles(),

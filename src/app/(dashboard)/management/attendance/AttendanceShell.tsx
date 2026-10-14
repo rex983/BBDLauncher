@@ -28,7 +28,7 @@ import {
 import { useSortableRows } from "@/lib/hooks/use-sortable-rows";
 import { cn } from "@/lib/utils";
 import { fmtDay } from "@/components/shared/format";
-import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
+import { orgLabel, type OrgItem } from "@/lib/org/constants";
 import { ATTENDANCE_RANGES } from "@/lib/timesheets/attendance-ranges";
 import type {
   AttendanceDayPerson,
@@ -115,11 +115,15 @@ export default function AttendanceShell({
   isAdmin,
   office,
   department,
+  offices,
+  departments,
 }: {
   report: AttendanceReport;
   isAdmin: boolean;
   office: string | null;
   department: string | null;
+  offices: OrgItem[];
+  departments: OrgItem[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -237,7 +241,7 @@ export default function AttendanceShell({
                 <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>All offices</SelectItem>
-                  {OFFICES.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                  {offices.map((o) => <SelectItem key={o.name} value={o.name}>{o.display_name}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select
@@ -247,14 +251,14 @@ export default function AttendanceShell({
                 <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>All departments</SelectItem>
-                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  {departments.map((d) => <SelectItem key={d.name} value={d.name}>{d.display_name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </>
           ) : (
             <>
-              <Badge variant="outline">{office ?? "—"}</Badge>
-              <Badge variant="outline">{department ?? "—"}</Badge>
+              <Badge variant="outline">{orgLabel(offices, office)}</Badge>
+              <Badge variant="outline">{orgLabel(departments, department)}</Badge>
             </>
           )}
         </div>

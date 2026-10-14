@@ -25,6 +25,41 @@ export function isAdmin(role: UserRole | undefined | null): boolean {
   return role === "admin";
 }
 
+// Roles the app code gives a meaning to (mirrors launcher_builtin_roles() in
+// migration 051). Custom roles get one of these roles' permissions through
+// launcher_roles.acts_as; built-ins can't have acts_as themselves.
+export const BUILTIN_ROLES: ReadonlySet<UserRole> = new Set([
+  "admin",
+  "senior_manager",
+  "junior_manager",
+  "team_lead",
+  "sales_rep",
+  "bst",
+  "rnd",
+  "cancellations_dept",
+  "revisions_dept",
+]);
+
+/** Roles a custom role may act as: every built-in except admin. */
+export function isActsAsTarget(role: string): boolean {
+  return BUILTIN_ROLES.has(role) && role !== "admin";
+}
+
+/**
+ * The role permission checks use: acts_as ?? role. Mirrors
+ * launcher_permission_role() but never yields "admin" for a non-admin role,
+ * whatever the table says. Unknown roles stay as they are (least privilege).
+ */
+export function permRoleFor(
+  role: UserRole | null | undefined,
+  roles: ReadonlyArray<{ name: string; acts_as?: string | null }>,
+): UserRole {
+  if (!role) return "";
+  if (role === "admin") return role;
+  const target = roles.find((r) => r.name === role)?.acts_as;
+  return target && target !== "admin" ? target : role;
+}
+
 // Roles that get manager-tier privileges (canManageContent + office-scoped
 // analytics + MANAGER_ADMIN_PATHS access). Kept as a set so it's easy to
 // extend when the org chart adds a new manager rank.

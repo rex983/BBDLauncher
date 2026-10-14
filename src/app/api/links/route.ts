@@ -5,7 +5,7 @@ import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { httpUrl } from "@/lib/launcher/app-schema";
-import { OFFICES } from "@/lib/org/constants";
+import { isKnownOffice } from "@/lib/org/lists";
 import { setUserIds, userIdsByTarget } from "@/lib/launcher/user-access";
 
 const linkSchema = z.object({
@@ -14,7 +14,8 @@ const linkSchema = z.object({
   url: httpUrl,
   icon_url: z.string().nullable().optional(),
   display_order: z.number().default(0),
-  office: z.enum(OFFICES).nullable().optional(),
+  /** An office from launcher_offices (migration 051); null = every office. */
+  office: z.string().min(1).nullable().optional(),
   /** Shown only to the people in user_ids. */
   people_only: z.boolean().optional(),
   /** Individual people who see the link, on top of the office filter. */
@@ -37,7 +38,7 @@ export async function GET() {
     }
 
     // Who's on each link is for the admin list only.
-    if (!canManageContent(session.user.role)) return NextResponse.json(links || []);
+    if (!canManageContent(session.user.permRole)) return NextResponse.json(links || []);
     const usersByLinkId = await userIdsByTarget("link_id", (links || []).map((l) => l.id));
     return NextResponse.json(
       (links || []).map((l) => ({ ...l, user_ids: usersByLinkId.get(l.id) || [] })),
@@ -63,6 +64,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { user_ids, ...linkData } = parsed.data;
+    if (!(await isKnownOffice(linkData.office))) {
+      return NextResponse.json({ error: "Unknown office" }, { status: 400 });
+    }
     const supabase = createAdminClient();
     const { data: link, error } = await supabase
       .from("launcher_links")

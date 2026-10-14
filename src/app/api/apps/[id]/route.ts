@@ -4,8 +4,9 @@ import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { OFFICES } from "@/lib/org/constants";
-import { ACCESS_OFFICES, rowsFromCells } from "@/lib/launcher/access";
+import { rowsFromCells } from "@/lib/launcher/access";
+import { getOfficeNames } from "@/lib/org/lists";
+import { NO_OFFICE } from "@/lib/org/constants";
 import { setUserIds } from "@/lib/launcher/user-access";
 import { httpUrl, ssoConfigSchema } from "@/lib/launcher/app-schema";
 
@@ -19,11 +20,11 @@ const appUpdateSchema = z.object({
   display_order: z.number().optional(),
   open_in_new_tab: z.boolean().optional(),
   section_id: z.string().uuid().nullable().optional(),
-  offices: z.array(z.enum(OFFICES)).optional(),
+  offices: z.array(z.string().min(1)).optional(),
   roles: z.array(z.string()).optional(),
   /** Office × role grid cells that can open the app. Replaces roles + offices. */
   access: z
-    .array(z.object({ role: z.string().min(1), office: z.enum(ACCESS_OFFICES) }))
+    .array(z.object({ role: z.string().min(1), office: z.string().min(1) }))
     .max(500)
     .optional(),
   /** Individual people who can open the app, on top of the grid. */
@@ -68,11 +69,19 @@ export async function PUT(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
   const { roles, access, user_ids, sso_config, ...appData } = parsed.data;
+  // Offices are admin-managed (migration 051); "none" is the grid's no-office row.
+  const officeNames = await getOfficeNames();
+  const unknownOffice =
+    (appData.offices ?? []).find((o) => !officeNames.includes(o)) ??
+    access?.find((c) => c.office !== NO_OFFICE && !officeNames.includes(c.office))?.office;
+  if (unknownOffice) {
+    return NextResponse.json({ error: `Unknown office "${unknownOffice}"` }, { status: 400 });
+  }
   // The grid holds office limits now; the app's own office list stays empty.
   if (access) appData.offices = [];
   // Single sign-on decides where launch tokens (which carry the launching
   // user's role) get sent, so only admins can change it.
-  const viewerIsAdmin = isAdmin(session.user.role);
+  const viewerIsAdmin = isAdmin(session.user.permRole);
   if (!viewerIsAdmin) delete appData.sso_type;
   const supabase = createAdminClient();
 
@@ -90,7 +99,7 @@ export async function PUT(
   // Update access: the grid if sent, otherwise the older role list (every office).
   if (access !== undefined || roles !== undefined) {
     const rows = access
-      ? rowsFromCells(id, access)
+      ? rowsFromCells(id, access, officeNames)
       : (roles || []).map((role_name: string) => ({ role_name, app_id: id, office: null }));
     const { error: delError } = await supabase.from("launcher_role_app_access").delete().eq("app_id", id);
     if (delError) return NextResponse.json({ error: delError.message }, { status: 500 });

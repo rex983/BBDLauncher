@@ -7,7 +7,8 @@ import type { PreviewUser } from "@/components/features/launcher/role-preview-co
 import { allowedAppIds, personalGrants } from "@/lib/launcher/access";
 import { QuoteBanner } from "@/components/features/launcher/quote-banner";
 import { TimeClockShell } from "@/components/features/timeclock/TimeClockShell";
-import { canManageContent, isAdmin as isAdminRole } from "@/lib/auth/permissions";
+import { canManageContent, isAdmin as isAdminRole, permRoleFor } from "@/lib/auth/permissions";
+import { getOfficeNames } from "@/lib/org/lists";
 import {
   getCachedApps,
   getCachedRoleAppAccess,
@@ -23,7 +24,6 @@ import { redirect } from "next/navigation";
 import type { LauncherApp, LauncherSection } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
 import type { MotivationalQuote } from "@/types/quote";
-import type { Office } from "@/types/auth";
 
 // Active people for View as. Nothing busts this — a new or offboarded
 // person shows up (or drops off) within a minute.
@@ -48,6 +48,7 @@ async function loadPreviewUsers(): Promise<PreviewUser[]> {
     id: p.id,
     name: p.full_name || p.email,
     role: p.role,
+    perm_role: permRoleFor(p.role, roles),
     role_label: label.get(p.role) ?? p.role,
     office: p.office,
     department: p.department,
@@ -66,7 +67,7 @@ export default async function DashboardPage({
 
   const { viewAsUser, clock_required } = await searchParams;
   const isAdmin = session.user.role === "admin";
-  const canEditDashboard = canManageContent(session.user.role);
+  const canEditDashboard = canManageContent(session.user.permRole);
 
   let apps: LauncherApp[] = [];
   let sections: LauncherSection[] = [];
@@ -77,7 +78,7 @@ export default async function DashboardPage({
     // Everything below is cached (see src/lib/launcher/cache.ts). On a
     // cache hit this whole block is zero Supabase round-trips (the View as
     // people list is cached for a minute).
-    const [allApps, accessRows, userAccessRows, sectionsData, linksData, people, quoteData] =
+    const [allApps, accessRows, userAccessRows, sectionsData, linksData, people, quoteData, officeNames] =
       await Promise.all([
         getCachedApps(),
         getCachedRoleAppAccess(),
@@ -86,6 +87,7 @@ export default async function DashboardPage({
         getCachedLinks(),
         isAdmin ? loadPreviewUsers() : Promise.resolve([] as PreviewUser[]),
         getCachedActiveQuote(),
+        getOfficeNames(),
       ]);
     previewUsers = people;
 
@@ -94,11 +96,11 @@ export default async function DashboardPage({
     // active-people list are honoured.
     const target = (isAdmin && viewAsUser && previewUsers.find((u) => u.id === viewAsUser)) || null;
     const effectiveRole = target?.role ?? session.user.role;
-    const effectiveOffice = (target ? target.office : session.user.office) as Office | null;
+    const effectiveOffice = target ? target.office : session.user.office;
     const bypassOffice = effectiveRole === "admin";
 
     // Office × role grid (migration 034). Admins skip the office part.
-    const roleAppIds = allowedAppIds(accessRows, effectiveRole, effectiveOffice, bypassOffice);
+    const roleAppIds = allowedAppIds(accessRows, effectiveRole, effectiveOffice, officeNames, bypassOffice);
     // Apps and links granted to this person by name (migration 040).
     const mine = personalGrants(userAccessRows, target?.id ?? session.user.profileId);
 

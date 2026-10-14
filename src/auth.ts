@@ -7,6 +7,7 @@ import Credentials from "next-auth/providers/credentials";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptStrapiCookie } from "@/lib/auth/strapi-sso";
 import { rateLimit } from "@/lib/rate-limit";
+import { resolvePermRole } from "@/lib/auth/perm-role";
 import type { Department, Office, UserRole } from "@/types/auth";
 import type { JWT } from "next-auth/jwt";
 
@@ -31,6 +32,14 @@ function applyOrgClaims(token: JWT, row: Record<string, unknown>) {
 // within SESSION_PROFILE_TTL seconds. React's cache() then collapses the
 // several auth() calls in one render into one lookup.
 const SESSION_PROFILE_TTL = 30;
+
+// Permission role (acts_as ?? role, migration 051), re-resolved on every jwt
+// callback from the cached role list so an acts_as edit (which busts that
+// cache) applies on the next request. `role` stays the real role.
+async function withPermRole(token: JWT): Promise<JWT> {
+  token.permRole = await resolvePermRole(token.role as UserRole | undefined);
+  return token;
+}
 
 async function readSessionProfile(profileId: string) {
   const { data } = await createAdminClient()
@@ -222,14 +231,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             if (profile) {
               token.profileId = profile.id;
               applyOrgClaims(token, profile);
-              return token;
+              return withPermRole(token);
             }
           } catch {
             // fall through to legacy fallback
           }
           token.profileId = (token.profileId as string) || user.id || "admin-001";
           applyOrgClaims(token, token);
-          return token;
+          return withPermRole(token);
         }
 
         // Dev bypass — assign admin only in development
@@ -237,7 +246,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.role = (token.role as UserRole) || "admin";
           token.profileId = (token.profileId as string) || user.id;
           applyOrgClaims(token, token);
-          return token;
+          return withPermRole(token);
         }
 
         const supabase = createAdminClient();
@@ -253,7 +262,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           applyOrgClaims(token, profile);
           token.session_version = (profile.session_version as number | null) ?? 0;
         }
-        return token;
+        return withPermRole(token);
       }
 
       // Auto-heal legacy tokens where rex's profileId was set to "admin-001"
@@ -317,11 +326,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           }
         }
       }
-      return token;
+      return withPermRole(token);
     },
     async session({ session, token }) {
       if (token) {
         session.user.role = token.role as UserRole;
+        session.user.permRole = (token.permRole as UserRole | undefined) ?? (token.role as UserRole);
         session.user.profileId = token.profileId as string;
         session.user.office = (token.office as Office | null) ?? null;
         session.user.department = (token.department as Department | null) ?? null;

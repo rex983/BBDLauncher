@@ -117,7 +117,9 @@ export async function middleware(req: NextRequest) {
     // admin/layout.tsx (canManageContent), the admin-only pages and layouts
     // (isAdmin), and every API route behind them re-check with auth().
     if (pathname.startsWith("/admin")) {
-      const role = token.role as UserRole | undefined;
+      // Permission role (acts_as ?? role, migration 051); older cookies
+      // carry only `role`.
+      const role = (token.permRole ?? token.role) as UserRole | undefined;
       if (!canAccessAdminPath(role, pathname)) {
         return NextResponse.redirect(new URL("/dashboard", req.url));
       }

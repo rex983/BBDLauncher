@@ -1,6 +1,7 @@
 "use client";
 
-import { ACCESS_OFFICES, ACCESS_OFFICE_LABEL, type AccessCell, type AccessOffice } from "@/lib/launcher/access";
+import { accessOfficeLabel, accessOffices, type AccessCell, type AccessOffice } from "@/lib/launcher/access";
+import { NO_OFFICE, type OrgItem } from "@/lib/org/constants";
 import type { LauncherRole } from "@/types/app";
 
 const key = (office: string, role: string) => `${office}|${role}`;
@@ -13,13 +14,18 @@ const key = (office: string, role: string) => `${office}|${role}`;
  */
 export function AppAccessGrid({
   roles,
+  offices,
   cells,
   onChange,
 }: {
   roles: LauncherRole[];
+  /** launcher_offices (migration 051); the grid adds a "No office" row. */
+  offices: OrgItem[];
   cells: AccessCell[];
   onChange: (next: AccessCell[]) => void;
 }) {
+  const ACCESS_OFFICES = accessOffices(offices.map((o) => o.name));
+  const label = (o: AccessOffice) => accessOfficeLabel(o, offices);
   const on = new Set(cells.map((c) => key(c.office, c.role)));
   const adminRole = roles.find((r) => r.name === "admin");
   const gridRoles = roles.filter((r) => r.name !== "admin");
@@ -96,10 +102,10 @@ export function AppAccessGrid({
                   <button
                     type="button"
                     onClick={() => flip(gridRoles.map((r) => key(o, r.name)))}
-                    className={`rounded px-1 text-left hover:bg-accent ${o === "none" ? "italic text-muted-foreground" : ""}`}
-                    title={`Every role in ${ACCESS_OFFICE_LABEL[o]}`}
+                    className={`rounded px-1 text-left hover:bg-accent ${o === NO_OFFICE ? "italic text-muted-foreground" : ""}`}
+                    title={`Every role in ${label(o)}`}
                   >
-                    {ACCESS_OFFICE_LABEL[o]}
+                    {label(o)}
                   </button>
                 </th>
                 {gridRoles.map((r) => (
@@ -109,7 +115,7 @@ export function AppAccessGrid({
                       className="h-4 w-4"
                       checked={on.has(key(o, r.name))}
                       onChange={() => flip([key(o, r.name)])}
-                      aria-label={`${ACCESS_OFFICE_LABEL[o]} ${r.display_name}`}
+                      aria-label={`${label(o)} ${r.display_name}`}
                     />
                   </td>
                 ))}
@@ -132,7 +138,7 @@ export function AppAccessGrid({
           <span key={s.o}>
             {i ? " · " : ""}
             <span className={s.limited ? "text-amber-700 dark:text-amber-400" : undefined}>
-              {ACCESS_OFFICE_LABEL[s.o]}: {s.text}
+              {label(s.o)}: {s.text}
             </span>
           </span>
         ))}

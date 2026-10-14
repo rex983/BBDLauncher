@@ -208,7 +208,7 @@ export async function loadEmployeeWindow(
 export async function getEmployeeDetail(
   profileId: string,
   days: number,
-  viewer: Pick<Session["user"], "role" | "department" | "office">,
+  viewer: Pick<Session["user"], "permRole" | "department" | "office">,
   // YTD overtime reads a year of punches; only the timesheet page shows it.
   // Callers that already loaded the target's EMPLOYEE_COLUMNS row pass it
   // as `profile` to skip the re-read (one less sequential roundtrip).

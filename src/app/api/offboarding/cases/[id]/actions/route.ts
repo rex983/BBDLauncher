@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .select("role")
       .eq("id", open.profile_id)
       .maybeSingle();
-    if (isAdmin(target?.role) && !isAdmin(session.user.role)) {
+    if (isAdmin(target?.role) && !isAdmin(session.user.permRole)) {
       return NextResponse.json({ error: "Only admins can deactivate an admin account." }, { status: 403 });
     }
     const result = await deactivateLauncherAccount(open.profile_id);
