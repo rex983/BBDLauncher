@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent } from "@/lib/auth/permissions";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -21,7 +22,7 @@ export async function PUT(
   const body = await req.json();
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const supabase = createAdminClient();

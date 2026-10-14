@@ -10,6 +10,7 @@ import { logIncidentEvent } from "@/lib/incidents/audit";
 import { extractActorHeaders } from "@/lib/http";
 import { dismissNotificationsByReference } from "@/lib/notifications/service";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -31,7 +32,7 @@ export async function POST(
 
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   // The report and the signer's on-file name are independent — one round-trip.

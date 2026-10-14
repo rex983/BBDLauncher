@@ -1,5 +1,6 @@
 import { requireTimeDataAccess, scopeProfilesQuery } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const upsertSchema = z.object({
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const parsed = upsertSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const gate = await requireTimeDataAccess(parsed.data.profile_id, "edit");
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const parsed = deleteSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const gate = await requireTimeDataAccess(parsed.data.profile_id, "edit");

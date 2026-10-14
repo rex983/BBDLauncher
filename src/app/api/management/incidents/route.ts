@@ -19,6 +19,7 @@ import type {
 } from "@/lib/incidents/types";
 import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const attachmentSchema = z.object({
@@ -100,7 +101,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const gate = await requireTimeDataAccess(parsed.data.employee_profile_id, "edit");

@@ -4,6 +4,7 @@ import { canEditTimeData, isAdmin } from "@/lib/auth/permissions";
 import { publishMemo } from "@/lib/memos/service";
 import { extractActorHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const publishSchema = z.object({
@@ -22,7 +23,7 @@ export async function POST(
   if (session instanceof NextResponse) return session;
   const parsed = publishSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const supabase = createAdminClient();

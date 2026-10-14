@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 import { logOffboardingEvent } from "@/lib/offboarding/audit";
 import { notifyCaseOpened } from "@/lib/offboarding/notify";
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = createSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const result = await openCase({

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTemplate, requireOffboarder } from "@/lib/offboarding/service";
 import { itemSchema } from "@/lib/offboarding/schemas";
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
   if (session instanceof NextResponse) return session;
   const parsed = itemSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
   const supabase = createAdminClient();
   // New items go at the end of their section unless an order was given.

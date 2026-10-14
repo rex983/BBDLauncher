@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 import { rowsFromCells } from "@/lib/launcher/access";
 import { getOfficeNames } from "@/lib/org/lists";
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const parsed = appSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      return validationError(parsed.error);
     }
 
     const { roles, access, user_ids, sso_config, ...appData } = parsed.data;

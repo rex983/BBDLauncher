@@ -9,6 +9,7 @@ import {
 import { logMemoEvent } from "@/lib/memos/audit";
 import { extractActorHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 // GET /api/management/memos/[id] — full memo detail with recipient roster
@@ -152,7 +153,7 @@ export async function PATCH(
   if (session instanceof NextResponse) return session;
   const parsed = patchSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const supabase = createAdminClient();

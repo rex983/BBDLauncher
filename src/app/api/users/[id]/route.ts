@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { managerAssignError, managerTargetError } from "@/lib/auth/user-admin";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
 import { permRoleResolver } from "@/lib/auth/perm-role";
@@ -31,7 +32,7 @@ export async function PUT(
   const parsed = updateSchema.safeParse(body);
 
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   // Offices and departments are admin-managed (migration 051).

@@ -6,6 +6,7 @@ import {
   weekdayInZone,
 } from "@/lib/timesheets/tz";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const schema = z.object({
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const supabase = createAdminClient();

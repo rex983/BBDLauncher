@@ -50,6 +50,19 @@ type FormState = {
 };
 
 const NONE = "__none__";
+
+// Same rule as /api/roles: profiles.role and the access grid key on it.
+const ROLE_NAME_RE = /^[a-z][a-z0-9_]{1,30}$/;
+
+/** "Sales Support" -> "sales_support". */
+function roleIdFrom(displayName: string): string {
+  return displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^[^a-z]+/, "")
+    .replace(/_+$/, "")
+    .slice(0, 31);
+}
 const emptyForm: FormState = {
   name: "",
   display_name: "",
@@ -65,6 +78,9 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The identifier follows the display name until someone edits it by hand.
+  const [nameEdited, setNameEdited] = useState(false);
+  const nameInvalid = !editing && !!form.name.trim() && !ROLE_NAME_RE.test(form.name.trim());
 
   // Counts come from the server render. A role mutation only adds a role
   // (zero users/apps), renames one or deletes one, so refetching the role
@@ -77,6 +93,7 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
   const openNew = () => {
     setEditing(null);
     setForm(emptyForm);
+    setNameEdited(false);
     setError(null);
     setDialogOpen(true);
   };
@@ -184,14 +201,18 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
                 <Input
                   id="role-name"
                   value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  onChange={(e) => {
+                    setNameEdited(true);
+                    setForm({ ...form, name: e.target.value });
+                  }}
                   placeholder="e.g. office_manager"
                   disabled={!!editing}
                   required
                 />
-                <p className="text-xs text-muted-foreground">
-                  Lowercase letters, digits, underscores. Cannot be changed after
-                  creation.
+                <p className={nameInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+                  {nameInvalid
+                    ? "Use lowercase letters, digits and underscores, starting with a letter (e.g. sales_support)."
+                    : "Lowercase letters, digits, underscores. Filled in from the display name. Cannot be changed after creation."}
                 </p>
               </div>
 
@@ -201,7 +222,11 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
                   id="role-display"
                   value={form.display_name}
                   onChange={(e) =>
-                    setForm({ ...form, display_name: e.target.value })
+                    setForm({
+                      ...form,
+                      display_name: e.target.value,
+                      ...(!editing && !nameEdited ? { name: roleIdFrom(e.target.value) } : {}),
+                    })
                   }
                   placeholder="Office Manager"
                   required
@@ -286,7 +311,8 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
                   disabled={
                     saving ||
                     !form.display_name.trim() ||
-                    (!editing && !form.name.trim())
+                    (!editing && !form.name.trim()) ||
+                    nameInvalid
                   }
                 >
                   {saving ? "Saving..." : editing ? "Update" : "Create"}

@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { canEditTimeData, isAdmin } from "@/lib/auth/permissions";
 import { resolveMemoAudience } from "@/lib/memos/audience";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const previewSchema = z.object({
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
   if (session instanceof NextResponse) return session;
   const parsed = previewSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const admin = isAdmin(session.user.permRole);

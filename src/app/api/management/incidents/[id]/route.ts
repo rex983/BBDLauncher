@@ -12,6 +12,7 @@ import {
 import { extractActorHeaders } from "@/lib/http";
 import { composeIncidentDocument } from "@/lib/incidents/types";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 // GET one report with full body + signatures + activity timeline. Scope-
@@ -131,7 +132,7 @@ export async function PATCH(
   const { id } = await ctx.params;
   const parsed = editSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const gate = await requireTimeDataAccess(null, "edit");

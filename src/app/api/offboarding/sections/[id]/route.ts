@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOffboarder } from "@/lib/offboarding/service";
 import { sectionSchema } from "@/lib/offboarding/schemas";
@@ -10,7 +11,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const parsed = sectionSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
   const supabase = createAdminClient();
   const { error } = await supabase.from("offboarding_sections").update({ name: parsed.data.name }).eq("id", id);

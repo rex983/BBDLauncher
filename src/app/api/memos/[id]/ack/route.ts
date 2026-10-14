@@ -5,6 +5,7 @@ import { hashRecipientSignature } from "@/lib/memos/hashing";
 import { dismissNotificationsByReference } from "@/lib/notifications/service";
 import { extractActorHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const ackSchema = z.object({
@@ -26,7 +27,7 @@ export async function POST(
   if (session instanceof NextResponse) return session;
   const parsed = ackSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const supabase = createAdminClient();

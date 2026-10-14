@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { managerAssignError } from "@/lib/auth/user-admin";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
 import { USER_COLUMNS } from "@/app/api/_lib/users";
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const { email, name, role, office, department, is_it, can_offboard } = parsed.data;

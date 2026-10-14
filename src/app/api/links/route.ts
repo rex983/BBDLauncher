@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { canManageContent } from "@/lib/auth/permissions";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 import { httpUrl } from "@/lib/launcher/app-schema";
 import { isKnownOffice } from "@/lib/org/lists";
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const parsed = linkSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      return validationError(parsed.error);
     }
 
     const { user_ids, ...linkData } = parsed.data;

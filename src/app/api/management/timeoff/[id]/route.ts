@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth/scope-check";
 import { TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 // Decide payload — approve or deny a pending request.
@@ -83,7 +84,7 @@ export async function PATCH(
   if (isDecide) {
     const parsed = decideSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      return validationError(parsed.error);
     }
     if (reqRow.status !== "pending") {
       return NextResponse.json({ error: "Already decided" }, { status: 409 });
@@ -116,7 +117,7 @@ export async function PATCH(
   // Field edit path.
   const parsed = editSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
   const edits = parsed.data;
 

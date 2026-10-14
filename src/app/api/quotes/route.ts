@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { bustLauncherCache } from "@/lib/launcher/cache";
 import { activateNewQuote } from "@/lib/quotes/refresh";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const supabase = createAdminClient();

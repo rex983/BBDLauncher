@@ -12,6 +12,7 @@ import { publishMemo } from "@/lib/memos/service";
 import { extractActorHeaders } from "@/lib/http";
 import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const attachmentSchema = z.object({
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
   if (session instanceof NextResponse) return session;
   const parsed = createSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const admin = isAdmin(session.user.permRole);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOffboarder } from "@/lib/offboarding/service";
 import { itemSchema } from "@/lib/offboarding/schemas";
@@ -11,7 +12,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const parsed = itemSchema.partial().safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
   const updates: Record<string, unknown> = { ...parsed.data };
   if (parsed.data.instructions !== undefined) {

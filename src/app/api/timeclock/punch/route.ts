@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyStateToday, lateClockIn } from "@/lib/timesheets/server";
 import type { LiveStatus, PunchEventType } from "@/lib/timesheets/state";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 import { PUNCH_EVENT_TYPES } from "@/lib/timesheets/state";
 
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const { state, punches: todays } = await getMyStateToday(session.user.profileId);

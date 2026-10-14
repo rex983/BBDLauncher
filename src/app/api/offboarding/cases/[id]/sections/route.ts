@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logOffboardingEvent } from "@/lib/offboarding/audit";
@@ -20,7 +21,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
   const { name } = parsed.data;
 

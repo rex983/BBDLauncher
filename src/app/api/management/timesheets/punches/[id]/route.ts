@@ -6,6 +6,7 @@ import {
   type ScopedProfile,
 } from "@/lib/auth/scope-check";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 import { PUNCH_EVENT_TYPES } from "@/lib/timesheets/state";
 
@@ -51,7 +52,7 @@ export async function PATCH(
 
   const parsed = patchSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const { data, error } = await gate.supabase

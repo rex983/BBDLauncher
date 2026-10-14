@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 import { logOffboardingEvent } from "@/lib/offboarding/audit";
 import { requireOpenCase } from "@/lib/offboarding/guard";
@@ -20,7 +21,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
 
   const result = await saveCaseLayout(id, parsed.data);

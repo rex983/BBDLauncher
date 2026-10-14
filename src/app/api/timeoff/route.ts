@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyTimeOffSubmitted } from "@/lib/slack/notify";
 import { TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
 import { NextRequest, NextResponse } from "next/server";
+import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
 const attachmentSchema = z.object({
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = createSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return validationError(parsed.error);
   }
   if (parsed.data.end_date < parsed.data.start_date) {
     return NextResponse.json({ error: "End date must be on or after start date" }, { status: 400 });
