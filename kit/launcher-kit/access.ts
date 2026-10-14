@@ -90,3 +90,49 @@ export async function launcherAppMembers(): Promise<Set<string>> {
     return new Set();
   }
 }
+
+/**
+ * May `viewerId` "View as" `targetId`? (launcher_can_view_as, migration 052:
+ * admins → anyone; managers → people below them in their office.)
+ * `undefined` = the launcher couldn't answer.
+ */
+export async function canViewAs(viewerId: string, targetId: string): Promise<boolean | undefined> {
+  try {
+    const { data, error } = await adminClient().rpc("launcher_can_view_as", {
+      p_viewer: viewerId,
+      p_target: targetId,
+    });
+    if (error) {
+      if (MISSING_FN.has(error.code ?? "")) warnOnce("view-as", "launcher_can_view_as is missing");
+      else console.warn(`[launcher-kit] launcher_can_view_as failed (${error.code})`);
+      return undefined;
+    }
+    return data === true;
+  } catch (e) {
+    console.warn(`[launcher-kit] launcher_can_view_as threw: ${String(e)}`);
+    return undefined;
+  }
+}
+
+/**
+ * Profile ids `viewerId` may View as (for pickers). Intersect with
+ * launcherAppMembers() to list only people who can open this app.
+ * Empty if the launcher can't answer.
+ */
+export async function viewAsTargets(viewerId: string): Promise<Set<string>> {
+  try {
+    const { data, error } = await adminClient().rpc("launcher_view_as_targets", { p_viewer: viewerId });
+    if (error) {
+      console.warn(`[launcher-kit] launcher_view_as_targets failed (${error.code})`);
+      return new Set();
+    }
+    return new Set(
+      ((data ?? []) as unknown[]).map((r) =>
+        typeof r === "string" ? r : String((r as Record<string, unknown>)?.launcher_view_as_targets ?? ""),
+      ).filter(Boolean),
+    );
+  } catch (e) {
+    console.warn(`[launcher-kit] launcher_view_as_targets threw: ${String(e)}`);
+    return new Set();
+  }
+}

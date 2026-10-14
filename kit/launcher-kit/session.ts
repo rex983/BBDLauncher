@@ -1,5 +1,5 @@
 import { adminClient } from "./config";
-import { checkLauncherAccess, resolvePermissionRole } from "./access";
+import { canViewAs, checkLauncherAccess, resolvePermissionRole } from "./access";
 import type { LauncherActor } from "./verifier";
 import type { SignInError } from "./sign-in-errors";
 
@@ -94,18 +94,19 @@ export async function launcherSignIn(
   if (!profile) return { ok: false, error: "NoProfile" };
   if (!profile.is_active) return { ok: false, error: "Inactive" };
 
-  const [access, permRole, actor] = await Promise.all([
+  const [access, permRole, actor, allowedViewer] = await Promise.all([
     checkLauncherAccess(profile.id),
     resolvePermissionRole(profile.role),
     act ? readLauncherProfile({ id: act.profile_id }) : Promise.resolve(null),
+    act ? canViewAs(act.profile_id, profile.id) : Promise.resolve(false),
   ]);
   if (access === "unavailable") return { ok: false, error: "LauncherUnavailable" };
   if (access !== "allowed") return { ok: false, error: "NoAppAccess" };
 
   let viewAs: ViewAs | null = null;
   if (act) {
-    if (actor === undefined) return { ok: false, error: "LauncherUnavailable" };
-    if (!actorIsValid(actor, act.sub)) return { ok: false, error: "ViewAsDenied" };
+    if (actor === undefined || allowedViewer === undefined) return { ok: false, error: "LauncherUnavailable" };
+    if (!actorIsValid(actor, act.sub) || !allowedViewer) return { ok: false, error: "ViewAsDenied" };
     viewAs = {
       actorProfileId: actor!.id,
       actorEmail: actor!.email,
@@ -116,13 +117,11 @@ export async function launcherSignIn(
   return { ok: true, profile, permRole, viewAs };
 }
 
+// The person behind a View as: still active and still the same account.
+// Whether they may view as this person is launcher_can_view_as (admins,
+// and managers for people below them in their office).
 function actorIsValid(actor: LauncherProfile | null | undefined, email: string): boolean {
-  return (
-    !!actor &&
-    actor.is_active &&
-    actor.role === "admin" &&
-    actor.email.toLowerCase() === email.toLowerCase()
-  );
+  return !!actor && actor.is_active && actor.email.toLowerCase() === email.toLowerCase();
 }
 
 export type RecheckResult =
@@ -179,13 +178,15 @@ export async function recheckLauncherSession(input: RecheckInput): Promise<Reche
     return { status: "end", reason: "view_as_expired" };
   }
 
-  const [profile, access, actor] = await Promise.all([
+  const [profile, access, actor, allowedViewer] = await Promise.all([
     readLauncherProfile({ id: input.profileId }),
     checkLauncherAccess(input.profileId),
     input.viewAs ? readLauncherProfile({ id: input.viewAs.actorProfileId }) : Promise.resolve(null),
+    input.viewAs ? canViewAs(input.viewAs.actorProfileId, input.profileId) : Promise.resolve(true),
   ]);
 
-  const transient = profile === undefined || access === "unavailable" || actor === undefined;
+  const transient =
+    profile === undefined || access === "unavailable" || actor === undefined || allowedViewer === undefined;
 
   if (profile === null) return { status: "end", reason: "missing" };
   if (profile && !profile.is_active) return { status: "end", reason: "inactive" };
@@ -201,7 +202,10 @@ export async function recheckLauncherSession(input: RecheckInput): Promise<Reche
     return { status: "end", reason: "signed_out" };
   }
   if (access === "denied" || access === "unregistered") return { status: "end", reason: "no_access" };
-  if (input.viewAs && actor !== undefined && !actorIsValid(actor, input.viewAs.actorEmail)) {
+  if (
+    input.viewAs &&
+    ((actor !== undefined && !actorIsValid(actor, input.viewAs.actorEmail)) || allowedViewer === false)
+  ) {
     return { status: "end", reason: "actor_invalid" };
   }
 
