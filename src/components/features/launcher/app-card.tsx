@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { GripVertical, Star } from "lucide-react";
 import { SsoBadge } from "@/components/features/launcher/sso-badge";
 import type { LauncherApp } from "@/types/app";
+import { buildPreviewHref, useRolePreview } from "@/components/features/launcher/role-preview-context";
 
 interface AppCardProps {
   app: LauncherApp;
@@ -34,7 +35,9 @@ export const AppCard = forwardRef<HTMLDivElement, AppCardProps>(
     // Always route through /api/launch so every click is logged and access
     // checks run — even for direct_link/none apps, the launch endpoint
     // handles the redirect for us.
-    const href = `/api/launch/${app.id}`;
+    // While an admin views as someone, the app opens as that person too.
+    const { viewAsUser } = useRolePreview();
+    const href = buildPreviewHref(`/api/launch/${app.id}`, viewAsUser);
 
     return (
       <div ref={ref} style={style} className={isDragging ? "z-50" : ""}>

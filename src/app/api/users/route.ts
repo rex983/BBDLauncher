@@ -4,15 +4,16 @@ import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { managerAssignError } from "@/lib/auth/user-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
+import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
 import { USER_COLUMNS } from "@/app/api/_lib/users";
+import { permRoleResolver } from "@/lib/auth/perm-role";
 
 const createSchema = z.object({
   email: z.string().email().transform((e) => e.toLowerCase()),
   name: z.string().optional(),
   role: z.string().min(1).default("sales_rep"),
-  office: z.enum(OFFICES).nullable().optional(),
-  department: z.enum(DEPARTMENTS).nullable().optional(),
+  office: z.string().min(1).nullable().optional(),
+  department: z.string().min(1).nullable().optional(),
   is_it: z.boolean().optional(),
   can_offboard: z.boolean().optional(),
 });
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
   const session = await requireSession(canManageContent);
   if (session instanceof NextResponse) return session;
 
-  const viewerIsAdmin = isAdmin(session.user.role);
+  const viewerIsAdmin = isAdmin(session.user.permRole);
   // Managers only ever see active users. Admins default to active but can
   // opt into the full list with ?includeInactive=1 (used by the admin UI's
   // "Show inactive" toggle).
@@ -53,20 +54,30 @@ export async function POST(req: NextRequest) {
 
   const { email, name, role, office, department, is_it, can_offboard } = parsed.data;
 
+  // Offices and departments are admin-managed (migration 051).
+  const [officeOk, departmentOk] = await Promise.all([isKnownOffice(office), isKnownDepartment(department)]);
+  if (!officeOk) return NextResponse.json({ error: "Unknown office" }, { status: 400 });
+  if (!departmentOk) return NextResponse.json({ error: "Unknown department" }, { status: 400 });
+
   // Managers can only add people below their own role, in their own office.
-  if (!isAdmin(session.user.role)) {
-    const assignError = managerAssignError(session.user, { role, office });
+  // Ranks compare permission roles (acts_as ?? role).
+  if (!isAdmin(session.user.permRole)) {
+    const permRoleOf = await permRoleResolver();
+    const assignError = managerAssignError(
+      { role: session.user.permRole, office: session.user.office },
+      { role: permRoleOf(role), office },
+    );
     if (assignError) return NextResponse.json({ error: assignError }, { status: 403 });
   }
 
   // IT capability gates the Help Desk queue — admin-only to grant.
-  if (is_it && !isAdmin(session.user.role)) {
+  if (is_it && !isAdmin(session.user.permRole)) {
     return NextResponse.json(
       { error: "Only admins can grant the IT capability." },
       { status: 403 }
     );
   }
-  if (can_offboard && !isAdmin(session.user.role)) {
+  if (can_offboard && !isAdmin(session.user.permRole)) {
     return NextResponse.json(
       { error: "Only admins can grant offboarding." },
       { status: 403 }

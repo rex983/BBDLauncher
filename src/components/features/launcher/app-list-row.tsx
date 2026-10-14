@@ -4,6 +4,7 @@ import { forwardRef } from "react";
 import { GripVertical, Star } from "lucide-react";
 import { SsoBadge } from "@/components/features/launcher/sso-badge";
 import type { LauncherApp } from "@/types/app";
+import { buildPreviewHref, useRolePreview } from "@/components/features/launcher/role-preview-context";
 
 interface AppListRowProps {
   app: LauncherApp;
@@ -29,7 +30,9 @@ export const AppListRow = forwardRef<HTMLDivElement, AppListRowProps>(
     ref
   ) {
     const firstLetter = app.name.charAt(0).toUpperCase();
-    const href = `/api/launch/${app.id}`;
+    // While an admin views as someone, the app opens as that person too.
+    const { viewAsUser } = useRolePreview();
+    const href = buildPreviewHref(`/api/launch/${app.id}`, viewAsUser);
 
     return (
       <div ref={ref} style={style} className={isDragging ? "z-50" : ""}>

@@ -42,6 +42,7 @@ export interface ManagementListParams {
   supabase: SupabaseClient;
   viewer: {
     profileId: string;
+    /** Permission role (session.user.permRole). */
     role: string;
     office: string | null;
     department: string | null;
@@ -119,7 +120,7 @@ export async function listMemosForManagement(
   const { data } = await query.returns<RawMemoRow[]>();
 
   const viewerScope = {
-    role: viewer.role as UserRole,
+    permRole: viewer.role as UserRole,
     department: viewer.department as Department | null,
     office: viewer.office as Office | null,
   };

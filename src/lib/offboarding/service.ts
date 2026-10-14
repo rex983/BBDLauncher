@@ -8,6 +8,7 @@ import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canRunOffboarding, isAdmin } from "@/lib/auth/permissions";
 import { allowedAppIds, personalGrants } from "@/lib/launcher/access";
+import { getOfficeNames } from "@/lib/org/lists";
 import { getCachedApps, getCachedRoleAppAccess, getCachedUserAccess } from "@/lib/launcher/cache";
 import type {
   CaseDetail,
@@ -33,7 +34,7 @@ const TASK_COLUMNS =
 export async function requireOffboarder(): Promise<Session | NextResponse> {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canRunOffboarding(session.user.role, session.user.can_offboard)) {
+  if (!canRunOffboarding(session.user.permRole, session.user.can_offboard)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   return session;
@@ -145,12 +146,13 @@ type PersonForApps = { id: string; role: string; office: string | null };
 // Launcher apps the person could open: their office × role grid plus apps
 // granted to them by name.
 async function appsForPerson(person: PersonForApps) {
-  const [apps, accessRows, userAccessRows] = await Promise.all([
+  const [apps, accessRows, userAccessRows, officeNames] = await Promise.all([
     getCachedApps(),
     getCachedRoleAppAccess(),
     getCachedUserAccess(),
+    getOfficeNames(),
   ]);
-  const appIds = allowedAppIds(accessRows, person.role, person.office, isAdmin(person.role));
+  const appIds = allowedAppIds(accessRows, person.role, person.office, officeNames, isAdmin(person.role));
   const namedAppIds = personalGrants(userAccessRows, person.id).apps;
   return apps.filter((a) => appIds.has(a.id) || namedAppIds.has(a.id));
 }
@@ -233,7 +235,7 @@ export async function openCase(params: {
   if (person.id === params.session.user.profileId) {
     return { ok: false, status: 400, error: "You can't offboard yourself." };
   }
-  if (isAdmin(person.role) && !isAdmin(params.session.user.role)) {
+  if (isAdmin(person.role) && !isAdmin(params.session.user.permRole)) {
     return { ok: false, status: 403, error: "Only admins can offboard an admin account." };
   }
 

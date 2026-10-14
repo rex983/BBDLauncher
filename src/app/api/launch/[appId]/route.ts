@@ -29,7 +29,40 @@ export async function GET(
       { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
     );
   }
-  const gate = await checkAppLaunch(session, appId);
+  // View as: an admin previewing the launcher as someone opens the app as
+  // that person (JWT apps only; read-only on the app's side). Access is that
+  // person's, the clock gate is the admin's.
+  const viewAsId = req.nextUrl.searchParams.get("viewAsUser");
+  let viewAs: {
+    id: string;
+    email: string;
+    full_name: string | null;
+    role: string;
+    office: string | null;
+    department: string | null;
+    is_it: boolean | null;
+  } | null = null;
+  if (viewAsId && viewAsId !== session.user.profileId) {
+    if (session.user.role !== "admin") {
+      return NextResponse.json({ error: "Only admins can view as someone else" }, { status: 403 });
+    }
+    const { data: target } = await createAdminClient()
+      .from("profiles")
+      .select("id, email, full_name, role, office, department, is_it")
+      .eq("id", viewAsId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!target?.email) {
+      return NextResponse.json({ error: "That person isn't an active user" }, { status: 404 });
+    }
+    viewAs = target;
+  }
+
+  const gate = await checkAppLaunch(
+    viewAs ? { profileId: viewAs.id, role: viewAs.role, office: viewAs.office as typeof session.user.office } : session.user,
+    appId,
+    { skipClock: !!viewAs },
+  );
   if (!gate.ok) {
     switch (gate.reason) {
       case "clock_required": {
@@ -41,7 +74,11 @@ export async function GET(
       }
       case "forbidden":
         return NextResponse.json(
-          { error: "You do not have access to this application" },
+          {
+            error: viewAs
+              ? `${viewAs.full_name || viewAs.email} does not have access to this application`
+              : "You do not have access to this application",
+          },
           { status: 403 }
         );
       case "not_found":
@@ -50,6 +87,15 @@ export async function GET(
   }
   const { app } = gate;
   const supabase = createAdminClient();
+
+  // Only JWT apps can sign someone in as another person; anything else would
+  // silently open as the admin while the launcher shows a preview.
+  if (viewAs && app.sso_type !== "jwt") {
+    return NextResponse.json(
+      { error: `${app.name} doesn't support View as — exit the preview to open it as yourself` },
+      { status: 400 },
+    );
+  }
 
   // Log the launch. Fail closed if the audit row can't be written — the
   // audit trail is the only forensic record of SSO token issuance and we'd
@@ -61,8 +107,11 @@ export async function GET(
     supabase.from("launcher_sso_audit_log").insert({
       user_id: session.user.profileId,
       app_id: appId,
-      event_type: "app_launch",
-      details: { sso_type: app.sso_type, app_name: app.name },
+      // Previews get their own event type so they stay out of usage analytics.
+      event_type: viewAs ? "app_launch_view_as" : "app_launch",
+      details: viewAs
+        ? { sso_type: app.sso_type, app_name: app.name, view_as_profile_id: viewAs.id, view_as_email: viewAs.email }
+        : { sso_type: app.sso_type, app_name: app.name },
       ip_address: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip"),
       user_agent: req.headers.get("user-agent"),
     }),
@@ -148,16 +197,34 @@ export async function GET(
         );
       }
 
-      const token = await generateSsoToken({
-        email: session.user.email!,
-        name: session.user.name || "",
-        role: session.user.role,
-        profileId: session.user.profileId,
-        audience: ssoConfig.jwt_audience,
-        isIt: session.user.is_it,
-        office: session.user.office,
-        department: session.user.department,
-      });
+      const token = await generateSsoToken(
+        viewAs
+          ? {
+              email: viewAs.email,
+              name: viewAs.full_name || "",
+              role: viewAs.role,
+              profileId: viewAs.id,
+              audience: ssoConfig.jwt_audience,
+              isIt: !!viewAs.is_it,
+              office: viewAs.office,
+              department: viewAs.department,
+              actor: {
+                email: session.user.email!,
+                profileId: session.user.profileId,
+                name: session.user.name || session.user.email!,
+              },
+            }
+          : {
+              email: session.user.email!,
+              name: session.user.name || "",
+              role: session.user.role,
+              profileId: session.user.profileId,
+              audience: ssoConfig.jwt_audience,
+              isIt: session.user.is_it,
+              office: session.user.office,
+              department: session.user.department,
+            },
+      );
 
       const acsUrl = new URL(ssoConfig.jwt_acs_url);
       acsUrl.searchParams.set("sso_token", token);

@@ -31,7 +31,7 @@ import {
   formatBytes,
   isImageMime,
 } from "@/components/shared/AttachmentPreview";
-import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
+import type { OrgItem } from "@/lib/org/constants";
 import {
   CheckCircle2,
   Loader2,
@@ -89,10 +89,14 @@ export function ComposeMemoForm({
   viewerRole,
   viewerOffice,
   viewerDepartment,
+  offices,
+  departments,
 }: {
   viewerRole: string;
   viewerOffice: string | null;
   viewerDepartment: string | null;
+  offices: OrgItem[];
+  departments: OrgItem[];
 }) {
   const router = useRouter();
   const isAdmin = viewerRole === "admin";
@@ -454,9 +458,9 @@ export function ComposeMemoForm({
                     <SelectValue placeholder="Pick an office" />
                   </SelectTrigger>
                   <SelectContent>
-                    {OFFICES.map((o) => (
-                      <SelectItem key={o} value={o}>
-                        {o}
+                    {offices.map((o) => (
+                      <SelectItem key={o.name} value={o.name}>
+                        {o.display_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -474,9 +478,9 @@ export function ComposeMemoForm({
                       <SelectValue placeholder="Pick a department" />
                     </SelectTrigger>
                     <SelectContent>
-                      {DEPARTMENTS.map((d) => (
-                        <SelectItem key={d} value={d}>
-                          {d}
+                      {departments.map((d) => (
+                        <SelectItem key={d.name} value={d.name}>
+                          {d.display_name}
                         </SelectItem>
                       ))}
                     </SelectContent>

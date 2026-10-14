@@ -28,7 +28,7 @@ import { useRolePreview } from "@/components/features/launcher/role-preview-cont
 import { canEditTimeData } from "@/lib/auth/permissions";
 import { MarkDayOffDialog } from "@/components/features/timeoff/MarkDayOffDialog";
 import type { Department, Office } from "@/types/auth";
-import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
+import { orgLabel, type OrgItem } from "@/lib/org/constants";
 
 interface Row {
   profile: {
@@ -56,9 +56,17 @@ const statusVariant: Record<string, "default" | "secondary" | "outline" | "destr
   clocked_out: "outline",
 };
 
-export default function TimesheetsShell({ initialRows }: { initialRows: Row[] }) {
+export default function TimesheetsShell({
+  initialRows,
+  offices,
+  departments,
+}: {
+  initialRows: Row[];
+  offices: OrgItem[];
+  departments: OrgItem[];
+}) {
   const { data: session } = useSession();
-  const viewerRole = session?.user?.role;
+  const viewerRole = session?.user?.permRole;
   const viewerDepartment = session?.user?.department ?? null;
   const viewerOffice = session?.user?.office ?? null;
   // Only admins can pick a department/office here. Manager-tier viewers are
@@ -151,11 +159,11 @@ export default function TimesheetsShell({ initialRows }: { initialRows: Row[] })
               <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All</SelectItem>
-                {OFFICES.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                {offices.map((o) => <SelectItem key={o.name} value={o.name}>{o.display_name}</SelectItem>)}
               </SelectContent>
             </Select>
           ) : (
-            <Badge variant="outline">{viewerOffice ?? "—"}</Badge>
+            <Badge variant="outline">{orgLabel(offices, viewerOffice)}</Badge>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -165,11 +173,11 @@ export default function TimesheetsShell({ initialRows }: { initialRows: Row[] })
               <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All</SelectItem>
-                {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                {departments.map((d) => <SelectItem key={d.name} value={d.name}>{d.display_name}</SelectItem>)}
               </SelectContent>
             </Select>
           ) : (
-            <Badge variant="outline">{viewerDepartment ?? "—"}</Badge>
+            <Badge variant="outline">{orgLabel(departments, viewerDepartment)}</Badge>
           )}
         </div>
         <div className="ml-auto flex gap-3 text-sm">

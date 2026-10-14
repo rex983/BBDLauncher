@@ -48,7 +48,7 @@ export default function SchedulesShell({
   initialSchedules: Schedule[];
 }) {
   const { data: session } = useSession();
-  const canEdit = canEditTimeData(session?.user?.role);
+  const canEdit = canEditTimeData(session?.user?.permRole);
   const { viewAsOffice } = useRolePreview();
 
   const [profiles, setProfiles] = useState<Profile[]>(initialProfiles);

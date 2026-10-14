@@ -16,7 +16,7 @@ export async function POST(
   const { id } = await ctx.params;
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
-  if (!isAdmin(session.user.role)) {
+  if (!isAdmin(session.user.permRole)) {
     return NextResponse.json({ error: "Admin only" }, { status: 403 });
   }
 

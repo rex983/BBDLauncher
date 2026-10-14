@@ -11,6 +11,11 @@
 import { revalidateTag, unstable_cache } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { UserAccessRow } from "@/lib/launcher/access";
+import {
+  FALLBACK_DEPARTMENTS,
+  FALLBACK_OFFICES,
+  type OrgItem,
+} from "@/lib/org/constants";
 import type { LauncherApp, LauncherSection } from "@/types/app";
 import type { ImportantLink } from "@/types/link";
 import type { MotivationalQuote } from "@/types/quote";
@@ -24,6 +29,8 @@ export const LAUNCHER_TAGS = {
   sections: "launcher-sections",
   links: "launcher-links",
   roles: "launcher-roles",
+  offices: "launcher-offices",
+  departments: "launcher-departments",
   activeQuote: "launcher-active-quote",
   // Not busted by any route — the View as people list lags up to a minute.
   previewUsers: "launcher-preview-users",
@@ -112,20 +119,60 @@ export interface CachedRole {
   display_name: string;
   description: string | null;
   is_admin: boolean;
+  /** Built-in role whose permissions this role gets (migration 051). */
+  acts_as: string | null;
 }
 
 export const getCachedRoles = unstable_cache(
   async (): Promise<CachedRole[]> => {
     const supabase = createAdminClient();
-    const { data } = await supabase
-      .from("launcher_roles")
-      .select("name, display_name, description, is_admin")
-      .order("name");
-    return (data || []) as CachedRole[];
+    // select("*") so this works before and after migration 051 (acts_as).
+    const { data } = await supabase.from("launcher_roles").select("*").order("name");
+    return ((data || []) as Array<Omit<CachedRole, "acts_as"> & { acts_as?: string | null }>).map((r) => ({
+      name: r.name,
+      display_name: r.display_name,
+      description: r.description ?? null,
+      is_admin: !!r.is_admin,
+      acts_as: r.acts_as ?? null,
+    }));
   },
-  // v2: description + is_admin added for the /admin/roles server render.
-  ["launcher-roles-v2"],
+  // v3: acts_as added (migration 051).
+  ["launcher-roles-v3"],
   { tags: [LAUNCHER_TAGS.roles], revalidate: REVALIDATE_SECONDS },
+);
+
+// Offices and departments (migration 051). Before the tables exist
+// (PGRST205 from PostgREST, 42P01 from Postgres) the old hardcoded lists are
+// served so deploy order doesn't matter. Other errors throw, so a transient
+// failure is never cached; getOffices() / getDepartments() in
+// src/lib/org/lists.ts fall back for that one request.
+export function isMissingTable(code: string | undefined): boolean {
+  return code === "PGRST205" || code === "42P01";
+}
+
+async function loadOrgList(table: string, fallback: readonly OrgItem[]): Promise<OrgItem[]> {
+  const { data, error } = await createAdminClient()
+    .from(table)
+    .select("name, display_name, sort_order")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+  if (error) {
+    if (isMissingTable(error.code)) return [...fallback];
+    throw new Error(`${table}: ${error.message}`);
+  }
+  return (data || []) as OrgItem[];
+}
+
+export const getCachedOffices = unstable_cache(
+  () => loadOrgList("launcher_offices", FALLBACK_OFFICES),
+  ["launcher-offices"],
+  { tags: [LAUNCHER_TAGS.offices], revalidate: REVALIDATE_SECONDS },
+);
+
+export const getCachedDepartments = unstable_cache(
+  () => loadOrgList("launcher_departments", FALLBACK_DEPARTMENTS),
+  ["launcher-departments"],
+  { tags: [LAUNCHER_TAGS.departments], revalidate: REVALIDATE_SECONDS },
 );
 
 export const getCachedActiveQuote = unstable_cache(
@@ -146,7 +193,14 @@ export const getCachedActiveQuote = unstable_cache(
 // to that entity could invalidate — role edits, for example, could change
 // which apps show up in the role-scoped list, so they invalidate both
 // role-access AND the apps cache. Cheap to over-bust; broken to under-bust.
-export type LauncherCacheKind = "apps" | "sections" | "links" | "roles" | "quotes";
+export type LauncherCacheKind =
+  | "apps"
+  | "sections"
+  | "links"
+  | "roles"
+  | "quotes"
+  | "offices"
+  | "departments";
 export function bustLauncherCache(kind: LauncherCacheKind): void {
   switch (kind) {
     case "apps":
@@ -167,6 +221,12 @@ export function bustLauncherCache(kind: LauncherCacheKind): void {
       break;
     case "quotes":
       revalidateTag(LAUNCHER_TAGS.activeQuote);
+      break;
+    case "offices":
+      revalidateTag(LAUNCHER_TAGS.offices);
+      break;
+    case "departments":
+      revalidateTag(LAUNCHER_TAGS.departments);
       break;
   }
 }

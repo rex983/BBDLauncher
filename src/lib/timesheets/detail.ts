@@ -16,6 +16,7 @@ import {
 } from "@/lib/timeoff/types";
 import type { TimePunch } from "@/lib/timesheets/state";
 import { fetchPunchesPaged } from "@/lib/timesheets/punches";
+import { workdaysFrom } from "@/lib/timesheets/schedule";
 import {
   buildWeekStarts,
   computeWeeklyBreakdown,
@@ -76,6 +77,9 @@ export interface EmployeeDetailData {
   time_off: {
     window: WindowTimeOffRow[];
     ytd: YtdBreakdown;
+    // Weekdays (0 = Sun) this person works — pass to requestDays so
+    // per-request day counts match the YTD totals.
+    workdays: number[];
   };
   overtime: EmployeeOvertime | null; // only when requested (timesheet page)
 }
@@ -138,7 +142,7 @@ export async function loadEmployeeWindow(
   const windowToDate = endISO.slice(0, 10);
   const yearStart = `${now.getFullYear()}-01-01`;
 
-  const [punchesRes, windowTimeOffRes, ytdTimeOffRes, overtimeRes] = await Promise.all([
+  const [punchesRes, windowTimeOffRes, ytdTimeOffRes, schedulesRes, overtimeRes] = await Promise.all([
     supabase
       .from("time_punches")
       .select("id, profile_id, event_type, occurred_at, source, note, edited_by")
@@ -163,6 +167,8 @@ export async function loadEmployeeWindow(
       .eq("profile_id", profileId)
       .eq("status", "approved")
       .gte("start_date", yearStart),
+    // Work schedule — day counts follow the person's workdays.
+    supabase.from("work_schedules").select("weekday").eq("profile_id", profileId),
     includeOvertime
       ? loadEmployeeOvertime(supabase, profileId, now)
       : { data: null, error: null },
@@ -172,12 +178,14 @@ export async function loadEmployeeWindow(
     punchesRes.error?.message ??
     windowTimeOffRes.error?.message ??
     ytdTimeOffRes.error?.message ??
+    schedulesRes.error?.message ??
     overtimeRes.error;
   if (error) return { ok: false, status: 500, message: error };
 
+  const workdays = workdaysFrom(schedulesRes.data || []);
   const ytdByType = emptyTimeOffByType();
   for (const row of (ytdTimeOffRes.data || []) as TimeOffDaysRow[]) {
-    ytdByType[row.type] += requestDays(row);
+    ytdByType[row.type] += requestDays(row, workdays);
   }
 
   return {
@@ -188,6 +196,7 @@ export async function loadEmployeeWindow(
       time_off: {
         window: (windowTimeOffRes.data || []) as WindowTimeOffRow[],
         ytd: withTotal(ytdByType),
+        workdays: [...workdays],
       },
       overtime: overtimeRes.data,
     },
@@ -199,7 +208,7 @@ export async function loadEmployeeWindow(
 export async function getEmployeeDetail(
   profileId: string,
   days: number,
-  viewer: Pick<Session["user"], "role" | "department" | "office">,
+  viewer: Pick<Session["user"], "permRole" | "department" | "office">,
   // YTD overtime reads a year of punches; only the timesheet page shows it.
   // Callers that already loaded the target's EMPLOYEE_COLUMNS row pass it
   // as `profile` to skip the re-read (one less sequential roundtrip).

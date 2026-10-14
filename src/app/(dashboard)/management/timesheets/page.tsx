@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { canViewTimeData, timeDataScope } from "@/lib/auth/permissions";
 import { loadTimesheetsToday } from "@/lib/timesheets/queries";
 import TimesheetsShell from "./TimesheetsShell";
+import { getOrgLists } from "@/lib/org/lists";
 
 // Server-rendered entry point for /management/timesheets. Fetches the
 // initial roster + live states for the viewer's default scope before
@@ -12,15 +13,16 @@ import TimesheetsShell from "./TimesheetsShell";
 export default async function TimesheetsTodayPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!canViewTimeData(session.user.role)) redirect("/dashboard");
+  if (!canViewTimeData(session.user.permRole)) redirect("/dashboard");
 
   const scope = timeDataScope(
-    session.user.role,
+    session.user.permRole,
     session.user.department,
     session.user.office,
   );
+  const { offices, departments } = await getOrgLists();
   if (!scope.allowed) {
-    return <TimesheetsShell initialRows={[]} />;
+    return <TimesheetsShell initialRows={[]} offices={offices} departments={departments} />;
   }
 
   const supabase = createAdminClient();
@@ -29,5 +31,5 @@ export default async function TimesheetsTodayPage() {
     scope: { department: scope.department, office: scope.office },
   });
 
-  return <TimesheetsShell initialRows={initialRows} />;
+  return <TimesheetsShell initialRows={initialRows} offices={offices} departments={departments} />;
 }

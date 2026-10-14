@@ -8,14 +8,14 @@ import MemosShell from "./MemosShell";
 export default async function MemosManagementPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!canViewTimeData(session.user.role)) redirect("/dashboard");
+  if (!canViewTimeData(session.user.permRole)) redirect("/dashboard");
 
   const supabase = createAdminClient();
   const initialRows = await listMemosForManagement({
     supabase,
     viewer: {
       profileId: session.user.profileId,
-      role: session.user.role || "employee",
+      role: session.user.permRole || "employee",
       office: session.user.office ?? null,
       department: session.user.department ?? null,
     },

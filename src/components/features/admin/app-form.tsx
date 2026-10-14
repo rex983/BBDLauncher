@@ -17,17 +17,21 @@ import {
 import type { AppWithAccess, LauncherRole, LauncherSection, SsoType, AppStatus } from "@/types/app";
 import type { AccessCell } from "@/lib/launcher/access";
 import { AppAccessGrid } from "@/components/features/admin/app-access-grid";
+import type { OrgItem } from "@/lib/org/constants";
 import { PeoplePicker } from "@/components/features/admin/people-picker";
 
 interface AppFormProps {
   app?: AppWithAccess | null;
+  /** From the server render (launcher_roles / launcher_offices). */
+  roles: LauncherRole[];
+  offices: OrgItem[];
   onSaved: () => void;
 }
 
-export function AppForm({ app, onSaved }: AppFormProps) {
+export function AppForm({ app, roles, offices, onSaved }: AppFormProps) {
   // Sign-on settings are admin-only; managers see the type but can't change it.
   const { data: session } = useSession();
-  const canEditSso = session?.user?.role === "admin";
+  const canEditSso = session?.user?.permRole === "admin";
   const [name, setName] = useState(app?.name || "");
   const [description, setDescription] = useState(app?.description || "");
   const [url, setUrl] = useState(app?.url || "");
@@ -43,7 +47,6 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [accessCells, setAccessCells] = useState<AccessCell[]>(app?.access || []);
   const [userIds, setUserIds] = useState<string[]>(app?.user_ids || []);
   const [sectionId, setSectionId] = useState<string>(app?.section_id || "none");
-  const [roles, setRoles] = useState<LauncherRole[]>([]);
   const [sections, setSections] = useState<LauncherSection[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -57,10 +60,6 @@ export function AppForm({ app, onSaved }: AppFormProps) {
   const [jwtAudience, setJwtAudience] = useState(app?.sso_config?.jwt_audience || "");
 
   useEffect(() => {
-    fetch("/api/roles")
-      .then((r) => r.json())
-      .then(setRoles)
-      .catch(() => {});
     fetch("/api/sections")
       .then((r) => r.json())
       .then(setSections)
@@ -372,7 +371,7 @@ export function AppForm({ app, onSaved }: AppFormProps) {
 
       <div className="space-y-2">
         <Label>Who can open it</Label>
-        <AppAccessGrid roles={roles} cells={accessCells} onChange={setAccessCells} />
+        <AppAccessGrid roles={roles} offices={offices} cells={accessCells} onChange={setAccessCells} />
       </div>
 
       <div className="space-y-2">

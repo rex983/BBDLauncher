@@ -41,6 +41,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
+  Building2,
+  Network,
   type LucideIcon,
 } from "lucide-react";
 import { writeSidebarState, type SidebarState } from "./sidebar-state";
@@ -77,6 +79,8 @@ const adminItems: NavItem[] = [
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/admin/quotes", label: "Quotes", icon: Quote },
   { href: "/admin/roles", label: "Roles", icon: ShieldCheck },
+  { href: "/admin/offices", label: "Offices", icon: Building2 },
+  { href: "/admin/departments", label: "Departments", icon: Network },
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
   { href: "/admin/email-monitor", label: "Email Monitor", icon: MailWarning },
 ];
@@ -184,11 +188,12 @@ const NavLink = memo(function NavLink({
 export function Sidebar({ initialState }: { initialState: SidebarState }) {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const actualRole = session?.user?.role;
+  const actualRole = session?.user?.permRole;
   const isAdmin = isAdminRole(actualRole);
   const { viewAsUser, exitPreview } = useRolePreview();
   const isPreviewing = isAdmin && !!viewAsUser;
-  const effectiveRole = (isPreviewing ? viewAsUser!.role : actualRole) as UserRole | undefined;
+  // Permission roles (acts_as ?? role) decide which nav shows.
+  const effectiveRole = (isPreviewing ? viewAsUser!.perm_role : actualRole) as UserRole | undefined;
   const showManagementNav = canViewTimeData(effectiveRole);
   const showOffboarding = canRunOffboarding(
     effectiveRole,

@@ -59,7 +59,7 @@ export async function PATCH(
     if (value !== task[field]) wording[field] = value;
   }
   if (Object.keys(wording).length) {
-    if (!isAdmin(session.user.role)) {
+    if (!isAdmin(session.user.permRole)) {
       return NextResponse.json({ error: "Only admins can edit a task's wording." }, { status: 403 });
     }
     Object.assign(updates, wording);

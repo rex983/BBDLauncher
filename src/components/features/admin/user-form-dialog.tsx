@@ -17,8 +17,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Department, Office, UserProfile, UserRole } from "@/types/auth";
-import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
+import type { UserProfile, UserRole } from "@/types/auth";
+import type { OrgItem } from "@/lib/org/constants";
 
 export interface LauncherRole {
   name: string;
@@ -30,8 +30,8 @@ interface FormState {
   email: string;
   name: string;
   role: UserRole;
-  office: Office | "";
-  department: Department | "";
+  office: string;
+  department: string;
   is_it: boolean;
   can_offboard: boolean;
 }
@@ -51,6 +51,9 @@ interface UserFormDialogProps {
   onOpenChange: (open: boolean) => void;
   editing: UserProfile | null;
   roles: LauncherRole[];
+  /** launcher_offices / launcher_departments, from the server render. */
+  offices: OrgItem[];
+  departments: OrgItem[];
   viewerIsAdmin: boolean;
   onSaved: () => void;
 }
@@ -60,6 +63,8 @@ export function UserFormDialog({
   onOpenChange,
   editing,
   roles,
+  offices,
+  departments,
   viewerIsAdmin,
   onSaved,
 }: UserFormDialogProps) {
@@ -201,7 +206,7 @@ export function UserFormDialog({
             <Select
               value={form.office || "__none__"}
               onValueChange={(v) =>
-                setForm({ ...form, office: v === "__none__" ? "" : (v as Office) })
+                setForm({ ...form, office: v === "__none__" ? "" : v })
               }
             >
               <SelectTrigger>
@@ -209,9 +214,9 @@ export function UserFormDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">No office</SelectItem>
-                {OFFICES.map((o) => (
-                  <SelectItem key={o} value={o}>
-                    {o}
+                {offices.map((o) => (
+                  <SelectItem key={o.name} value={o.name}>
+                    {o.display_name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -223,7 +228,7 @@ export function UserFormDialog({
             <Select
               value={form.department || "__none__"}
               onValueChange={(v) =>
-                setForm({ ...form, department: v === "__none__" ? "" : (v as Department) })
+                setForm({ ...form, department: v === "__none__" ? "" : v })
               }
             >
               <SelectTrigger>
@@ -231,9 +236,9 @@ export function UserFormDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">No department</SelectItem>
-                {DEPARTMENTS.map((d) => (
-                  <SelectItem key={d} value={d}>
-                    {d}
+                {departments.map((d) => (
+                  <SelectItem key={d.name} value={d.name}>
+                    {d.display_name}
                   </SelectItem>
                 ))}
               </SelectContent>

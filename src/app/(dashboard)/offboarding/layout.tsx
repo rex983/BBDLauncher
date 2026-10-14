@@ -6,6 +6,6 @@ import { canRunOffboarding } from "@/lib/auth/permissions";
 // a real 404, same as /management.
 export default async function OffboardingLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
-  if (!session?.user || !canRunOffboarding(session.user.role, session.user.can_offboard)) notFound();
+  if (!session?.user || !canRunOffboarding(session.user.permRole, session.user.can_offboard)) notFound();
   return <>{children}</>;
 }

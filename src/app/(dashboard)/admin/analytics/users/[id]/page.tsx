@@ -33,7 +33,7 @@ export default async function UserProfile360Page({
   // Access gate is the analytics scope — same as the previous page. Time
   // data + incidents show only if the viewer ALSO has time-data scope over
   // this employee, which is stricter (department + office intersect).
-  const scope = analyticsScope(session.user.role, session.user.office ?? null);
+  const scope = analyticsScope(session.user.permRole, session.user.office ?? null);
   if (!scope.allowed) redirect("/dashboard");
 
   const range = isAnalyticsRange(rawRange) ? rawRange : "30d";
@@ -61,7 +61,7 @@ export default async function UserProfile360Page({
   // don't see incidents filed against themselves here.
   const timeScope = resolveTimeDataScope(session.user, "view");
   const hasTimeDataRole =
-    canViewTimeData(session.user.role) &&
+    canViewTimeData(session.user.permRole) &&
     timeScope.ok &&
     !!profile &&
     (timeScope.viewerIsAdmin || (isTargetInScope(timeScope.scope, profile) && id !== session.user.profileId));

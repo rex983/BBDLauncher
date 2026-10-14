@@ -40,7 +40,7 @@ export async function GET(
 ) {
   try {
     const session = await auth();
-    const scope = analyticsScope(session?.user?.role, session?.user?.office ?? null);
+    const scope = analyticsScope(session?.user?.permRole, session?.user?.office ?? null);
     if (!session?.user || !scope.allowed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }

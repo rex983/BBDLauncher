@@ -27,7 +27,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
-  if (!canEditTimeData(session.user.role)) {
+  if (!canEditTimeData(session.user.permRole)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -46,9 +46,9 @@ export async function POST(req: NextRequest) {
 
   // Scope check: is the manager allowed to touch this employee's file?
   // Admins bypass, same as everywhere else in the time-data stack.
-  if (!isAdmin(session.user.role)) {
+  if (!isAdmin(session.user.permRole)) {
     const scope = timeDataScope(
-      session.user.role,
+      session.user.permRole,
       session.user.department,
       session.user.office,
     );

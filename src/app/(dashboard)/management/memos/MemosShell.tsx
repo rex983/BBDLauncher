@@ -87,7 +87,7 @@ export default function MemosShell({
   initialRows: MemoSummary[];
 }) {
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "admin";
+  const isAdmin = session?.user?.permRole === "admin";
   const [rows, setRows] = useState<MemoSummary[]>(initialRows);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"active" | "archive">("active");

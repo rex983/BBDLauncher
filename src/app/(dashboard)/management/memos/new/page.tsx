@@ -3,13 +3,15 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { canEditTimeData } from "@/lib/auth/permissions";
 import { ComposeMemoForm } from "./ComposeMemoForm";
+import { getOrgLists } from "@/lib/org/lists";
 
 // Full-page compose flow. Server component gates access; the form is
 // client-side (state, validation, uploads).
 export default async function ComposeMemoPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!canEditTimeData(session.user.role)) redirect("/management/memos");
+  if (!canEditTimeData(session.user.permRole)) redirect("/management/memos");
+  const { offices, departments } = await getOrgLists();
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -26,9 +28,11 @@ export default async function ComposeMemoPage() {
         </p>
       </div>
       <ComposeMemoForm
-        viewerRole={session.user.role || "employee"}
+        viewerRole={session.user.permRole || "employee"}
         viewerOffice={session.user.office ?? null}
         viewerDepartment={session.user.department ?? null}
+        offices={offices}
+        departments={departments}
       />
     </div>
   );

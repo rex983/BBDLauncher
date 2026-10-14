@@ -60,13 +60,13 @@ export async function GET(
     }
     includeManagerNotes = false;
   } else {
-    if (!canViewTimeData(session.user.role)) {
+    if (!canViewTimeData(session.user.permRole)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    if (!isAdmin(session.user.role)) {
+    if (!isAdmin(session.user.permRole)) {
       // Manager scope check against the employee this report is about.
       const scope = timeDataScope(
-        session.user.role,
+        session.user.permRole,
         session.user.department,
         session.user.office,
       );

@@ -14,12 +14,15 @@ import { Pencil, Trash2, UserCheck, UserX } from "lucide-react";
 import type { UserProfile, UserRole } from "@/types/auth";
 import type { LauncherRole } from "./user-form-dialog";
 import { fmtDateUS } from "@/components/shared/format";
+import { orgLabel, type OrgItem } from "@/lib/org/constants";
 
 interface UserRowProps {
   user: UserProfile;
   currentProfileId: string | null | undefined;
   viewerIsAdmin: boolean;
   roles: LauncherRole[];
+  offices: OrgItem[];
+  departments: OrgItem[];
   onRoleChange: (userId: string, role: UserRole) => void;
   onEdit: (user: UserProfile) => void;
   onToggleActive: (user: UserProfile) => void;
@@ -31,6 +34,8 @@ export function UserRow({
   currentProfileId,
   viewerIsAdmin,
   roles,
+  offices,
+  departments,
   onRoleChange,
   onEdit,
   onToggleActive,
@@ -72,21 +77,23 @@ export function UserRow({
       <TableCell>{user.email}</TableCell>
       <TableCell>
         {user.office ? (
-          <Badge variant="outline">{user.office}</Badge>
+          <Badge variant="outline">{orgLabel(offices, user.office)}</Badge>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
       <TableCell>
         {user.department ? (
-          <Badge variant="outline">{user.department}</Badge>
+          <Badge variant="outline">{orgLabel(departments, user.department)}</Badge>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap gap-1">
-          <Badge variant="secondary">{user.role}</Badge>
+          <Badge variant="secondary">
+            {roles.find((r) => r.name === user.role)?.display_name ?? user.role}
+          </Badge>
           {user.is_it && <Badge>IT</Badge>}
           {user.can_offboard && <Badge variant="outline">Offboarding</Badge>}
         </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { orgLabel, type OrgItem } from "@/lib/org/constants";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -132,10 +133,14 @@ export default function AnalyticsShell({
   initialData,
   initialRange,
   initialError,
+  offices,
+  departments,
 }: {
   initialData: AnalyticsData | null;
   initialRange: AnalyticsRange;
   initialError: string | null;
+  offices: OrgItem[];
+  departments: OrgItem[];
 }) {
   const [range, setRange] = useState<AnalyticsRange>(initialRange);
   const [data, setData] = useState<AnalyticsData | null>(initialData);
@@ -425,7 +430,7 @@ export default function AnalyticsShell({
                   <TableCell>
                     <Link href={href} className="block">
                       {u.office ? (
-                        <Badge variant="outline">{u.office}</Badge>
+                        <Badge variant="outline">{orgLabel(offices, u.office)}</Badge>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -543,7 +548,7 @@ export default function AnalyticsShell({
         </TabsContent>
 
         <TabsContent value="time" className="space-y-3">
-          <TimeAnalytics active={tab === "time"} />
+          <TimeAnalytics active={tab === "time"} offices={offices} departments={departments} />
         </TabsContent>
 
         <TabsContent value="timeoff" className="space-y-6">

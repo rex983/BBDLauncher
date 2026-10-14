@@ -8,6 +8,7 @@ import {
   summarizeWeeks,
 } from "@/lib/timesheets/weekly";
 import { fetchScopedPunchesPaged } from "@/lib/timesheets/punches";
+import { workdaysFrom } from "@/lib/timesheets/schedule";
 import {
   emptyTimeOffByType,
   requestDays,
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest) {
 
   // Punches reach back to whichever is earlier: the selected range or the
   // start of the year (YTD overtime). Paged — see fetchScopedPunchesPaged.
-  const [punchesRes, { data: yearOffs, error: toErr }] = await Promise.all([
+  const [punchesRes, { data: yearOffs, error: toErr }, { data: schedRows, error: schedErr }] = await Promise.all([
     fetchScopedPunchesPaged(supabase, sqlScope, allWeekStarts[0].toISOString()),
     // YTD approved time-off — used for per-employee breakdown + the
     // aggregate summary. Kept independent of the `weeks` selector
@@ -87,9 +88,15 @@ export async function GET(req: NextRequest) {
       .select("profile_id, type, start_date, end_date, full_day, hours")
       .eq("status", "approved")
       .gte("start_date", `${now.getFullYear()}-01-01`),
+    // Work schedules so day counts follow each person's workdays.
+    supabase
+      .from("work_schedules")
+      .select("profile_id, weekday")
+      .in("profile_id", (profiles || []).map((p) => p.id)),
   ]);
   if (punchesRes.error) return NextResponse.json({ error: punchesRes.error }, { status: 500 });
   if (toErr) return NextResponse.json({ error: toErr.message }, { status: 500 });
+  if (schedErr) return NextResponse.json({ error: schedErr.message }, { status: 500 });
 
   const punchesByProfile = new Map<string, TimePunch[]>();
   for (const p of punchesRes.data) {
@@ -99,7 +106,13 @@ export async function GET(req: NextRequest) {
   }
 
   // Fold YTD approved time-off into per-employee days-by-type. `requestDays`
-  // handles full-day (business-day count) vs partial-day (hours/8) semantics.
+  // handles full-day (scheduled-workday count) vs partial-day (hours/8) semantics.
+  const schedByProfile = new Map<string, { weekday: number }[]>();
+  for (const s of schedRows || []) {
+    const list = schedByProfile.get(s.profile_id) || [];
+    list.push(s);
+    schedByProfile.set(s.profile_id, list);
+  }
   const timeOffByProfile = new Map<string, TimeOffByType>();
   for (const t of (yearOffs ?? []) as unknown[]) {
     const row = t as {
@@ -111,7 +124,7 @@ export async function GET(req: NextRequest) {
       hours: number | null;
     };
     const existing = timeOffByProfile.get(row.profile_id) ?? emptyTimeOffByType();
-    existing[row.type] += requestDays(row);
+    existing[row.type] += requestDays(row, workdaysFrom(schedByProfile.get(row.profile_id) || []));
     timeOffByProfile.set(row.profile_id, existing);
   }
 

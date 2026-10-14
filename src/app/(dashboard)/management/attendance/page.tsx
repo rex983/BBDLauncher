@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTimeDataScope } from "@/lib/auth/scope-check";
-import { VALID_DEPARTMENTS, VALID_OFFICES } from "@/lib/org/constants";
+import { getOrgLists } from "@/lib/org/lists";
+import { resolvePermRole } from "@/lib/auth/perm-role";
 import {
   ATTENDANCE_RANGES,
   loadAttendance,
@@ -27,14 +28,20 @@ export default async function AttendancePage({
   // Admin "View as": show the team that person would see.
   let viewer: Parameters<typeof resolveTimeDataScope>[0] = session.user;
   const viewAsUser = one("viewAsUser");
-  if (session.user.role === "admin" && viewAsUser && UUID.test(viewAsUser)) {
+  if (session.user.permRole === "admin" && viewAsUser && UUID.test(viewAsUser)) {
     const { data } = await createAdminClient()
       .from("profiles")
       .select("role, office, department")
       .eq("id", viewAsUser)
       .eq("is_active", true)
       .maybeSingle();
-    if (data) viewer = data as typeof viewer;
+    if (data) {
+      viewer = {
+        permRole: await resolvePermRole(data.role as string),
+        office: data.office as string | null,
+        department: data.department as string | null,
+      };
+    }
   }
   const gate = resolveTimeDataScope(viewer, "view");
   if (!gate.ok) redirect("/dashboard");
@@ -44,14 +51,18 @@ export default async function AttendancePage({
     ? (daysParam as AttendanceRange)
     : 30;
   // Only admins have open scope axes; for managers these are ignored.
-  const office = one("office");
-  const department = one("department");
+  const { offices, departments } = await getOrgLists();
+  const officeParam = one("office");
+  const departmentParam = one("department");
+  const office = officeParam && offices.some((o) => o.name === officeParam) ? officeParam : null;
+  const department =
+    departmentParam && departments.some((d) => d.name === departmentParam) ? departmentParam : null;
 
   const report = await loadAttendance({
     supabase: createAdminClient(),
     scope: { department: gate.scope.department, office: gate.scope.office },
-    officeOverride: office && VALID_OFFICES.has(office) ? office : null,
-    departmentOverride: department && VALID_DEPARTMENTS.has(department) ? department : null,
+    officeOverride: office,
+    departmentOverride: department,
     days,
   });
 
@@ -59,10 +70,10 @@ export default async function AttendancePage({
     <AttendanceShell
       report={report}
       isAdmin={gate.viewerIsAdmin}
-      office={gate.scope.office ?? (office && VALID_OFFICES.has(office) ? office : null)}
-      department={
-        gate.scope.department ?? (department && VALID_DEPARTMENTS.has(department) ? department : null)
-      }
+      office={gate.scope.office ?? office}
+      department={gate.scope.department ?? department}
+      offices={offices}
+      departments={departments}
     />
   );
 }

@@ -4,15 +4,16 @@ import { canManageContent, isAdmin } from "@/lib/auth/permissions";
 import { managerAssignError, managerTargetError } from "@/lib/auth/user-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { DEPARTMENTS, OFFICES } from "@/lib/org/constants";
+import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
+import { permRoleResolver } from "@/lib/auth/perm-role";
 import { USER_COLUMNS } from "@/app/api/_lib/users";
 import { revalidateSessionProfiles } from "@/lib/auth/session-profile";
 
 const updateSchema = z.object({
   name: z.string().nullable().optional(),
   role: z.string().min(1).optional(),
-  office: z.enum(OFFICES).nullable().optional(),
-  department: z.enum(DEPARTMENTS).nullable().optional(),
+  office: z.string().min(1).nullable().optional(),
+  department: z.string().min(1).nullable().optional(),
   is_it: z.boolean().optional(),
   can_offboard: z.boolean().optional(),
   is_active: z.boolean().optional(),
@@ -32,6 +33,14 @@ export async function PUT(
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
+
+  // Offices and departments are admin-managed (migration 051).
+  const [officeOk, departmentOk] = await Promise.all([
+    isKnownOffice(parsed.data.office),
+    isKnownDepartment(parsed.data.department),
+  ]);
+  if (!officeOk) return NextResponse.json({ error: "Unknown office" }, { status: 400 });
+  if (!departmentOk) return NextResponse.json({ error: "Unknown department" }, { status: 400 });
 
   const supabase = createAdminClient();
 
@@ -55,7 +64,7 @@ export async function PUT(
     parsed.data.is_it !== undefined ||
     parsed.data.can_offboard !== undefined ||
     parsed.data.is_active !== undefined;
-  const viewerIsAdmin = isAdmin(session.user.role);
+  const viewerIsAdmin = isAdmin(session.user.permRole);
   const needsPrefetch = !viewerIsAdmin || securityChange;
   const deactivating = parsed.data.is_active === false;
 
@@ -102,10 +111,13 @@ export async function PUT(
           (parsed.data.is_active !== undefined && parsed.data.is_active !== before.is_active);
         if (changed) return deny("You can't change your own role, office, department or status.");
       } else {
-        const targetError = managerTargetError(session.user, before);
+        // Ranks compare permission roles (acts_as ?? role).
+        const permRoleOf = await permRoleResolver();
+        const viewer = { role: session.user.permRole, office: session.user.office };
+        const targetError = managerTargetError(viewer, { ...before, role: permRoleOf(before.role) });
         if (targetError) return deny(targetError);
-        const assignError = managerAssignError(session.user, {
-          role: parsed.data.role,
+        const assignError = managerAssignError(viewer, {
+          role: parsed.data.role === undefined ? undefined : permRoleOf(parsed.data.role),
           office: parsed.data.office,
         });
         if (assignError) return deny(assignError);
@@ -172,14 +184,18 @@ export async function DELETE(
   const supabase = createAdminClient();
 
   // Managers can only delete people below them in their own office.
-  if (!isAdmin(session.user.role)) {
+  if (!isAdmin(session.user.permRole)) {
     const { data: target } = await supabase
       .from("profiles")
       .select("role, office")
       .eq("id", id)
       .single();
     if (!target) return NextResponse.json({ error: "User not found" }, { status: 404 });
-    const targetError = managerTargetError(session.user, target);
+    const permRoleOf = await permRoleResolver();
+    const targetError = managerTargetError(
+      { role: session.user.permRole, office: session.user.office },
+      { ...target, role: permRoleOf(target.role) },
+    );
     if (targetError) return NextResponse.json({ error: targetError }, { status: 403 });
   }
 

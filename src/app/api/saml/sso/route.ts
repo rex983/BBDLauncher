@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
   // Same access rules as clicking the tile: active account, clocked in,
   // office × role grid or a personal grant, and an active app. The request
   // is unsigned, so without this anyone signed in could name any SP.
-  const gate = await checkAppLaunch(session, ssoConfig.app_id);
+  const gate = await checkAppLaunch(session.user, ssoConfig.app_id);
   if (!gate.ok) {
     return NextResponse.json(
       {

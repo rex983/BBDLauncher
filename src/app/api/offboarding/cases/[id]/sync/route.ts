@@ -8,7 +8,7 @@ import { requireOffboarder, syncCaseToChecklist } from "@/lib/offboarding/servic
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireOffboarder();
   if (session instanceof NextResponse) return session;
-  if (!isAdmin(session.user.role)) {
+  if (!isAdmin(session.user.permRole)) {
     return NextResponse.json({ error: "Only admins can re-sync a case." }, { status: 403 });
   }
   const { id } = await params;

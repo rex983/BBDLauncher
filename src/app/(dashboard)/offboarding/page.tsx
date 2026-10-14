@@ -14,5 +14,5 @@ export default async function OffboardingPage() {
       .order("full_name", { ascending: true }),
     auth(),
   ]);
-  return <OffboardingListShell initialCases={cases} people={people || []} isAdmin={isAdmin(session?.user?.role)} />;
+  return <OffboardingListShell initialCases={cases} people={people || []} isAdmin={isAdmin(session?.user?.permRole)} />;
 }

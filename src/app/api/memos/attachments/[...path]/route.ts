@@ -26,7 +26,7 @@ export async function GET(
   if (session instanceof NextResponse) return session;
 
   const supabase = createAdminClient();
-  const admin = isAdmin(session.user.role);
+  const admin = isAdmin(session.user.permRole);
   const isAuthor = session.user.profileId === authorId;
 
   let allowed = admin || isAuthor;
@@ -55,7 +55,7 @@ export async function GET(
         .limit(1);
       if (recipRow && recipRow.length > 0) allowed = true;
 
-      if (!allowed && canViewTimeData(session.user.role)) {
+      if (!allowed && canViewTimeData(session.user.permRole)) {
         allowed = referencingMemos.some(
           (m) =>
             m.audience_scope === "company" ||
