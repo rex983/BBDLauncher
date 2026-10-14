@@ -2,6 +2,10 @@ import { APP_NAME } from "./config";
 
 // Error codes launcherSignIn() returns. Apps redirect to their login page
 // with ?error=<code> and show the message.
+//
+// Server-only: this imports ./config, which loads the service-role client.
+// Build the message in a server component (e.g. the login page) and pass the
+// string to client components as a prop.
 
 export type SignInError =
   | "NoProfile"

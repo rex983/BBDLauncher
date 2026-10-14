@@ -46,9 +46,9 @@ export async function checkLauncherAccess(profileId: string): Promise<LauncherAc
 /**
  * The role whose in-app permissions this launcher role carries:
  * launcher_roles.acts_as ("Permissions like") or the role itself. Falls back
- * to the raw role if the function is missing or fails; a raw custom role
- * matches no built-in check, so that is least privilege. Never "admin"
- * unless the role really is admin.
+ * to the raw role if the function is missing or fails. A role the launcher
+ * doesn't have resolves to "" (least privilege). Never "admin" unless the
+ * role really is admin.
  */
 export async function resolvePermissionRole(role: string | null | undefined): Promise<string> {
   const raw = (role ?? "").trim();
@@ -59,8 +59,9 @@ export async function resolvePermissionRole(role: string | null | undefined): Pr
     if (error) {
       if (MISSING_FN.has(error.code ?? "")) warnOnce("perm", "launcher_permission_role is missing; using raw role");
       else console.warn(`[launcher-kit] launcher_permission_role failed (${error.code}); using raw role`);
-    } else if (typeof data === "string" && data) {
-      perm = data;
+    } else {
+      // NULL: the role doesn't exist in the launcher, so it gets nothing.
+      perm = typeof data === "string" ? data : "";
     }
   } catch (e) {
     console.warn(`[launcher-kit] launcher_permission_role threw; using raw role: ${String(e)}`);

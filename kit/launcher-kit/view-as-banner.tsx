@@ -10,10 +10,13 @@ export function ViewAsBanner({
   viewedName,
   viewedRole,
   actorName,
+  exitUrl = LAUNCHER_DASHBOARD_URL,
 }: {
   viewedName: string;
   viewedRole?: string | null;
   actorName: string;
+  /** Where Exit goes after signing out (default: the launcher dashboard). */
+  exitUrl?: string;
 }) {
   return (
     <div
@@ -26,7 +29,7 @@ export function ViewAsBanner({
       </span>
       <button
         type="button"
-        onClick={() => signOut({ redirectTo: LAUNCHER_DASHBOARD_URL })}
+        onClick={() => signOut({ redirectTo: exitUrl })}
         className="rounded-md bg-amber-950 px-3 py-1 text-xs font-semibold text-amber-50 hover:bg-amber-900"
       >
         Exit
