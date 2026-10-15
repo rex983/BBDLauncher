@@ -36,6 +36,15 @@ export const LAUNCHER_TAGS = {
   previewUsers: "launcher-preview-users",
 } as const;
 
+// unstable_cache stores whatever the function returns, so a failed read
+// returned as [] would be served to everyone for up to 5 minutes (an empty
+// dashboard, nothing logged). Throw instead: nothing is cached, the caller
+// sees the error, and the next request retries.
+function rowsOrThrow<T>(table: string, res: { data: T[] | null; error: { message: string } | null }): T[] {
+  if (res.error) throw new Error(`${table}: ${res.error.message}`);
+  return res.data ?? [];
+}
+
 interface RoleAccessRow {
   role_name: string;
   app_id: string;
@@ -46,12 +55,12 @@ interface RoleAccessRow {
 export const getCachedApps = unstable_cache(
   async (): Promise<LauncherApp[]> => {
     const supabase = createAdminClient();
-    const { data } = await supabase
+    const res = await supabase
       .from("launcher_apps")
       .select("*")
       .eq("status", "active")
       .order("display_order", { ascending: true });
-    return (data || []) as LauncherApp[];
+    return rowsOrThrow("launcher_apps", res) as LauncherApp[];
   },
   // Key suffix bumped when stored office values are renamed (migration 039)
   // so a fresh deploy never serves rows cached under the old names.
@@ -63,8 +72,8 @@ export const getCachedRoleAppAccess = unstable_cache(
   async (): Promise<RoleAccessRow[]> => {
     const supabase = createAdminClient();
     // select("*") so this works before and after migration 034 (office column).
-    const { data } = await supabase.from("launcher_role_app_access").select("*");
-    return ((data || []) as Array<RoleAccessRow & { office?: string | null }>).map((r) => ({
+    const res = await supabase.from("launcher_role_app_access").select("*");
+    return (rowsOrThrow("launcher_role_app_access", res) as Array<RoleAccessRow & { office?: string | null }>).map((r) => ({
       role_name: r.role_name,
       app_id: r.app_id,
       office: r.office ?? null,
@@ -74,15 +83,14 @@ export const getCachedRoleAppAccess = unstable_cache(
   { tags: [LAUNCHER_TAGS.roleAccess], revalidate: REVALIDATE_SECONDS },
 );
 
-// Individual people on apps and links (migration 040). Empty until the
-// migration is applied.
+// Individual people on apps and links (migration 040).
 export const getCachedUserAccess = unstable_cache(
   async (): Promise<UserAccessRow[]> => {
     const supabase = createAdminClient();
-    const { data } = await supabase
+    const res = await supabase
       .from("launcher_user_access")
       .select("profile_id, app_id, link_id");
-    return (data || []) as UserAccessRow[];
+    return rowsOrThrow("launcher_user_access", res) as UserAccessRow[];
   },
   ["launcher-user-access"],
   { tags: [LAUNCHER_TAGS.userAccess], revalidate: REVALIDATE_SECONDS },
@@ -91,11 +99,11 @@ export const getCachedUserAccess = unstable_cache(
 export const getCachedSections = unstable_cache(
   async (): Promise<LauncherSection[]> => {
     const supabase = createAdminClient();
-    const { data } = await supabase
+    const res = await supabase
       .from("launcher_sections")
       .select("*")
       .order("display_order", { ascending: true });
-    return (data || []) as LauncherSection[];
+    return rowsOrThrow("launcher_sections", res) as LauncherSection[];
   },
   ["launcher-sections"],
   { tags: [LAUNCHER_TAGS.sections], revalidate: REVALIDATE_SECONDS },
@@ -104,11 +112,11 @@ export const getCachedSections = unstable_cache(
 export const getCachedLinks = unstable_cache(
   async (): Promise<ImportantLink[]> => {
     const supabase = createAdminClient();
-    const { data } = await supabase
+    const res = await supabase
       .from("launcher_links")
       .select("*")
       .order("display_order", { ascending: true });
-    return (data || []) as ImportantLink[];
+    return rowsOrThrow("launcher_links", res) as ImportantLink[];
   },
   ["launcher-links"],
   { tags: [LAUNCHER_TAGS.links], revalidate: REVALIDATE_SECONDS },
