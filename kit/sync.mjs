@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const APPS = [
   "asc-engineering",
+  "bbd-analytics",
   "bbd-helpdesk",
   "bbd-manufacturer-hub",
   "bbd-mbox-archive",

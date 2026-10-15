@@ -3,6 +3,7 @@ import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
 import { RolePreviewProvider } from "@/components/features/launcher/role-preview-context";
 import { PreviewBanner } from "@/components/features/launcher/preview-banner";
+import { Tracker } from "@/components/analytics-tracker";
 import { ClockGate } from "@/components/features/timeclock/ClockGate";
 import { ShiftEndPrompt } from "@/components/features/timeclock/ShiftEndPrompt";
 import { Suspense } from "react";
@@ -49,6 +50,7 @@ export default async function DashboardLayout({
     // (each one a profiles read, and the sidebar's admin sections popped in
     // late while it loaded).
     <SessionProvider session={session} refetchOnWindowFocus={false}>
+      <Tracker />
       <Suspense>
         <RolePreviewProvider>
           <ClockGate initialState={clock?.state ?? null} initialSchedule={schedule}>
