@@ -18,6 +18,7 @@ const APPS = [
   "bbd-manufacturer-hub",
   "bbd-mbox-archive",
   "bbd-pm",
+  "bbd-rep-insights",
   "manufacturer-questions",
   "psb-pricing",
   "qsb-pricing",
