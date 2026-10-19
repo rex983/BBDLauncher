@@ -20,15 +20,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, X } from "lucide-react";
-import type { ManufacturerConfig, DepositTier } from "@/types/manufacturer";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import type { ManufacturerConfig } from "@/types/manufacturer";
 
 type FormState = {
   name: string;
   sku: string;
   sign_now_template_id: string;
-  deposit_percent: string;
-  deposit_tiers: DepositTier[];
   active: boolean;
 };
 
@@ -36,10 +34,14 @@ const emptyForm: FormState = {
   name: "",
   sku: "",
   sign_now_template_id: "",
-  deposit_percent: "",
-  deposit_tiers: [],
   active: true,
 };
+
+/** "18%", "3 tiers", or "—" — read-only; deposits come from Strapi. */
+function depositSummary(m: Pick<ManufacturerConfig, "deposit_percent" | "deposit_tiers">): string {
+  if (m.deposit_tiers && m.deposit_tiers.length > 0) return `${m.deposit_tiers.length} tier${m.deposit_tiers.length === 1 ? "" : "s"}`;
+  return m.deposit_percent != null ? `${m.deposit_percent}%` : "—";
+}
 
 export default function AdminManufacturersPage() {
   const [items, setItems] = useState<ManufacturerConfig[]>([]);
@@ -71,8 +73,6 @@ export default function AdminManufacturersPage() {
       name: m.name,
       sku: m.sku ?? "",
       sign_now_template_id: m.sign_now_template_id ?? "",
-      deposit_percent: m.deposit_percent != null ? String(m.deposit_percent) : "",
-      deposit_tiers: m.deposit_tiers ?? [],
       active: m.active,
     });
     setError(null);
@@ -88,8 +88,6 @@ export default function AdminManufacturersPage() {
       name: form.name.trim(),
       sku: form.sku.trim() || null,
       sign_now_template_id: form.sign_now_template_id.trim(),
-      deposit_percent: form.deposit_percent ? Number(form.deposit_percent) : null,
-      deposit_tiers: form.deposit_tiers.length > 0 ? form.deposit_tiers : null,
       active: form.active,
     };
 
@@ -122,37 +120,13 @@ export default function AdminManufacturersPage() {
     fetchItems();
   };
 
-  const addTier = () => {
-    setForm({
-      ...form,
-      deposit_tiers: [...form.deposit_tiers, { upTo: null, percent: 30 }],
-    });
-  };
-
-  const updateTier = (idx: number, field: keyof DepositTier, value: string) => {
-    const next = [...form.deposit_tiers];
-    if (field === "upTo") {
-      next[idx] = { ...next[idx], upTo: value === "" ? null : Number(value) };
-    } else {
-      next[idx] = { ...next[idx], percent: Number(value) };
-    }
-    setForm({ ...form, deposit_tiers: next });
-  };
-
-  const removeTier = (idx: number) => {
-    setForm({
-      ...form,
-      deposit_tiers: form.deposit_tiers.filter((_, i) => i !== idx),
-    });
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Manufacturers</h1>
           <p className="text-muted-foreground">
-            Manage installer/manufacturer configs, deposit tiers, and SignNow templates.
+            Manage installer/manufacturer configs and SignNow templates. Deposits are managed in Strapi.
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -200,72 +174,14 @@ export default function AdminManufacturersPage() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="m-deposit">Default Deposit Percent</Label>
-                <Input
-                  id="m-deposit"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  value={form.deposit_percent}
-                  onChange={(e) =>
-                    setForm({ ...form, deposit_percent: e.target.value })
-                  }
-                  placeholder="e.g. 30"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Used when no tier matches. Leave blank if tiers cover everything.
+              <div className="space-y-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2">
+                <p className="text-sm font-medium">
+                  Deposit{editing ? `: ${depositSummary(editing)}` : ""}
                 </p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Deposit Tiers</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={addTier}>
-                    <Plus className="h-3 w-3 mr-1" /> Add Tier
-                  </Button>
-                </div>
-                {form.deposit_tiers.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No tiers. Default deposit percent applies.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {form.deposit_tiers.map((tier, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <div className="flex-1">
-                          <Input
-                            type="number"
-                            placeholder="Up to (subtotal)"
-                            value={tier.upTo ?? ""}
-                            onChange={(e) => updateTier(idx, "upTo", e.target.value)}
-                          />
-                        </div>
-                        <div className="w-24">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="%"
-                            value={tier.percent}
-                            onChange={(e) => updateTier(idx, "percent", e.target.value)}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeTier(idx)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <p className="text-xs text-muted-foreground">
-                      Leave &ldquo;Up to&rdquo; blank for the catch-all tier.
-                    </p>
-                  </div>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  Deposits are managed in Strapi — edit them there. They sync here automatically
+                  through the Manufacturer Hub and can&apos;t be changed in the launcher.
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -308,11 +224,7 @@ export default function AdminManufacturersPage() {
               <TableCell className="font-medium">{m.name}</TableCell>
               <TableCell>{m.sku || "—"}</TableCell>
               <TableCell>
-                {m.deposit_tiers && m.deposit_tiers.length > 0
-                  ? `${m.deposit_tiers.length} tier${m.deposit_tiers.length === 1 ? "" : "s"}`
-                  : m.deposit_percent != null
-                  ? `${m.deposit_percent}%`
-                  : "—"}
+                {depositSummary(m)}
               </TableCell>
               <TableCell className="font-mono text-xs">
                 {m.sign_now_template_id || "—"}

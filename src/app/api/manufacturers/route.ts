@@ -5,17 +5,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
 
-const depositTierSchema = z.object({
-  upTo: z.number().nullable(),
-  percent: z.number(),
-});
-
+// Deposits are managed in Strapi and synced into manufacturer_config by the
+// Manufacturer Hub (one way). The launcher must not write them: any deposit
+// fields in a request are dropped by the schema below.
 const createSchema = z.object({
   name: z.string().min(1).max(200),
   sku: z.string().nullable().optional(),
   sign_now_template_id: z.string().default(""),
-  deposit_percent: z.number().nullable().optional(),
-  deposit_tiers: z.array(depositTierSchema).nullable().optional(),
   active: z.boolean().default(true),
 });
 
@@ -52,8 +48,6 @@ export async function POST(req: NextRequest) {
       name: parsed.data.name,
       sku: parsed.data.sku ?? null,
       sign_now_template_id: parsed.data.sign_now_template_id,
-      deposit_percent: parsed.data.deposit_percent ?? null,
-      deposit_tiers: parsed.data.deposit_tiers ?? null,
       active: parsed.data.active,
     })
     .select()
@@ -71,8 +65,6 @@ export async function POST(req: NextRequest) {
       { field: "name", oldValue: null, newValue: data.name },
       { field: "sku", oldValue: null, newValue: data.sku },
       { field: "sign_now_template_id", oldValue: null, newValue: data.sign_now_template_id },
-      { field: "deposit_percent", oldValue: null, newValue: data.deposit_percent },
-      { field: "deposit_tiers", oldValue: null, newValue: data.deposit_tiers },
       { field: "active", oldValue: null, newValue: data.active },
     ],
     user_id: session.user.profileId,
