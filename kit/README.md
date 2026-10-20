@@ -14,8 +14,6 @@ users and roles in sync with it. It is copied, unchanged, into each app's
 | `org.ts` | Offices, departments and roles from the launcher, cached 60s |
 | `sign-in-errors.ts` | Error codes and messages for the login page |
 | `urls.ts` | Launcher URLs (`NEXT_PUBLIC_LAUNCHER_URL` overrides) |
-| `tracker.tsx` | Office analytics: page views + clicks → `/api/track` (mount `<Tracker />` in the signed-in layout) |
-| `track.ts` | `handleTrack(req, session)` for each app's `/api/track` route; writes `bbd_events` (read by bbd-analytics) |
 | `config.example.ts` | Template for the one per-app file, `config.ts` (audience, name, DB client) |
 
 The rules themselves live in the shared database (launcher migrations 049
