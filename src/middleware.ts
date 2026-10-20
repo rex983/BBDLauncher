@@ -9,6 +9,8 @@ const publicPaths = [
   "/api/auth",
   "/api/saml/metadata",
   "/api/sso/jwks",
+  // An app's "not signed in" hand-off; it checks the session itself.
+  "/sso/start",
   // Cron endpoints gate themselves via the Bearer CRON_SECRET (src/lib/cron.ts).
   // If middleware redirects them to /login, external cron pings return
   // 307-then-HTML and never actually execute the handler.
@@ -106,7 +108,8 @@ export async function middleware(req: NextRequest) {
     });
     if (!token) {
       const loginUrl = new URL("/login", req.url);
-      loginUrl.searchParams.set("callbackUrl", sanitizeCallbackUrl(pathname));
+      // Keep the query: /api/launch/<id>?next=… must survive the sign-in.
+      loginUrl.searchParams.set("callbackUrl", sanitizeCallbackUrl(pathname + req.nextUrl.search));
       return NextResponse.redirect(loginUrl);
     }
 

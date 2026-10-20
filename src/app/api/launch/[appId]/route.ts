@@ -6,6 +6,7 @@ import { checkAppLaunch } from "@/lib/launcher/launch-gate";
 import { canViewAs } from "@/lib/launcher/view-as";
 import { rateLimit } from "@/lib/rate-limit";
 import { applyAttributeMapping } from "@/app/api/_lib/saml-attributes";
+import { safeNextPath } from "@/lib/sso/next-path";
 import { NextRequest, NextResponse } from "next/server";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -17,10 +18,16 @@ export async function GET(
   try {
   const session = await auth();
   if (!session?.user) {
-    return NextResponse.redirect(new URL("/login", req.url));
+    const login = new URL("/login", req.url);
+    login.searchParams.set("callbackUrl", req.nextUrl.pathname + req.nextUrl.search);
+    return NextResponse.redirect(login);
   }
 
   const { appId } = await params;
+  // Set when the app itself sent them here (/sso/start): where to land in the
+  // app afterwards, and errors go back to the app's login page, not raw JSON.
+  const fromApp = req.nextUrl.searchParams.get("from") === "app";
+  const next = safeNextPath(req.nextUrl.searchParams.get("next"));
 
   // Cap SSO token minting per user+app. Well above normal use (a rep won't
   // legitimately launch the same app 30x/min) but low enough to blunt token
@@ -81,7 +88,19 @@ export async function GET(
         back.searchParams.set("clock_required", "1");
         return NextResponse.redirect(back);
       }
-      case "forbidden":
+      case "forbidden": {
+        if (fromApp && !viewAs) {
+          const { data: cfg } = await createAdminClient()
+            .from("launcher_sso_configs")
+            .select("jwt_acs_url")
+            .eq("app_id", appId)
+            .maybeSingle();
+          if (cfg?.jwt_acs_url && /^https?:\/\//i.test(cfg.jwt_acs_url)) {
+            const appLogin = new URL("/login", cfg.jwt_acs_url);
+            appLogin.searchParams.set("error", "NoAppAccess");
+            return NextResponse.redirect(appLogin);
+          }
+        }
         return NextResponse.json(
           {
             error: viewAs
@@ -90,6 +109,7 @@ export async function GET(
           },
           { status: 403 }
         );
+      }
       case "not_found":
         return NextResponse.json({ error: "Application not found" }, { status: 404 });
     }
@@ -237,6 +257,7 @@ export async function GET(
 
       const acsUrl = new URL(ssoConfig.jwt_acs_url);
       acsUrl.searchParams.set("sso_token", token);
+      if (next) acsUrl.searchParams.set("next", next);
       return NextResponse.redirect(acsUrl.toString());
     }
 

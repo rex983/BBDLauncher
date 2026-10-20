@@ -13,7 +13,8 @@ users and roles in sync with it. It is copied, unchanged, into each app's
 | `view-as-banner.tsx` | The "Viewing as … read-only" banner with Exit |
 | `org.ts` | Offices, departments and roles from the launcher, cached 60s |
 | `sign-in-errors.ts` | Error codes and messages for the login page |
-| `urls.ts` | Launcher URLs (`NEXT_PUBLIC_LAUNCHER_URL` overrides) |
+| `sign-in-page.tsx` | `LauncherSignInPage`: each app's whole /login page. Signed-out visits go through the launcher (straight in if signed in there); otherwise one "Sign in on the launcher" button |
+| `urls.ts` | Launcher URLs (`NEXT_PUBLIC_LAUNCHER_URL` overrides), `launcherSignInUrl`, `safeNext` |
 | `config.example.ts` | Template for the one per-app file, `config.ts` (audience, name, DB client) |
 
 The rules themselves live in the shared database (launcher migrations 049

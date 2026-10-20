@@ -15,6 +15,8 @@ import { Suspense } from "react";
 function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+  // Sent here by an app (/sso/start): after signing in they go straight back to it.
+  const openingApp = callbackUrl.startsWith("/sso/start") || callbackUrl.startsWith("/api/launch/");
   const error = searchParams.get("error");
 
   return (
@@ -25,7 +27,7 @@ function LoginForm() {
             <Image src="/logo-full.png" alt="Big Buildings Direct" width={320} height={80} priority />
           </div>
           <CardDescription>
-            Sign in to access your applications
+            {openingApp ? "Sign in to open your app" : "Sign in to access your applications"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
