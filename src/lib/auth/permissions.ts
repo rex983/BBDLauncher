@@ -19,6 +19,7 @@ export const MANAGER_MANAGEMENT_PATHS = [
   "/management/timeoff",
   "/management/incidents",
   "/management/memos",
+  "/management/teams",
 ];
 
 export function isAdmin(role: UserRole | undefined | null): boolean {
@@ -163,4 +164,20 @@ export function canRunOffboarding(
   canOffboard: boolean | undefined | null,
 ): boolean {
   return isAdmin(role) || !!canOffboard;
+}
+
+export type TeamScope =
+  | { allowed: false }
+  | { allowed: true; office: Office | null };
+
+// Teams (/management/teams): admins manage every office's teams; manager-tier
+// users manage the teams in their own office. A manager with no office gets
+// nothing rather than "every office".
+export function teamScope(
+  role: UserRole | undefined | null,
+  office: Office | null,
+): TeamScope {
+  if (role === "admin") return { allowed: true, office: null };
+  if (isManagerTier(role) && office) return { allowed: true, office };
+  return { allowed: false };
 }

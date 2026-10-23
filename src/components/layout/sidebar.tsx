@@ -43,6 +43,7 @@ import {
   X,
   Building2,
   Network,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import { writeSidebarState, type SidebarState } from "./sidebar-state";
@@ -64,6 +65,7 @@ const managementItems: NavItem[] = [
   { href: "/management/timeoff", label: "Time-off Queue", icon: CalendarCheck },
   { href: "/management/incidents", label: "Incident Reports", icon: AlertTriangle },
   { href: "/management/memos", label: "Office Memos", icon: Megaphone },
+  { href: "/management/teams", label: "Teams", icon: UsersRound },
 ];
 
 const offboardingItems: NavItem[] = [

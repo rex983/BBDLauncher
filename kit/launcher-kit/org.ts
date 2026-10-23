@@ -97,3 +97,56 @@ export async function invalidDepartments(values: unknown[]): Promise<unknown[]> 
   const known = new Set((await getLauncherDepartments()).map((o) => o.name));
   return values.filter((v) => typeof v !== "string" || !known.has(v));
 }
+
+// ---------------------------------------------------------------------------
+// Teams (launcher migration 056), managed on the launcher's /management/teams:
+// a leader and the reps on their team, one office per team, a person on at
+// most one team. Ids are launcher profile ids. Empty until the migration is
+// applied.
+// ---------------------------------------------------------------------------
+
+export interface LauncherTeam {
+  id: string;
+  name: string;
+  office: string;
+  /** Profile id of the team leader, if there is one. Not in member_ids. */
+  leader_id: string | null;
+  /** Profile ids of the reps on the team. */
+  member_ids: string[];
+}
+
+async function readTeams(): Promise<LauncherTeam[]> {
+  const { data, error } = await adminClient()
+    .from("launcher_teams")
+    .select("id, name, office, leader_id, launcher_team_members(profile_id)")
+    .order("name");
+  if (error) {
+    if (!TABLE_MISSING.has(error.code ?? "")) {
+      console.warn("[launcher-kit] launcher_teams read failed", error.message);
+    }
+    return [];
+  }
+  return (data ?? []).map((t) => ({
+    id: String(t.id),
+    name: String(t.name),
+    office: String(t.office),
+    leader_id: (t.leader_id as string | null) ?? null,
+    member_ids: (((t as { launcher_team_members?: { profile_id: string }[] | null }).launcher_team_members) ?? []).map(
+      (m) => m.profile_id,
+    ),
+  }));
+}
+
+/** Every team with its leader and members, cached 60s. */
+export const getLauncherTeams = unstable_cache(readTeams, ["launcher-kit-teams"], { revalidate: 60 });
+
+/** The team a profile is on as a rep, else the first one they lead; null if neither. */
+export function teamOfProfile(teams: LauncherTeam[], profileId: string | null | undefined): LauncherTeam | null {
+  if (!profileId) return null;
+  return teams.find((t) => t.member_ids.includes(profileId)) ?? teams.find((t) => t.leader_id === profileId) ?? null;
+}
+
+/** Teams a profile leads. */
+export function teamsLedBy(teams: LauncherTeam[], profileId: string | null | undefined): LauncherTeam[] {
+  return profileId ? teams.filter((t) => t.leader_id === profileId) : [];
+}

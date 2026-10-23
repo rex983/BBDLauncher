@@ -11,7 +11,7 @@ users and roles in sync with it. It is copied, unchanged, into each app's
 | `session.ts` | `launcherSignIn` (every provider) and `recheckLauncherSession` (the 60s recheck) |
 | `view-as.ts` | Read-only View as: `viewAsWriteBlock` for middleware, `assertNotViewingAs` for server code |
 | `view-as-banner.tsx` | The "Viewing as … read-only" banner with Exit |
-| `org.ts` | Offices, departments and roles from the launcher, cached 60s |
+| `org.ts` | Offices, departments, roles and teams (`getLauncherTeams`, `teamOfProfile`, `teamsLedBy`) from the launcher, cached 60s |
 | `sign-in-errors.ts` | Error codes and messages for the login page |
 | `sign-in-page.tsx` | `LauncherSignInPage`: each app's whole /login page. Signed-out visits go through the launcher (straight in if signed in there); otherwise one "Sign in on the launcher" button |
 | `urls.ts` | Launcher URLs (`NEXT_PUBLIC_LAUNCHER_URL` overrides), `launcherSignInUrl`, `safeNext` |
