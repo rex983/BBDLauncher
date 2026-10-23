@@ -14,6 +14,8 @@ users and roles in sync with it. It is copied, unchanged, into each app's
 | `org.ts` | Offices, departments, roles and teams (`getLauncherTeams`, `teamOfProfile`, `teamsLedBy`) from the launcher, cached 60s |
 | `sign-in-errors.ts` | Error codes and messages for the login page |
 | `sign-in-page.tsx` | `LauncherSignInPage`: each app's whole /login page. Signed-out visits go through the launcher (straight in if signed in there); otherwise one "Sign in on the launcher" button |
+| `usage.ts` | `POST` for each app's `/api/launcher-usage`: records an active minute for the PM (`pm_record_usage`); skips View as, always 204 |
+| `usage-beacon.tsx` | `UsageBeacon`: mount once in the signed-in layout. Pings `/api/launcher-usage` once a minute while the tab is visible and in use (idle after 5 min) |
 | `urls.ts` | Launcher URLs (`NEXT_PUBLIC_LAUNCHER_URL` overrides), `launcherSignInUrl`, `safeNext` |
 | `config.example.ts` | Template for the one per-app file, `config.ts` (audience, name, DB client) |
 
