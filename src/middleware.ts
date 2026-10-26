@@ -11,6 +11,8 @@ const publicPaths = [
   "/api/sso/jwks",
   // An app's "not signed in" hand-off; it checks the session itself.
   "/sso/start",
+  // Home-screen install manifest; browsers fetch it without cookies.
+  "/manifest.webmanifest",
   // Cron endpoints gate themselves via the Bearer CRON_SECRET (src/lib/cron.ts).
   // If middleware redirects them to /login, external cron pings return
   // 307-then-HTML and never actually execute the handler.
