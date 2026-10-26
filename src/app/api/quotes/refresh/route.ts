@@ -4,7 +4,7 @@ import { bustLauncherCache } from "@/lib/launcher/cache";
 import { refreshQuoteFromAi } from "@/lib/quotes/refresh";
 import { NextResponse } from "next/server";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 // Admin-only manual "generate a new quote" trigger. Same code path the cron
 // uses, but source is tagged 'ai_manual' so we can distinguish in history.

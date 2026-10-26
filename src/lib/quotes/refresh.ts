@@ -18,6 +18,9 @@ function normQuote(q: string): string {
 
 const MAX_ATTEMPTS = 5;
 const RECENT_WINDOW = 25; // How many past quotes to send to Gemini as "avoid" context
+// Stop starting new attempts after this, so the route answers before Vercel
+// cuts it off (maxDuration 60) instead of failing with a bare 504.
+const DEADLINE_MS = 40_000;
 
 // Generate a fresh AI quote, deduped against recent history, and mark it as
 // the new active row. Returns the newly created quote row.
@@ -47,7 +50,8 @@ export async function refreshQuoteFromAi(opts: {
   let generated: { quote: string; author: string } | null = null;
   let lastError: unknown = null;
 
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+  const deadline = Date.now() + DEADLINE_MS;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS && Date.now() < deadline; attempt++) {
     try {
       const candidate = await generateQuote(recent);
       if (
@@ -69,8 +73,8 @@ export async function refreshQuoteFromAi(opts: {
   if (!generated) {
     throw new Error(
       lastError instanceof Error
-        ? `Gemini failed after ${MAX_ATTEMPTS} attempts: ${lastError.message}`
-        : `Could not produce a non-duplicate quote after ${MAX_ATTEMPTS} attempts`
+        ? `Gemini failed: ${lastError.message}`
+        : "Could not produce a non-duplicate quote — try again"
     );
   }
 

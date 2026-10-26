@@ -5,8 +5,14 @@
 // Callers pass the last N author+quote pairs so the model can avoid
 // duplicating what's already in the rotation.
 
-const GEMINI_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+
+// Tried in order. A model that's overloaded (429/5xx) or too slow hands off
+// to the next, so one busy model doesn't break the refresh button.
+const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
+
+// Per call. Low thinking answers in a second or two; this only cuts off a hang.
+const CALL_TIMEOUT_MS = 15_000;
 
 export interface GeneratedQuote {
   quote: string;
@@ -76,25 +82,49 @@ export async function generateQuote(
     throw new GeminiQuoteError("GEMINI_API_KEY is not configured");
   }
 
-  const res = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: buildPrompt(recent) }] }],
-      generationConfig: {
-        temperature: 0.9,
-        responseMimeType: "application/json",
-      },
-    }),
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
+  const prompt = buildPrompt(recent);
+  let res: Response | null = null;
+  let lastError: GeminiQuoteError | null = null;
+  for (const model of GEMINI_MODELS) {
+    try {
+      res = await fetch(`${GEMINI_BASE}/${model}:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.9,
+            responseMimeType: "application/json",
+            // Gemini 3 thinks at length by default (6-10s a call); a quote
+            // doesn't need it. 2.5 takes a budget instead of a level.
+            thinkingConfig: model.startsWith("gemini-2")
+              ? { thinkingBudget: 0 }
+              : { thinkingLevel: "low" },
+          },
+        }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+      });
+    } catch (err) {
+      res = null;
+      lastError = new GeminiQuoteError(
+        `${model}: ${err instanceof Error && err.name === "TimeoutError" ? "timed out" : String(err)}`
+      );
+      continue;
+    }
+    if (res.ok) break;
     const body = await res.text().catch(() => "");
-    throw new GeminiQuoteError(
-      `Gemini API error ${res.status}: ${body.slice(0, 300)}`,
+    lastError = new GeminiQuoteError(
+      `Gemini API error ${res.status} (${model}): ${body.slice(0, 300)}`,
       res.status
     );
+    res = null;
+    // Bad key or bad request: another model won't help.
+    if (lastError.status && lastError.status < 500 && lastError.status !== 429) break;
+  }
+
+  if (!res) {
+    throw lastError ?? new GeminiQuoteError("Gemini returned nothing");
   }
 
   const data = (await res.json()) as {
