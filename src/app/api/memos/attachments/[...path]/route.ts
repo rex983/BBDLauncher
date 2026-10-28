@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { canViewTimeData, isAdmin } from "@/lib/auth/permissions";
+import { isSafePathSegments } from "@/lib/attachments/safe-path";
 import { NextRequest, NextResponse } from "next/server";
 
 const BUCKET = "office-memo-attachments";
@@ -16,7 +17,7 @@ export async function GET(
   ctx: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await ctx.params;
-  if (!path || path.length < 2) {
+  if (!path || path.length < 2 || !isSafePathSegments(path)) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
   const [authorId] = path;

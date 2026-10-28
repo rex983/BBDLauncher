@@ -6,6 +6,7 @@ import {
   type ScopedProfile,
 } from "@/lib/auth/scope-check";
 import { NextResponse } from "next/server";
+import { isSafePathSegments } from "./safe-path";
 
 // Resolve `{bucket}/{ownerProfileId}/{uuid}-{filename}` to a short-lived
 // signed URL and redirect. The owner can always fetch their own files; any
@@ -15,7 +16,7 @@ export async function signedAttachmentRedirect(
   bucket: string,
   path: string[] | undefined,
 ): Promise<NextResponse> {
-  if (!path || path.length < 2) {
+  if (!path || path.length < 2 || !isSafePathSegments(path)) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
   const [ownerId] = path;

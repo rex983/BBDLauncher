@@ -11,6 +11,7 @@ import {
 } from "@/lib/incidents/audit";
 import { extractActorHeaders } from "@/lib/http";
 import { composeIncidentDocument } from "@/lib/incidents/types";
+import { isOwnedObjectPath } from "@/lib/attachments/safe-path";
 import { NextRequest, NextResponse } from "next/server";
 import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
@@ -269,7 +270,7 @@ export async function PATCH(
     // employee. Existing paths (retained from before this edit) are trusted.
     for (const a of parsed.data.attachments) {
       if (!currentPaths.has(a.path)) {
-        if (!a.path.startsWith(`${existing.employee_profile_id}/`)) {
+        if (!isOwnedObjectPath(a.path, existing.employee_profile_id)) {
           return NextResponse.json(
             { error: "Invalid attachment path" },
             { status: 400 },

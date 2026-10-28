@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyTimeOffSubmitted } from "@/lib/slack/notify";
 import { TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
+import { isOwnedObjectPath } from "@/lib/attachments/safe-path";
 import { NextRequest, NextResponse } from "next/server";
 import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
@@ -70,12 +71,11 @@ export async function POST(req: NextRequest) {
 
   // Attachment paths MUST live under the submitter's own folder — otherwise
   // a client could claim a file uploaded by someone else. The upload
-  // endpoint always writes to `{profileId}/...`, so we just verify the
-  // prefix here.
+  // endpoint always writes to `{profileId}/...`, so we verify the prefix
+  // (and that no segment walks out of it) here.
   const attachments = parsed.data.attachments ?? [];
-  const prefix = `${session.user.profileId}/`;
   for (const a of attachments) {
-    if (!a.path.startsWith(prefix)) {
+    if (!isOwnedObjectPath(a.path, session.user.profileId)) {
       return NextResponse.json({ error: "Invalid attachment path" }, { status: 400 });
     }
   }

@@ -18,6 +18,7 @@ import type {
   IncidentSeverity,
 } from "@/lib/incidents/types";
 import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
+import { isOwnedObjectPath } from "@/lib/attachments/safe-path";
 import { NextRequest, NextResponse } from "next/server";
 import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
   // Validate attachment paths are prefixed with the target employee's id —
   // stops a manager smuggling in files uploaded against a different employee.
   for (const a of parsed.data.attachments) {
-    if (!a.path.startsWith(`${parsed.data.employee_profile_id}/`)) {
+    if (!isOwnedObjectPath(a.path, parsed.data.employee_profile_id)) {
       return NextResponse.json({ error: "Invalid attachment path" }, { status: 400 });
     }
   }

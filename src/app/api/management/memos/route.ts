@@ -11,6 +11,7 @@ import { listMemosForManagement } from "@/lib/memos/queries";
 import { publishMemo } from "@/lib/memos/service";
 import { extractActorHeaders } from "@/lib/http";
 import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
+import { isOwnedObjectPath } from "@/lib/attachments/safe-path";
 import { NextRequest, NextResponse } from "next/server";
 import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
@@ -124,7 +125,7 @@ export async function POST(req: NextRequest) {
   // Attachment path guard — memo attachments live under the author's id
   // in the bucket so the download endpoint can enforce authorship.
   for (const a of parsed.data.attachments) {
-    if (!a.path.startsWith(`${session.user.profileId}/`)) {
+    if (!isOwnedObjectPath(a.path, session.user.profileId)) {
       return NextResponse.json({ error: "Invalid attachment path" }, { status: 400 });
     }
   }
