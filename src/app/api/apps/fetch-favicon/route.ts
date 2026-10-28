@@ -10,6 +10,7 @@ import { iconExtension } from "@/app/api/_lib/icon-types";
 
 const MAX_BYTES = 1_000_000;
 const FETCH_TIMEOUT_MS = 8_000;
+const MAX_REDIRECTS = 3;
 const USER_AGENT =
   "Mozilla/5.0 (compatible; BBDLauncherFaviconBot/1.0; +https://bbd-launcher.vercel.app)";
 
@@ -97,25 +98,37 @@ interface IconCandidate {
   isApple: boolean;
 }
 
+// Redirects are followed by hand so every hop's host goes through the same
+// public-IP check — `redirect: "follow"` would let a public page bounce us
+// to an internal address.
 async function fetchWithTimeout(url: string, init?: RequestInit) {
-  const parsed = new URL(url);
-  if (!(await isPublicHost(parsed.hostname))) {
-    throw new Error("Refusing to fetch private/loopback host");
-  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal,
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept:
-          "text/html,application/xhtml+xml,image/*,*/*;q=0.8",
-        ...(init?.headers || {}),
-      },
-      redirect: "follow",
-    });
+    let current = new URL(url);
+    for (let hop = 0; ; hop++) {
+      if (!/^https?:$/.test(current.protocol)) {
+        throw new Error("Refusing to fetch non-http(s) URL");
+      }
+      if (!(await isPublicHost(current.hostname))) {
+        throw new Error("Refusing to fetch private/loopback host");
+      }
+      const res = await fetch(current.toString(), {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept:
+            "text/html,application/xhtml+xml,image/*,*/*;q=0.8",
+          ...(init?.headers || {}),
+        },
+        redirect: "manual",
+      });
+      const location = res.headers.get("location");
+      if (res.status < 300 || res.status >= 400 || !location) return res;
+      if (hop >= MAX_REDIRECTS) throw new Error("Too many redirects");
+      current = new URL(location, current);
+    }
   } finally {
     clearTimeout(timer);
   }
