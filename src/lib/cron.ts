@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Only the Bearer CRON_SECRET is trusted. Vercel's scheduled invocations
@@ -7,7 +8,10 @@ import { NextResponse, type NextRequest } from "next/server";
 function isCronAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;
-  return req.headers.get("authorization") === `Bearer ${secret}`;
+  // Constant-time compare; timingSafeEqual throws on unequal lengths.
+  const got = Buffer.from(req.headers.get("authorization") ?? "");
+  const want = Buffer.from(`Bearer ${secret}`);
+  return got.length === want.length && timingSafeEqual(got, want);
 }
 
 // Wrap a cron handler with the auth check. Use as
