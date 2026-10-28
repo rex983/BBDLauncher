@@ -185,10 +185,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async signIn({ user, account }) {
       if (!user.email) return false;
 
-      // Google sign-in: restrict to @bigbuildingsdirect.com
+      // Google sign-in: restrict to @bigbuildingsdirect.com, then fall
+      // through to the same profile + is_active check as everyone else.
       if (account?.provider === "google") {
         if (!user.email.endsWith("@bigbuildingsdirect.com")) return false;
-        return true;
       }
 
       // Hardcoded admin account — always allowed
