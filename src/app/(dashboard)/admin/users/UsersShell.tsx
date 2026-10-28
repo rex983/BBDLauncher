@@ -146,6 +146,7 @@ export function UsersShell({
         offices={offices}
         departments={departments}
         viewerIsAdmin={viewerIsAdmin}
+        viewerOffice={session?.user?.office ?? null}
         onSaved={fetchUsers}
       />
 

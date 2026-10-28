@@ -55,6 +55,8 @@ interface UserFormDialogProps {
   offices: OrgItem[];
   departments: OrgItem[];
   viewerIsAdmin: boolean;
+  /** Managers may only add people to their own office, so new users start there. */
+  viewerOffice?: string | null;
   onSaved: () => void;
 }
 
@@ -66,6 +68,7 @@ export function UserFormDialog({
   offices,
   departments,
   viewerIsAdmin,
+  viewerOffice,
   onSaved,
 }: UserFormDialogProps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -86,9 +89,9 @@ export function UserFormDialog({
         can_offboard: editing.can_offboard ?? false,
       });
     } else {
-      setForm(EMPTY_FORM);
+      setForm(viewerIsAdmin ? EMPTY_FORM : { ...EMPTY_FORM, office: viewerOffice ?? "" });
     }
-  }, [open, editing]);
+  }, [open, editing, viewerIsAdmin, viewerOffice]);
 
   const assignableRoles = viewerIsAdmin
     ? roles
