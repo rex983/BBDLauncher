@@ -30,7 +30,8 @@ export function managerTargetError(viewer: Viewer, target: Target): string | nul
   if (roleRank(target.role) >= roleRank(viewer.role)) {
     return "You can only manage people below your own role.";
   }
-  if (target.office && target.office !== viewer.office) {
+  // An office-less target isn't in anyone's office, so it's admin-only.
+  if (!target.office || target.office !== viewer.office) {
     return "You can only manage people in your own office.";
   }
   return null;
@@ -44,7 +45,9 @@ export function managerAssignError(
   if (next.role !== undefined && roleRank(next.role) >= roleRank(viewer.role)) {
     return "You can only assign roles below your own.";
   }
-  if (next.office !== undefined && next.office !== null && next.office !== viewer.office) {
+  // Clearing the office (null) would move someone out of every manager's
+  // reach, so managers may only set their own.
+  if (next.office !== undefined && (!next.office || next.office !== viewer.office)) {
     return "You can only assign people to your own office.";
   }
   return null;

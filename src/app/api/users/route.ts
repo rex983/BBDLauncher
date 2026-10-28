@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     const permRoleOf = await permRoleResolver();
     const assignError = managerAssignError(
       { role: session.user.permRole, office: session.user.office },
-      { role: permRoleOf(role), office },
+      { role: permRoleOf(role), office: office ?? null },
     );
     if (assignError) return NextResponse.json({ error: assignError }, { status: 403 });
   }
