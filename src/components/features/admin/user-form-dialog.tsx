@@ -89,6 +89,9 @@ export function UserFormDialog({
 }: UserFormDialogProps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [programs, setPrograms] = useState<TrainingProgram[]>([]);
+  // "Can edit the Employee Handbook" (admins and senior/junior managers always can).
+  const [handbookEditor, setHandbookEditor] = useState(false);
+  const [handbookEditorInitial, setHandbookEditorInitial] = useState<boolean | null>(null);
   const [training, setTraining] = useState<TrainingForm>({
     loaded: false,
     inTraining: true,
@@ -119,6 +122,18 @@ export function UserFormDialog({
     // Training status lives in the Employee Handbook's tables.
     let cancelled = false;
     setTraining({ loaded: false, inTraining: true, programId: "", initialIn: null, initialProgram: "" });
+    setHandbookEditor(false);
+    setHandbookEditorInitial(editing ? null : false);
+    if (editing) {
+      fetch(`/api/users/${editing.id}/handbook-editor`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b) => {
+          if (cancelled || !b) return;
+          setHandbookEditor(!!b.allowed);
+          setHandbookEditorInitial(!!b.allowed);
+        })
+        .catch(() => {});
+    }
     (async () => {
       const res = editing
         ? await fetch(`/api/users/${editing.id}/training`).catch(() => null)
@@ -201,6 +216,20 @@ export function UserFormDialog({
       (training.initialIn === null ||
         training.inTraining !== training.initialIn ||
         (training.inTraining && training.programId !== training.initialProgram));
+    if (userId && viewerIsAdmin && handbookEditorInitial !== null && handbookEditor !== handbookEditorInitial) {
+      const ed = await fetch(`/api/users/${userId}/handbook-editor`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowed: handbookEditor }),
+      });
+      if (!ed.ok) {
+        setSaving(false);
+        const body = await ed.json().catch(() => ({}));
+        setError(`User saved, but handbook editing wasn't: ${typeof body.error === "string" ? body.error : "try again"}`);
+        onSaved();
+        return;
+      }
+    }
     if (userId && trainingChanged) {
       const tr = await fetch(`/api/users/${userId}/training`, {
         method: "PUT",
@@ -344,9 +373,19 @@ export function UserFormDialog({
               />
               <span>Offboarding — can run employee offboarding</span>
             </Label>
+            <Label className="flex items-center gap-2 font-normal">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input disabled:opacity-50"
+                checked={handbookEditor}
+                disabled={!viewerIsAdmin || handbookEditorInitial === null}
+                onChange={(e) => setHandbookEditor(e.target.checked)}
+              />
+              <span>Handbook editor — can edit the Employee Handbook (also opens its tile for them)</span>
+            </Label>
             {!viewerIsAdmin && (
               <p className="text-xs text-muted-foreground">
-                Only admins can grant IT or offboarding.
+                Only admins can grant IT, offboarding or handbook editing.
               </p>
             )}
           </div>
