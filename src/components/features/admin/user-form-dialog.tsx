@@ -20,6 +20,22 @@ import {
 import type { UserProfile, UserRole } from "@/types/auth";
 import type { OrgItem } from "@/lib/org/constants";
 
+interface TrainingProgram {
+  id: string;
+  name: string;
+  is_default: boolean;
+}
+
+/** Employee Handbook: in training (program released day by day) or out of training. */
+interface TrainingForm {
+  loaded: boolean;
+  inTraining: boolean;
+  programId: string;
+  /** What was saved, to send only real changes. */
+  initialIn: boolean | null;
+  initialProgram: string;
+}
+
 export interface LauncherRole {
   name: string;
   display_name: string;
@@ -72,6 +88,14 @@ export function UserFormDialog({
   onSaved,
 }: UserFormDialogProps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [programs, setPrograms] = useState<TrainingProgram[]>([]);
+  const [training, setTraining] = useState<TrainingForm>({
+    loaded: false,
+    inTraining: true,
+    programId: "",
+    initialIn: null,
+    initialProgram: "",
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,6 +115,34 @@ export function UserFormDialog({
     } else {
       setForm(viewerIsAdmin ? EMPTY_FORM : { ...EMPTY_FORM, office: viewerOffice ?? "" });
     }
+
+    // Training status lives in the Employee Handbook's tables.
+    let cancelled = false;
+    setTraining({ loaded: false, inTraining: true, programId: "", initialIn: null, initialProgram: "" });
+    (async () => {
+      const res = editing
+        ? await fetch(`/api/users/${editing.id}/training`).catch(() => null)
+        : await fetch("/api/training-programs").catch(() => null);
+      const body = res?.ok ? await res.json().catch(() => null) : null;
+      if (cancelled) return;
+      const list: TrainingProgram[] = body?.programs ?? [];
+      const def = list.find((p) => p.is_default)?.id ?? "";
+      setPrograms(list);
+      const status = body?.status as { inTraining: boolean; programId: string | null } | null | undefined;
+      // No record yet = new to the handbook, which puts them in training.
+      const inTraining = editing ? (status ? status.inTraining : true) : true;
+      const programId = status?.programId ?? def;
+      setTraining({
+        loaded: !!res?.ok,
+        inTraining,
+        programId,
+        initialIn: editing && status ? status.inTraining : null,
+        initialProgram: status?.programId ?? "",
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [open, editing, viewerIsAdmin, viewerOffice]);
 
   const assignableRoles = viewerIsAdmin
@@ -134,13 +186,36 @@ export function UserFormDialog({
           }),
         });
 
-    setSaving(false);
-
     if (!res.ok) {
+      setSaving(false);
       const body = await res.json().catch(() => ({}));
       setError(typeof body.error === "string" ? body.error : "Failed to save user");
       return;
     }
+
+    // Employee Handbook training, only when it changed (or for a new user).
+    const saved = await res.json().catch(() => null);
+    const userId = editing?.id ?? (saved?.id as string | undefined);
+    const trainingChanged =
+      training.loaded &&
+      (training.initialIn === null ||
+        training.inTraining !== training.initialIn ||
+        (training.inTraining && training.programId !== training.initialProgram));
+    if (userId && trainingChanged) {
+      const tr = await fetch(`/api/users/${userId}/training`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inTraining: training.inTraining, programId: training.programId || null }),
+      });
+      if (!tr.ok) {
+        setSaving(false);
+        const body = await tr.json().catch(() => ({}));
+        setError(`User saved, but training wasn't: ${typeof body.error === "string" ? body.error : "try again"}`);
+        onSaved();
+        return;
+      }
+    }
+    setSaving(false);
 
     onOpenChange(false);
     onSaved();
@@ -273,6 +348,49 @@ export function UserFormDialog({
               <p className="text-xs text-muted-foreground">
                 Only admins can grant IT or offboarding.
               </p>
+            )}
+          </div>
+
+          <div className="space-y-2 rounded-md border p-3">
+            <Label className="flex items-center gap-2 font-normal">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input disabled:opacity-50"
+                checked={training.inTraining}
+                disabled={!training.loaded}
+                onChange={(e) => setTraining({ ...training, inTraining: e.target.checked })}
+              />
+              <span>In training — the Employee Handbook releases their program day by day</span>
+            </Label>
+            {training.inTraining && training.loaded && (
+              programs.length ? (
+                <Select
+                  value={training.programId || "__default__"}
+                  onValueChange={(v) => setTraining({ ...training, programId: v === "__default__" ? "" : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Training program" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!programs.some((p) => p.is_default) && <SelectItem value="__default__">No program yet</SelectItem>}
+                    {programs.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                        {p.is_default ? " (default)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No training programs yet. Create one in the Employee Handbook (Training); they&apos;ll join the default
+                  program once it exists.
+                </p>
+              )
+            )}
+            {!training.loaded && <p className="text-xs text-muted-foreground">Loading training…</p>}
+            {training.loaded && !training.inTraining && (
+              <p className="text-xs text-muted-foreground">Out of training: every chapter they can see is open.</p>
             )}
           </div>
 
