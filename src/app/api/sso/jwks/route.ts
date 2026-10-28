@@ -16,7 +16,7 @@ export async function GET() {
     const message = err instanceof Error ? err.message : String(err);
     console.error("JWKS endpoint failed:", message);
     return NextResponse.json(
-      { error: "JWKS not available.", detail: message },
+      { error: "JWKS not available." },
       { status: 503 }
     );
   }
