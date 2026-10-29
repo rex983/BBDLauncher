@@ -191,11 +191,9 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const actualRole = session?.user?.permRole;
-  const isAdmin = isAdminRole(actualRole);
   const { viewAsUser, exitPreview } = useRolePreview();
-  // Admins' previews take the nav too; a manager's preview is the dashboard
-  // and app launches only, so their nav stays their own.
-  const isPreviewing = isAdmin && !!viewAsUser;
+  // A View as shows that person's nav, for admins and managers alike.
+  const isPreviewing = !!viewAsUser;
   // Permission roles (acts_as ?? role) decide which nav shows.
   const effectiveRole = (isPreviewing ? viewAsUser!.perm_role : actualRole) as UserRole | undefined;
   const showManagementNav = canViewTimeData(effectiveRole);

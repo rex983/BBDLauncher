@@ -86,13 +86,14 @@ export default async function DashboardPage({
   if (!session?.user) redirect("/login");
 
   const { viewAsUser, clock_required } = await searchParams;
-  const canEditDashboard = canManageContent(session.user.permRole);
 
   let apps: LauncherApp[] = [];
   let sections: LauncherSection[] = [];
   let links: ImportantLink[] = [];
   let previewUsers: PreviewUser[] = [];
   let quote: MotivationalQuote | null = null;
+  // Who the page is for: the signed-in person, or whoever they're viewing as.
+  let target: PreviewUser | null = null;
   try {
     // Everything below is cached (see src/lib/launcher/cache.ts). On a
     // cache hit this whole block is zero Supabase round-trips (the View as
@@ -113,7 +114,7 @@ export default async function DashboardPage({
     // View as: an admin or manager sees exactly what that person sees —
     // their role, their office and anything granted to them by name. Only
     // ids from this viewer's own View as list (above) are honoured.
-    const target =
+    target =
       (viewAsUser &&
         viewAsUser !== session.user.profileId &&
         previewUsers.find((u) => u.id === viewAsUser)) ||
@@ -157,7 +158,7 @@ export default async function DashboardPage({
         <div>
           <h1 className="text-2xl font-bold">Applications</h1>
           <p className="text-muted-foreground">
-            Welcome back, {session.user.name || session.user.email}
+            Welcome back, {target ? target.name : session.user.name || session.user.email}
           </p>
         </div>
         {previewUsers.some((u) => u.id !== session.user.profileId) && (
@@ -166,7 +167,7 @@ export default async function DashboardPage({
           </div>
         )}
       </div>
-      <QuoteBanner initial={quote} canRefresh={isAdminRole(session.user.role)} />
+      <QuoteBanner initial={quote} canRefresh={isAdminRole(target ? target.role : session.user.role)} />
       {clock_required && (
         <div className="text-sm bg-yellow-50 dark:bg-yellow-950/40 text-yellow-900 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-900 px-3 py-2 rounded">
           You need to clock in before launching applications.
@@ -175,7 +176,11 @@ export default async function DashboardPage({
       {/* Preview banner is rendered globally in (dashboard)/layout.tsx so
           it stays visible on every route while a preview is active. */}
       <TimeClockShell>
-        <SectionedAppGrid apps={apps} sections={sections} isAdmin={canEditDashboard} />
+        <SectionedAppGrid
+          apps={apps}
+          sections={sections}
+          isAdmin={canManageContent(target ? target.perm_role : session.user.permRole)}
+        />
         {links.length > 0 && (
           <>
             <hr className="border-border" />
