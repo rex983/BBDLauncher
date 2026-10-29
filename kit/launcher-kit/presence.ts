@@ -7,11 +7,13 @@ import { adminClient, APP_AUDIENCE } from "./config";
 //   export { POST } from "@/lib/launcher-kit/presence";
 //
 // Body: { tab, path, idle?, leave? }. Records this tab and answers with the
-// other people with this app open: { people: [{ id, name, samePage, idle }] }
-// (idle = no input for 5 min or the tab is in the background).
+// other people with this app open: { people: [{ id, name, samePage, idle, path }] }
+// (idle = no input for 5 min or the tab is in the background; path = the page
+// they're on, so clicking their avatar takes you there; launcher migration 061,
+// null before it).
 // "View as" sessions are never recorded. Errors answer an empty list.
 
-export type PresencePerson = { id: string; name: string; samePage: boolean; idle: boolean };
+export type PresencePerson = { id: string; name: string; samePage: boolean; idle: boolean; path: string | null };
 
 const empty = () => Response.json({ people: [] as PresencePerson[] });
 
@@ -40,9 +42,16 @@ export async function POST(req: Request): Promise<Response> {
       console.warn(`[launcher-kit] launcher_presence_ping failed (${error.code})`);
       return empty();
     }
-    const rows = (data ?? []) as { profile_id: string; name: string; same_page: boolean; idle: boolean }[];
+    const rows = (data ?? []) as { profile_id: string; name: string; same_page: boolean; idle: boolean; path?: string | null }[];
     return Response.json({
-      people: rows.map((r) => ({ id: r.profile_id, name: r.name, samePage: r.same_page, idle: r.idle })),
+      people: rows.map((r) => ({
+        id: r.profile_id,
+        name: r.name,
+        samePage: r.same_page,
+        idle: r.idle,
+        // Only in-app paths, so a click can never leave the app.
+        path: typeof r.path === "string" && r.path.startsWith("/") && !r.path.startsWith("//") ? r.path : null,
+      })),
     });
   } catch (e) {
     console.warn(`[launcher-kit] launcher_presence_ping threw: ${String(e)}`);
