@@ -9,6 +9,7 @@ export const MANAGER_ADMIN_PATHS = [
   "/admin/users",
   "/admin/manufacturers",
   "/admin/analytics",
+  "/admin/audit",
 ];
 
 // Routes under /management/* — timesheets, schedules, time-off approvals.

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { isAdmin } from "@/lib/auth/permissions";
+import { canManageContent, canRunOffboarding } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { startOfDayInZone, DEFAULT_ZONE } from "@/lib/timesheets/tz";
 import { Badge } from "@/components/ui/badge";
@@ -69,7 +69,9 @@ const ACTION_LABEL = { insert: "Created", update: "Changed", delete: "Deleted" }
 // Rows come from the audit_capture triggers (migration 060).
 export default async function AuditLogPage({ searchParams }: { searchParams: Promise<Search> }) {
   const session = await auth();
-  if (!isAdmin(session?.user?.permRole)) redirect("/dashboard");
+  // Admins and managers. Offboarding records only for the offboarding team.
+  if (!session?.user || !canManageContent(session.user.permRole)) redirect("/dashboard");
+  const seesOffboarding = canRunOffboarding(session.user.permRole, session.user.can_offboard);
 
   const sp = await searchParams;
   const supabase = createAdminClient();
@@ -79,6 +81,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
     .select("*")
     .order("id", { ascending: false })
     .limit(PAGE_SIZE + 1);
+  if (!seesOffboarding) query = query.not("table_name", "like", "offboarding%");
   if (sp.app) query = query.eq("app", sp.app);
   if (sp.table) query = query.eq("table_name", sp.table);
   if (sp.row) query = query.eq("row_id", sp.row);
@@ -105,6 +108,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
   const rows = ((data ?? []) as AuditRow[]).slice(0, PAGE_SIZE);
   const hasMore = (data?.length ?? 0) > PAGE_SIZE;
   const facets = (facetData ?? { apps: [], tables: [], actors: [] }) as Facets;
+  if (!seesOffboarding) facets.tables = facets.tables.filter((t) => !t.startsWith("offboarding"));
 
   // Current names for the people in this page (stored names are a fallback).
   const ids = [...new Set(rows.flatMap((r) => [r.actor_id, r.as_user_id]).filter((x): x is string => !!x && /^[0-9a-f-]{36}$/i.test(x)))];
