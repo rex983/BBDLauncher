@@ -62,6 +62,18 @@ export function permRoleFor(
   return target && target !== "admin" ? target : role;
 }
 
+/**
+ * "Apps only" roles (migration 062, e.g. trainee) see nothing in the launcher
+ * but the time clock and the apps granted to them. Admin never is.
+ */
+export function isAppsOnlyRole(
+  role: UserRole | null | undefined,
+  roles: ReadonlyArray<{ name: string; apps_only?: boolean | null }>,
+): boolean {
+  if (!role || role === "admin") return false;
+  return !!roles.find((r) => r.name === role)?.apps_only;
+}
+
 // Roles that get manager-tier privileges (canManageContent + office-scoped
 // analytics + MANAGER_ADMIN_PATHS access). Kept as a set so it's easy to
 // extend when the org chart adds a new manager rank.

@@ -47,6 +47,8 @@ type FormState = {
   acts_as: string;
   /** Create only; NONE = start with no app access. */
   copy_access_from: string;
+  /** Launcher shows only the time clock + granted apps (migration 062). */
+  apps_only: boolean;
 };
 
 const NONE = "__none__";
@@ -69,6 +71,7 @@ const emptyForm: FormState = {
   description: "",
   acts_as: NONE,
   copy_access_from: NONE,
+  apps_only: false,
 };
 
 export function RolesShell({ initial, counts }: { initial: LauncherRole[]; counts: RoleCounts }) {
@@ -106,6 +109,7 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
       description: role.description ?? "",
       acts_as: role.acts_as ?? NONE,
       copy_access_from: NONE,
+      apps_only: role.apps_only,
     });
     setError(null);
     setDialogOpen(true);
@@ -123,6 +127,8 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
           body: JSON.stringify({
             display_name: form.display_name.trim(),
             description: form.description.trim() || null,
+            // Only when changed, so edits work before migration 062 adds the column.
+            ...(form.apps_only !== editing.apps_only ? { apps_only: form.apps_only } : {}),
             // Built-in roles keep their own permissions.
             ...(BUILTIN_ROLES.has(editing.name)
               ? {}
@@ -138,6 +144,7 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
             description: form.description.trim() || null,
             acts_as: form.acts_as === NONE ? null : form.acts_as,
             copy_access_from: form.copy_access_from === NONE ? null : form.copy_access_from,
+            apps_only: form.apps_only,
           }),
         });
 
@@ -277,6 +284,25 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
                 )}
               </div>
 
+              {editing?.name !== "admin" && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="role-apps-only"
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-input"
+                      checked={form.apps_only}
+                      onChange={(e) => setForm({ ...form, apps_only: e.target.checked })}
+                    />
+                    <Label htmlFor="role-apps-only">Apps only</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    The launcher shows only the time clock and the apps you give this
+                    role. No links, memos, time off or profile. Good for trainees.
+                  </p>
+                </div>
+              )}
+
               {!editing && (
                 <div className="space-y-2">
                   <Label>Copy app access from</Label>
@@ -363,6 +389,9 @@ export function RolesShell({ initial, counts }: { initial: LauncherRole[]; count
                     <Badge variant="outline">built-in</Badge>
                   ) : (
                     <Badge variant="outline">least privilege</Badge>
+                  )}
+                  {role.apps_only && (
+                    <Badge variant="secondary" className="ml-1">apps only</Badge>
                   )}
                 </TableCell>
                 <TableCell>{userCount}</TableCell>

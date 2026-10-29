@@ -36,6 +36,8 @@ declare module "next-auth" {
       role: UserRole;
       /** Role used for permission checks: acts_as ?? role (migration 051). */
       permRole: UserRole;
+      /** Role is "apps only" (migration 062): time clock + granted apps, nothing else. */
+      appsOnly: boolean;
       profileId: string;
       office: Office | null;
       department: Department | null;
@@ -47,6 +49,7 @@ declare module "next-auth" {
   interface JWT {
     role: UserRole;
     permRole?: UserRole;
+    appsOnly?: boolean;
     profileId: string;
     office: Office | null;
     department?: Department | null;

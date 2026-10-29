@@ -129,6 +129,8 @@ export interface CachedRole {
   is_admin: boolean;
   /** Built-in role whose permissions this role gets (migration 051). */
   acts_as: string | null;
+  /** Sees only the time clock and its granted apps in the launcher (migration 062). */
+  apps_only: boolean;
 }
 
 export const getCachedRoles = unstable_cache(
@@ -136,16 +138,19 @@ export const getCachedRoles = unstable_cache(
     const supabase = createAdminClient();
     // select("*") so this works before and after migration 051 (acts_as).
     const { data } = await supabase.from("launcher_roles").select("*").order("name");
-    return ((data || []) as Array<Omit<CachedRole, "acts_as"> & { acts_as?: string | null }>).map((r) => ({
+    return ((data || []) as Array<
+      Omit<CachedRole, "acts_as" | "apps_only"> & { acts_as?: string | null; apps_only?: boolean | null }
+    >).map((r) => ({
       name: r.name,
       display_name: r.display_name,
       description: r.description ?? null,
       is_admin: !!r.is_admin,
       acts_as: r.acts_as ?? null,
+      apps_only: !!r.apps_only,
     }));
   },
-  // v3: acts_as added (migration 051).
-  ["launcher-roles-v3"],
+  // v4: apps_only added (migration 062).
+  ["launcher-roles-v4"],
   { tags: [LAUNCHER_TAGS.roles], revalidate: REVALIDATE_SECONDS },
 );
 

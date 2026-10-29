@@ -4,16 +4,18 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCachedRoles } from "@/lib/launcher/cache";
-import { permRoleFor } from "@/lib/auth/permissions";
+import { isAppsOnlyRole, permRoleFor } from "@/lib/auth/permissions";
 import type { UserRole } from "@/types/auth";
 
-async function loadRoles(): Promise<Array<{ name: string; acts_as?: string | null }>> {
+type RoleRow = { name: string; acts_as?: string | null; apps_only?: boolean | null };
+
+async function loadRoles(): Promise<RoleRow[]> {
   try {
     return await getCachedRoles();
   } catch {
     // No data cache outside a request: read it directly.
     const { data } = await createAdminClient().from("launcher_roles").select("*");
-    return (data ?? []) as Array<{ name: string; acts_as?: string | null }>;
+    return (data ?? []) as RoleRow[];
   }
 }
 
@@ -29,11 +31,21 @@ export async function resolvePermRole(role: UserRole | null | undefined): Promis
 
 /** Permission-role lookup for many roles at once (e.g. user lists). */
 export async function permRoleResolver(): Promise<(role: UserRole | null | undefined) => UserRole> {
-  let roles: Array<{ name: string; acts_as?: string | null }> = [];
+  let roles: RoleRow[] = [];
   try {
     roles = await loadRoles();
   } catch {
     // least privilege
   }
   return (role) => permRoleFor(role, roles);
+}
+
+/** Whether this role is "apps only" (migration 062). False when roles can't be read. */
+export async function resolveAppsOnly(role: UserRole | null | undefined): Promise<boolean> {
+  if (!role || role === "admin") return false;
+  try {
+    return isAppsOnlyRole(role, await loadRoles());
+  } catch {
+    return false;
+  }
 }

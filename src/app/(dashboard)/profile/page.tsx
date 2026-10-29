@@ -46,6 +46,8 @@ function fmtDate(d: string) {
 export default async function ProfilePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  // "Apps only" roles (migration 062) see only the apps grid.
+  if (session.user.appsOnly) redirect("/dashboard");
   const profileId = session.user.profileId;
 
   const supabase = createAdminClient();

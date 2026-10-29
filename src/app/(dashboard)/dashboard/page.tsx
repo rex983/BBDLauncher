@@ -11,6 +11,7 @@ import {
   MANAGER_TIER_ROLES,
   canManageContent,
   isAdmin as isAdminRole,
+  isAppsOnlyRole,
   permRoleFor,
 } from "@/lib/auth/permissions";
 import { viewAsTargets } from "@/lib/launcher/view-as";
@@ -74,6 +75,7 @@ async function loadPreviewUsers(
       office: p.office,
       department: p.department,
       can_offboard: !!p.can_offboard,
+      apps_only: isAppsOnlyRole(p.role, roles),
     }));
 }
 
@@ -94,6 +96,8 @@ export default async function DashboardPage({
   let quote: MotivationalQuote | null = null;
   // Who the page is for: the signed-in person, or whoever they're viewing as.
   let target: PreviewUser | null = null;
+  // "Apps only" roles (migration 062): granted apps + the time clock only.
+  let appsOnly = session.user.appsOnly;
   try {
     // Everything below is cached (see src/lib/launcher/cache.ts). On a
     // cache hit this whole block is zero Supabase round-trips (the View as
@@ -120,6 +124,7 @@ export default async function DashboardPage({
         previewUsers.find((u) => u.id === viewAsUser)) ||
       null;
     const effectiveRole = target?.role ?? session.user.role;
+    if (target) appsOnly = target.apps_only;
     const effectiveOffice = target ? target.office : session.user.office;
     const bypassOffice = effectiveRole === "admin";
 
@@ -144,10 +149,12 @@ export default async function DashboardPage({
       (a) => mine.apps.has(a.id) || (roleAppIds.has(a.id) && appOfficesMatch(a.offices)),
     );
     sections = sectionsData;
-    links = linksData.filter(
-      (l) => mine.links.has(l.id) || bypassOffice || (!l.people_only && linkOfficeMatches(l.office)),
-    );
-    quote = quoteData;
+    links = appsOnly
+      ? []
+      : linksData.filter(
+          (l) => mine.links.has(l.id) || bypassOffice || (!l.people_only && linkOfficeMatches(l.office)),
+        );
+    quote = appsOnly ? null : quoteData;
   } catch (err) {
     console.error("Dashboard data fetch error:", err);
   }
@@ -167,7 +174,9 @@ export default async function DashboardPage({
           </div>
         )}
       </div>
-      <QuoteBanner initial={quote} canRefresh={isAdminRole(target ? target.role : session.user.role)} />
+      {!appsOnly && (
+        <QuoteBanner initial={quote} canRefresh={isAdminRole(target ? target.role : session.user.role)} />
+      )}
       {clock_required && (
         <div className="text-sm bg-yellow-50 dark:bg-yellow-950/40 text-yellow-900 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-900 px-3 py-2 rounded">
           You need to clock in before launching applications.

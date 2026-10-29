@@ -13,6 +13,8 @@ const updateSchema = z.object({
   description: z.string().max(200).nullable().optional(),
   /** Built-in role whose permissions this role gets; null = least privilege. */
   acts_as: z.string().nullable().optional(),
+  /** Launcher shows only the time clock + granted apps (migration 062). */
+  apps_only: z.boolean().optional(),
 });
 
 export async function PUT(
@@ -51,6 +53,13 @@ export async function PUT(
     }
   }
 
+  if (parsed.data.apps_only !== undefined) {
+    if (name === "admin" && parsed.data.apps_only) {
+      return NextResponse.json({ error: "The admin role can't be apps only." }, { status: 400 });
+    }
+    updates.apps_only = parsed.data.apps_only;
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
@@ -73,8 +82,8 @@ export async function PUT(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Launcher sessions re-resolve permRole from this cache on their next
-  // request; other apps pick it up on their 60s recheck.
+  // Launcher sessions re-resolve permRole and appsOnly from this cache on
+  // their next request; other apps pick it up on their 60s recheck.
   bustLauncherCache("roles");
   return NextResponse.json(data);
 }

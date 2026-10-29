@@ -87,12 +87,14 @@ export function Header() {
                 </div>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/profile">
-                  <UserCircle className="mr-2 h-4 w-4" />
-                  My Profile
-                </Link>
-              </DropdownMenuItem>
+              {!user?.appsOnly && (
+                <DropdownMenuItem asChild>
+                  <Link href="/profile">
+                    <UserCircle className="mr-2 h-4 w-4" />
+                    My Profile
+                  </Link>
+                </DropdownMenuItem>
+              )}
               {canManageContent(user?.permRole) && (
                 <DropdownMenuItem asChild>
                   <Link href="/admin/apps">

@@ -198,11 +198,12 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
   const isPreviewing = !!viewAsUser;
   // Permission roles (acts_as ?? role) decide which nav shows.
   const effectiveRole = (isPreviewing ? viewAsUser!.perm_role : actualRole) as UserRole | undefined;
-  const showManagementNav = canViewTimeData(effectiveRole);
-  const showOffboarding = canRunOffboarding(
-    effectiveRole,
-    isPreviewing ? viewAsUser!.can_offboard : session?.user?.can_offboard,
-  );
+  // "Apps only" roles (migration 062) get Applications and nothing else.
+  const appsOnly = isPreviewing ? viewAsUser!.apps_only : !!session?.user?.appsOnly;
+  const showManagementNav = !appsOnly && canViewTimeData(effectiveRole);
+  const showOffboarding =
+    !appsOnly &&
+    canRunOffboarding(effectiveRole, isPreviewing ? viewAsUser!.can_offboard : session?.user?.can_offboard);
   const preview = isPreviewing ? viewAsUser : null;
   const pendingCount = usePendingCount(showManagementNav, "/api/management/timeoff/pending-count", pathname);
   // Incidents awaiting either the manager's or the employee's signature.
@@ -224,7 +225,7 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
   if (showOffboarding) {
     sections.push({ id: "people", label: "People", items: offboardingItems });
   }
-  if (canManageContent(effectiveRole)) {
+  if (canManageContent(effectiveRole) && !appsOnly) {
     const items = adminItems.filter((i) => canAccessAdminPath(effectiveRole, i.href));
     if (items.length) sections.push({ id: "admin", label: "Admin", items });
   }
@@ -278,7 +279,7 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
           {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </button>
 
-        {navItems.map((item) => (
+        {(appsOnly ? navItems.filter((i) => i.href === "/dashboard") : navItems).map((item) => (
           <NavLink
             key={item.href}
             item={item}

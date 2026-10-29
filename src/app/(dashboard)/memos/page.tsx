@@ -11,6 +11,8 @@ import { MemoPanel } from "@/components/features/memos/MemoPanel";
 export default async function MemosInboxPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  // "Apps only" roles (migration 062) see only the apps grid.
+  if (session.user.appsOnly) redirect("/dashboard");
 
   const supabase = createAdminClient();
   const rows = await listMemosForEmployee({

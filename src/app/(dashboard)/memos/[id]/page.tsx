@@ -48,6 +48,8 @@ export default async function EmployeeMemoPage({
   const { id } = await params;
   const session = await auth();
   if (!session?.user) redirect("/login");
+  // "Apps only" roles (migration 062) see only the apps grid.
+  if (session.user.appsOnly) redirect("/dashboard");
 
   const supabase = createAdminClient();
 

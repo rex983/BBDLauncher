@@ -11,6 +11,8 @@ import {
 export default async function MyTimeOffPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  // "Apps only" roles (migration 062) see only the apps grid.
+  if (session.user.appsOnly) redirect("/dashboard");
 
   const supabase = createAdminClient();
   const { data } = await supabase

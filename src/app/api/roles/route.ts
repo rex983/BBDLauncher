@@ -22,6 +22,8 @@ const createSchema = z.object({
   acts_as: z.string().nullable().optional(),
   /** Copy this role's app access grid rows onto the new role. */
   copy_access_from: z.string().nullable().optional(),
+  /** Launcher shows only the time clock + granted apps (migration 062). */
+  apps_only: z.boolean().optional(),
 });
 
 const ACTS_AS_ERROR = "\"Permissions like\" must be a built-in role other than admin.";
@@ -85,6 +87,8 @@ export async function POST(req: NextRequest) {
       // Only sent when set, so creating a plain role still works before
       // migration 051 adds the column.
       ...(actsAs ? { acts_as: actsAs } : {}),
+      // Same for apps_only and migration 062.
+      ...(parsed.data.apps_only ? { apps_only: true } : {}),
     })
     .select()
     .single();

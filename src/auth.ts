@@ -7,7 +7,7 @@ import Credentials from "next-auth/providers/credentials";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptStrapiCookie } from "@/lib/auth/strapi-sso";
 import { rateLimit } from "@/lib/rate-limit";
-import { resolvePermRole } from "@/lib/auth/perm-role";
+import { resolveAppsOnly, resolvePermRole } from "@/lib/auth/perm-role";
 import type { Department, Office, UserRole } from "@/types/auth";
 import type { JWT } from "next-auth/jwt";
 
@@ -36,8 +36,12 @@ const SESSION_PROFILE_TTL = 30;
 // Permission role (acts_as ?? role, migration 051), re-resolved on every jwt
 // callback from the cached role list so an acts_as edit (which busts that
 // cache) applies on the next request. `role` stays the real role.
+// appsOnly (migration 062) rides along the same way.
 async function withPermRole(token: JWT): Promise<JWT> {
-  token.permRole = await resolvePermRole(token.role as UserRole | undefined);
+  const role = token.role as UserRole | undefined;
+  const [permRole, appsOnly] = await Promise.all([resolvePermRole(role), resolveAppsOnly(role)]);
+  token.permRole = permRole;
+  token.appsOnly = appsOnly;
   return token;
 }
 
@@ -332,6 +336,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (token) {
         session.user.role = token.role as UserRole;
         session.user.permRole = (token.permRole as UserRole | undefined) ?? (token.role as UserRole);
+        session.user.appsOnly = (token.appsOnly as boolean | undefined) ?? false;
         session.user.profileId = token.profileId as string;
         session.user.office = (token.office as Office | null) ?? null;
         session.user.department = (token.department as Department | null) ?? null;

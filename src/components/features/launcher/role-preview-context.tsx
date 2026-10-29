@@ -25,6 +25,8 @@ export interface PreviewUser {
   office: string | null;
   department: string | null;
   can_offboard: boolean;
+  /** Their role is "apps only" (migration 062): apps grid + time clock only. */
+  apps_only: boolean;
 }
 
 type RolePreview = {
