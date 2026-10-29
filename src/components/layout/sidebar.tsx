@@ -37,6 +37,7 @@ import {
   UserMinus,
   UserCheck,
   MailWarning,
+  History,
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
@@ -85,6 +86,7 @@ const adminItems: NavItem[] = [
   { href: "/admin/departments", label: "Departments", icon: Network },
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
   { href: "/admin/email-monitor", label: "Email Monitor", icon: MailWarning },
+  { href: "/admin/audit", label: "Audit Log", icon: History },
 ];
 
 interface NavSection {

@@ -1,10 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
+import { auditFetch } from "../../../kit/launcher-kit/audit";
 
 function build() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
+      // Tags writes with who made them (edit/audit log, launcher migration 060).
+      global: { fetch: auditFetch("BBD Launcher") },
       auth: {
         autoRefreshToken: false,
         persistSession: false,
