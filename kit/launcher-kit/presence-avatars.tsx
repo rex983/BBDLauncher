@@ -6,12 +6,15 @@ import type { PresencePerson } from "./presence";
 
 // "Currently viewing" avatars, like Google Sheets. Render <PresenceAvatars />
 // in the header (variant "floating" pins it top-right for apps without one).
-// While the tab is visible it pings /api/launcher-presence every 15s and on
-// every page change, and shows everyone else in this app: full colour on the
-// same page, faded elsewhere, grey when idle. Shows nothing when you're alone.
+// It pings /api/launcher-presence every 15s while the tab is in front (about
+// once a minute in a background tab, which counts as away) and on every page
+// change, and shows everyone else with this app open: full colour on the same
+// page, faded elsewhere, grey when away/idle. Leaves only when the tab closes.
+// Shows nothing when you're alone.
 // Skip it during "View as" (the API ignores those sessions anyway).
 
 const PING_EVERY = 15_000;
+const PING_HIDDEN = 45_000; // browsers stretch background timers to ~1 min
 const IDLE_AFTER = 5 * 60_000;
 const ENDPOINT = "/api/launcher-presence";
 
@@ -40,7 +43,7 @@ function hue(id: string): number {
 }
 
 function where(p: PresencePerson): string {
-  return `${p.samePage ? "On this page" : "Elsewhere in this app"}${p.idle ? " · idle" : ""}`;
+  return `${p.samePage ? "On this page" : "Elsewhere in this app"}${p.idle ? " · away" : ""}`;
 }
 
 function Avatar({ person, size = 28 }: { person: PresencePerson; size?: number }) {
@@ -83,6 +86,7 @@ export function PresenceAvatars({
     let lastActive = Date.now();
     let lastMove = 0;
     let stopped = false;
+    let lastPing = 0;
 
     const send = (leave = false) =>
       fetch(ENDPOINT, {
@@ -91,14 +95,15 @@ export function PresenceAvatars({
         body: JSON.stringify({
           tab,
           path: pathRef.current,
-          idle: Date.now() - lastActive > IDLE_AFTER,
+          idle: document.visibilityState !== "visible" || Date.now() - lastActive > IDLE_AFTER,
           leave,
         }),
         keepalive: leave,
       });
 
     const ping = () => {
-      if (stopped || document.visibilityState !== "visible") return;
+      if (stopped) return;
+      lastPing = Date.now();
       send()
         .then((r) => (r.ok ? r.json() : { people: [] }))
         .then((d: { people?: PresencePerson[] }) => {
@@ -111,10 +116,12 @@ export function PresenceAvatars({
     const leave = () => {
       send(true).catch(() => {});
     };
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") ping();
-      else leave();
+    // Every 15s in front, every 45s+ in the background (away).
+    const tick = () => {
+      const every = document.visibilityState === "visible" ? PING_EVERY : PING_HIDDEN;
+      if (Date.now() - lastPing >= every - 1_000) ping();
     };
+    const onVisibility = () => ping();
     const active = () => {
       const wasIdle = Date.now() - lastActive > IDLE_AFTER;
       lastActive = Date.now();
@@ -134,7 +141,7 @@ export function PresenceAvatars({
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", leave);
     ping();
-    const timer = window.setInterval(ping, PING_EVERY);
+    const timer = window.setInterval(tick, PING_EVERY);
 
     return () => {
       stopped = true;

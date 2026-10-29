@@ -7,7 +7,8 @@ import { adminClient, APP_AUDIENCE } from "./config";
 //   export { POST } from "@/lib/launcher-kit/presence";
 //
 // Body: { tab, path, idle?, leave? }. Records this tab and answers with the
-// other people in this app right now: { people: [{ id, name, samePage, idle }] }.
+// other people with this app open: { people: [{ id, name, samePage, idle }] }
+// (idle = no input for 5 min or the tab is in the background).
 // "View as" sessions are never recorded. Errors answer an empty list.
 
 export type PresencePerson = { id: string; name: string; samePage: boolean; idle: boolean };
