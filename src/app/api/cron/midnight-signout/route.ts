@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { PunchEventType } from "@/lib/timesheets/state";
 import { localDateInZone, scheduledTimeInZone } from "@/lib/timesheets/tz";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { cronRoute } from "@/lib/cron";
 import { fetchAllPages } from "@/app/api/_lib/paged";
 import { revalidateSessionProfiles } from "@/lib/auth/session-profile";
@@ -24,9 +24,20 @@ export const maxDuration = 60;
 // until their app-side session runs out. Fresh launches require signing
 // back into the launcher, then clocking in.
 
-async function handle() {
+// Midnight Eastern is 04:00 UTC in summer and 05:00 UTC in winter. vercel.json
+// fires at both; only the run that lands in the midnight hour ET does the work.
+// `?force=1` (with the cron secret) runs it regardless, for a manual run.
+function isMidnightHourET(now: Date): boolean {
+  const hour = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(now);
+  return Number(hour) === 0;
+}
+
+async function handle(req: NextRequest) {
   const supabase = createAdminClient();
   const now = new Date();
+  if (!isMidnightHourET(now) && req.nextUrl.searchParams.get("force") !== "1") {
+    return NextResponse.json({ skipped: "not midnight Eastern", at: now.toISOString() });
+  }
   const cutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
 
   // Step 1: find the latest punch per profile (last 48h — anyone without a

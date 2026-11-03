@@ -137,7 +137,10 @@ export const getCachedRoles = unstable_cache(
   async (): Promise<CachedRole[]> => {
     const supabase = createAdminClient();
     // select("*") so this works before and after migration 051 (acts_as).
-    const { data } = await supabase.from("launcher_roles").select("*").order("name");
+    const { data, error } = await supabase.from("launcher_roles").select("*").order("name");
+    // Throw rather than cache an empty list: with no roles, every permission
+    // role falls back to the raw role and "apps only" is lost for 5 minutes.
+    if (error) throw new Error(`launcher_roles read failed (${error.code})`);
     return ((data || []) as Array<
       Omit<CachedRole, "acts_as" | "apps_only"> & { acts_as?: string | null; apps_only?: boolean | null }
     >).map((r) => ({
@@ -191,11 +194,12 @@ export const getCachedDepartments = unstable_cache(
 export const getCachedActiveQuote = unstable_cache(
   async (): Promise<MotivationalQuote | null> => {
     const supabase = createAdminClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("launcher_motivational_quotes")
       .select("*")
       .eq("is_active", true)
       .maybeSingle();
+    if (error) throw new Error(`active quote read failed (${error.code})`);
     return (data as MotivationalQuote | null) ?? null;
   },
   ["launcher-active-quote"],

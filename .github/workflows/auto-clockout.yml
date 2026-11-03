@@ -2,18 +2,16 @@
 # employee who is past their (scheduled + extension) end time gets a
 # clock_out punch backdated to that end time.
 #
-# Lives here (not vercel.json) because Vercel's Hobby tier only allows
-# daily crons. GitHub Actions gives us 5-min granularity for free, and
-# the endpoint's isAuthorised() already accepts an Authorization Bearer
-# header identical to the Vercel-cron path.
+# Retired as the scheduler on 2026-11-03: GitHub only ran this every 3-6
+# hours, so people stayed "clocked in" for hours after their shift. The team
+# is on Vercel Pro now and vercel.json runs /api/cron/auto-clockout every
+# 5 minutes. Kept as a manual trigger (Actions -> Auto Clockout -> Run).
 #
-# Setup: add repo secret CRON_SECRET (same value as the Vercel env var).
+# Setup: repo secret CRON_SECRET (same value as the Vercel env var).
 
 name: Auto Clockout
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch: {}
 
 concurrency:
