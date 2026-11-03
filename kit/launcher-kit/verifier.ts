@@ -78,7 +78,9 @@ export async function verifyLauncherToken(token: string): Promise<LauncherClaims
 }
 
 // Replay protection: each token (jti) can be redeemed once. The table is the
-// launcher's (migration 045); if it's missing, log and allow.
+// launcher's (migration 045). If it's missing, refuse the sign-in: it went
+// missing once (found 2026-11-03) and allowing silently left every app
+// unprotected without anyone noticing.
 async function consumeJti(jti: string, exp: number | undefined): Promise<void> {
   const expiresAt = new Date(
     (typeof exp === "number" ? exp : Math.floor(Date.now() / 1000) + 120) * 1000,
@@ -89,8 +91,8 @@ async function consumeJti(jti: string, exp: number | undefined): Promise<void> {
   if (!error) return;
   if (error.code === "23505") throw new Error("Launcher token already used");
   if (error.code === "42P01" || error.code === "PGRST205") {
-    console.warn("[launcher-kit] sso_consumed_jti missing; replay protection off");
-    return;
+    console.error("[launcher-kit] sso_consumed_jti missing; refusing launcher sign-in (re-apply launcher migration 045)");
+    throw new Error("Launcher sign-in is unavailable: replay protection table missing");
   }
   throw new Error(`Launcher token jti check failed: ${error.message}`);
 }
