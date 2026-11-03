@@ -260,12 +260,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           .eq("email", user.email.toLowerCase())
           .single();
 
-        if (profile) {
-          token.role = profile.role as UserRole;
-          token.profileId = profile.id;
-          applyOrgClaims(token, profile);
-          token.session_version = (profile.session_version as number | null) ?? 0;
-        }
+        // No profile (or the database didn't answer): don't hand out a session
+        // without a profile id. It would never be rechecked or signed out.
+        if (!profile) return null;
+        token.role = profile.role as UserRole;
+        token.profileId = profile.id;
+        applyOrgClaims(token, profile);
+        token.session_version = (profile.session_version as number | null) ?? 0;
         return withPermRole(token);
       }
 
