@@ -1040,10 +1040,10 @@ function RepTable({ p, office }: { p: GroupPeriod; office: boolean }) {
 }
 
 /**
- * The profile's team report (a team leader's teams) and office report (a
- * manager's office): the totals against the reps' goals added up and the same
- * days last month, then rep by rep, for any day, week or month.
- * `asProfileId`: View as, that person's reports.
+ * The profile's office report (managers): the totals against the reps' goals
+ * added up and the same days last month, then rep by rep, for any day, week
+ * or month. Team leads see their team only on the clock-in screen.
+ * `asProfileId`: View as, that person's report.
  */
 export function TeamReportsCard({ asProfileId }: { asProfileId?: string }) {
   const [date, setDate] = useState<string | undefined>(undefined);
@@ -1054,56 +1054,59 @@ export function TeamReportsCard({ asProfileId }: { asProfileId?: string }) {
     return <p className="text-sm text-destructive">{state.error}</p>;
   return (
     <>
-      {state.reports.map((r) => {
-        const p = r.periods.find((x) => x.key === tab)!;
-        return (
-          <Card key={r.key}>
-            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" aria-hidden />
-                {reportName(r)} — {r.title}
-              </CardTitle>
-              <Badge variant="outline">
-                {r.reps} rep{r.reps === 1 ? "" : "s"}
-              </Badge>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">
-                  <Hint
-                    text={`All ${r.reps} reps added up. The goal is their goals added up (each rep's own, or the office default).`}
-                  >
-                    Totals
-                  </Hint>
-                  <span
-                    className={`ml-2 font-normal text-muted-foreground ${busy ? "animate-pulse" : ""}`}
-                  >
-                    {tab === "month"
-                      ? monthName(p.start.slice(0, 7), {
-                          month: "long",
-                          year: "numeric",
-                        })
-                      : range(p.start, p.end)}
-                  </span>
-                </h3>
-                <PeriodNav
-                  periods={r.periods}
-                  tab={tab}
-                  setTab={setTab}
-                  date={date}
-                  setDate={setDate}
-                  shown={state.date}
-                  today={state.today}
-                  busy={busy}
-                />
-              </div>
-              <PeriodTable p={p} />
-              <h3 className="text-sm font-semibold">Rep by rep</h3>
-              <RepTable p={p} office={r.key === "office"} />
-            </CardContent>
-          </Card>
-        );
-      })}
+      {/* Team leads see their team only on the clock-in screen; the profile keeps the office report. */}
+      {state.reports
+        .filter((r) => r.key === "office")
+        .map((r) => {
+          const p = r.periods.find((x) => x.key === tab)!;
+          return (
+            <Card key={r.key}>
+              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" aria-hidden />
+                  {reportName(r)} — {r.title}
+                </CardTitle>
+                <Badge variant="outline">
+                  {r.reps} rep{r.reps === 1 ? "" : "s"}
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold">
+                    <Hint
+                      text={`All ${r.reps} reps added up. The goal is their goals added up (each rep's own, or the office default).`}
+                    >
+                      Totals
+                    </Hint>
+                    <span
+                      className={`ml-2 font-normal text-muted-foreground ${busy ? "animate-pulse" : ""}`}
+                    >
+                      {tab === "month"
+                        ? monthName(p.start.slice(0, 7), {
+                            month: "long",
+                            year: "numeric",
+                          })
+                        : range(p.start, p.end)}
+                    </span>
+                  </h3>
+                  <PeriodNav
+                    periods={r.periods}
+                    tab={tab}
+                    setTab={setTab}
+                    date={date}
+                    setDate={setDate}
+                    shown={state.date}
+                    today={state.today}
+                    busy={busy}
+                  />
+                </div>
+                <PeriodTable p={p} />
+                <h3 className="text-sm font-semibold">Rep by rep</h3>
+                <RepTable p={p} office={r.key === "office"} />
+              </CardContent>
+            </Card>
+          );
+        })}
     </>
   );
 }
