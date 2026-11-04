@@ -91,6 +91,71 @@ const ROWS: { key: Metric | "valuePerLead"; label: string }[] = [
   { key: "valuePerLead", label: "Value per lead" },
 ];
 
+// How each number is worked out, for the hover boxes (the same rules as Rep Insights).
+const HELP: Record<Metric | "valuePerLead", string> = {
+  sales:
+    "Orders you wrote in these dates that are still live in Order Process. An order cancelled later drops out.",
+  business:
+    "The subtotal of your closed sales in these dates, from Order Process.",
+  quotes:
+    "New quotes assigned to you in the quoting app in these dates. Revising a quote doesn't count again.",
+  talk_hours: "Time on calls in these dates: Five9 plus GHL, in hours.",
+  valuePerLead:
+    "Business ÷ leads quoted. Leads quoted are the phone numbers you gave a new quote in these dates (web leads included), so it shows what each lead was worth to you.",
+};
+const GOAL_HELP =
+  "Your goal for the month. For a day or a week it's that share of the month's goal by calendar days: one day of a 30-day month gets 1/30 of it. With no goal of your own, your office's default is used.";
+
+/**
+ * A label with a dotted underline that shows a small box explaining it on
+ * hover, on keyboard focus, or on a tap. The box is fixed to the screen so a
+ * table's scroll area or the clock-in screen can't cut it off.
+ */
+function Hint({ text, children }: { text: string; children: React.ReactNode }) {
+  const [at, setAt] = useState<{ x: number; y: number; below: boolean } | null>(
+    null,
+  );
+  const show = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const x = Math.min(
+      Math.max(r.left + r.width / 2, 140),
+      window.innerWidth - 140,
+    );
+    const below = r.top < 120;
+    setAt({ x, y: below ? r.bottom + 6 : r.top - 6, below });
+  };
+  return (
+    <span
+      tabIndex={0}
+      className="cursor-help underline decoration-dotted decoration-muted-foreground/60 underline-offset-2 outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
+      onMouseEnter={(e) => show(e.currentTarget)}
+      onMouseLeave={() => setAt(null)}
+      onFocus={(e) => show(e.currentTarget)}
+      onBlur={() => setAt(null)}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (at) setAt(null);
+        else show(e.currentTarget);
+      }}
+    >
+      {children}
+      {at && (
+        <span
+          role="tooltip"
+          className="pointer-events-none fixed z-[80] w-64 rounded-md border bg-popover px-2.5 py-1.5 text-left text-xs font-normal normal-case tracking-normal text-popover-foreground shadow-md"
+          style={{
+            left: at.x,
+            top: at.y,
+            transform: `translate(-50%, ${at.below ? "0" : "-100%"})`,
+          }}
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
 const money = (v: number) =>
   Math.abs(v) >= 10_000
     ? `$${(v / 1000).toFixed(v >= 100_000 ? 0 : 1)}k`
@@ -202,7 +267,7 @@ function Bar({ done, goal }: { done: number; goal: number | null }) {
   return (
     <div
       className="mt-1 h-1.5 w-full rounded-full bg-muted"
-      title={`${Math.round((done / goal) * 100)}% of goal`}
+      title={`${Math.round((done / goal) * 100)}% of the goal. The bar turns green once it's met.`}
     >
       <div
         className={`h-1.5 rounded-full ${done >= goal ? "bg-emerald-500" : "bg-primary"}`}
@@ -218,15 +283,28 @@ function PeriodTable({ p }: { p: RepSelf["periods"][number] }) {
       <thead>
         <tr className="text-left text-xs text-muted-foreground">
           <th className="py-1.5 font-medium" />
-          <th className="py-1.5 text-right font-medium">{p.label}</th>
-          <th className="py-1.5 text-right font-medium">Goal</th>
-          <th
-            className="py-1.5 text-right font-medium"
-            title={range(p.wasStart, p.wasEnd)}
-          >
-            Last month
+          <th className="py-1.5 text-right font-medium">
+            <Hint
+              text={`What you did ${p.start === p.end ? "on" : "from"} ${range(p.start, p.end)}.`}
+            >
+              {p.label}
+            </Hint>
           </th>
-          <th className="py-1.5 text-right font-medium">Change</th>
+          <th className="py-1.5 text-right font-medium">
+            <Hint text={GOAL_HELP}>Goal</Hint>
+          </th>
+          <th className="py-1.5 text-right font-medium">
+            <Hint
+              text={`The same days one month earlier: ${range(p.wasStart, p.wasEnd)}.`}
+            >
+              Last month
+            </Hint>
+          </th>
+          <th className="py-1.5 text-right font-medium">
+            <Hint text="How much higher or lower than the same days last month: (now − then) ÷ then. “new” means last month was zero.">
+              Change
+            </Hint>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -236,7 +314,9 @@ function PeriodTable({ p }: { p: RepSelf["periods"][number] }) {
           const goal = r.key === "valuePerLead" ? null : p.goal[r.key];
           return (
             <tr key={r.key} className="border-t">
-              <td className="py-1.5">{r.label}</td>
+              <td className="py-1.5">
+                <Hint text={HELP[r.key]}>{r.label}</Hint>
+              </td>
               <td className="py-1.5 text-right tabular-nums font-medium">
                 {fmt(r.key, now)}
                 {r.key !== "valuePerLead" && (
@@ -266,7 +346,11 @@ function Ranks({ ranks }: { ranks: RepSelf["ranks"] }) {
       {ranks.map((k) => (
         <div key={k.key} className="rounded-md border p-3">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">
-            {k.label} · of {k.of} reps
+            <Hint
+              text={`Your spot among the ${k.of} reps in your office and department; #1 is the highest. Reps with the same number share a spot. Nobody else's names or numbers are shown.${k.key === "ytd" ? " Year to date runs from Jan 1 to the end of the dates you're looking at." : ""}`}
+            >
+              {k.label} · of {k.of} reps
+            </Hint>
           </div>
           <ul className="mt-2 space-y-1 text-sm">
             {k.items.map((i) => (
@@ -275,7 +359,11 @@ function Ranks({ ranks }: { ranks: RepSelf["ranks"] }) {
                 className="flex items-baseline justify-between gap-2"
               >
                 <span>
-                  {i.label}
+                  <Hint
+                    text={`Ranked by ${i.key === "valuePerLead" ? "value per lead" : i.key === "sales" ? "sales" : "business"}. ${HELP[i.key]}`}
+                  >
+                    {i.label}
+                  </Hint>
                   {i.key === "valuePerLead" && i.value != null && (
                     <span className="ml-1.5 text-xs text-muted-foreground">
                       {money(i.value)}
@@ -360,7 +448,11 @@ function GoalForm({
         {data.goals.metrics.map((m) => (
           <label key={m.key} className="space-y-1 text-sm">
             <span className="text-xs text-muted-foreground">
-              {m.label} ({m.unit === "$" ? "$" : m.unit} this month)
+              <Hint
+                text={`${HELP[m.key]} Your goal is the total for the whole month.`}
+              >
+                {m.label} ({m.unit === "$" ? "$" : m.unit} this month)
+              </Hint>
             </span>
             <Input
               type="number"
@@ -409,13 +501,21 @@ function History({
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-muted-foreground">
-              <th className="py-1.5 font-medium">Month</th>
+              <th className="py-1.5 font-medium">
+                <Hint text="Each month's total / that month's goal. Green with a ✓ means the goal was met. Click a month to open it.">
+                  Month
+                </Hint>
+              </th>
               {keys.map((k) => (
                 <th key={k} className="py-1.5 text-right font-medium">
-                  {ROWS.find((r) => r.key === k)!.label}
+                  <Hint text={HELP[k]}>
+                    {ROWS.find((r) => r.key === k)!.label}
+                  </Hint>
                 </th>
               ))}
-              <th className="py-1.5 text-right font-medium">Value per lead</th>
+              <th className="py-1.5 text-right font-medium">
+                <Hint text={HELP.valuePerLead}>Value per lead</Hint>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -532,7 +632,11 @@ export function MyGoalsCard({ asProfileId }: { asProfileId?: string }) {
                   return (
                     <div key={m.key} className="rounded-md border p-3">
                       <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                        {m.label}
+                        <Hint
+                          text={`${HELP[m.key]} Done this month / your goal${m.from === "office" ? " (your office's default: you don't have one of your own)" : ""}. The bar turns green once it's met.`}
+                        >
+                          {m.label}
+                        </Hint>
                       </div>
                       <div className="mt-1 text-lg font-semibold tabular-nums">
                         {fmt(m.key, done)}{" "}
@@ -705,7 +809,11 @@ export function MyNumbersCompact() {
                 (k) => (
                   <div key={k}>
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      {ROWS.find((r) => r.key === k)!.label}
+                      <Hint
+                        text={`${HELP[k]} “goal” is ${p.key === "day" ? "today's" : "this month's"} share of your monthly goal; the % compares with the same days last month.`}
+                      >
+                        {ROWS.find((r) => r.key === k)!.label}
+                      </Hint>
                     </div>
                     <div className="font-semibold tabular-nums">
                       {fmt(k, p.now[k])}
