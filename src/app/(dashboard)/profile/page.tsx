@@ -288,7 +288,6 @@ export default async function ProfilePage({
           initialRows={incidents}
           employeeFullName={profile?.name || null}
           readOnly={viewingAs}
-          viewAsProfileId={viewingAs ? profileId : undefined}
           title="Incident reports"
           description="Reports issued to you. Sign any awaiting your signature; archived reports remain viewable here."
         />
