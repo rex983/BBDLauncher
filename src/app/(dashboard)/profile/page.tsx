@@ -22,6 +22,7 @@ import {
   type IncidentSummary,
 } from "@/components/features/incidents/IncidentPanel";
 import { MemoPanel } from "@/components/features/memos/MemoPanel";
+import { MyGoalsCard } from "@/components/features/goals/MyGoals";
 import { listMemosForEmployee } from "@/lib/memos/queries";
 import {
   formatDays,
@@ -187,6 +188,8 @@ export default async function ProfilePage() {
         <Stat label="Last 14d worked" value={formatDuration(worked14)} sub={`${workedDays} day${workedDays === 1 ? "" : "s"}`} />
         <Stat label="Last 14d lunch + breaks" value={formatDuration(lunch14 + break14)} />
       </div>
+
+      <MyGoalsCard />
 
       <Card>
         <CardHeader>

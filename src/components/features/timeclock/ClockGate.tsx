@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { AlarmClock, CalendarCheck, Clock, LogIn, LogOut } from "lucide-react";
 import { fmtTime } from "@/components/shared/format";
+import { MyNumbersCompact } from "@/components/features/goals/MyGoals";
 import type { LiveState, PunchEventType } from "@/lib/timesheets/state";
 import type { TodayScheduleData } from "@/lib/timesheets/server";
 import {
@@ -272,6 +273,7 @@ export function ClockGate({
               <LogOut className="mr-2 h-4 w-4" />
               Sign out
             </Button>
+            <MyNumbersCompact />
             <UpcomingTimeOff />
           </div>
         </div>
