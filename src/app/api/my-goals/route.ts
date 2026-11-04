@@ -13,11 +13,14 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user?.profileId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const as = new URL(req.url).searchParams.get("as");
+  const q = new URL(req.url).searchParams;
+  const as = q.get("as");
+  // ?date=: look back at the day, week and month holding a past day.
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(q.get("date") ?? "") ? q.get("date")! : undefined;
   if (as && as !== session.user.profileId && (await canViewAs(session.user.profileId, as)) !== true) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const { status, body } = await repInsights(as || session.user.profileId);
+  const { status, body } = await repInsights(as || session.user.profileId, undefined, date);
   if (status === 404) return NextResponse.json({ rep: false });
   return NextResponse.json(status === 200 ? { rep: true, ...(body as object) } : body, { status });
 }

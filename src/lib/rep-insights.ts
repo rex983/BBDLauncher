@@ -7,10 +7,10 @@ import "server-only";
 
 const BASE = (process.env.REP_INSIGHTS_URL || "https://bbd-rep-insights.vercel.app").replace(/\/$/, "");
 
-export async function repInsights(profileId: string, init?: { goals: Record<string, unknown> }): Promise<{ status: number; body: unknown }> {
+export async function repInsights(profileId: string, init?: { goals: Record<string, unknown> }, date?: string): Promise<{ status: number; body: unknown }> {
   const secret = process.env.REP_INSIGHTS_API_SECRET;
   if (!secret) return { status: 503, body: { error: "Rep Insights isn't connected (REP_INSIGHTS_API_SECRET)." } };
-  const url = `${BASE}/api/launcher/rep${init ? "" : `?profile=${encodeURIComponent(profileId)}`}`;
+  const url = `${BASE}/api/launcher/rep${init ? "" : `?profile=${encodeURIComponent(profileId)}${date ? `&date=${date}` : ""}`}`;
   try {
     const res = await fetch(url, {
       method: init ? "POST" : "GET",
