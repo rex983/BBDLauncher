@@ -123,7 +123,8 @@ export function scopeProfilesQuery<Q>(
 //   3. viewer has a valid (department, office) scope
 //   4. (optional) target profile falls within both scope axes AND is active
 //
-//   5. for edits, the target isn't the viewer (see isOwnRecord)
+//   5. for edits, the target isn't the viewer (see isOwnRecord), unless
+//      the caller passes allowSelf (managers marking their own time off)
 //
 // Admins bypass steps 4–5 entirely — they can view/edit anyone, including
 // inactive users and themselves. Pass null for targetProfileId when the
@@ -131,11 +132,12 @@ export function scopeProfilesQuery<Q>(
 export async function requireTimeDataAccess(
   targetProfileId: string | null,
   need: Need,
+  { allowSelf = false }: { allowSelf?: boolean } = {},
 ): Promise<ScopeGate> {
   const base = await enterScope(need);
   if (!base.ok) return base;
   if (base.viewerIsAdmin) return base;
-  if (need === "edit" && isOwnRecord(false, base.session, targetProfileId)) {
+  if (need === "edit" && !allowSelf && isOwnRecord(false, base.session, targetProfileId)) {
     return { ok: false, response: ownRecordResponse() };
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -53,6 +54,8 @@ interface Props {
 }
 
 export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
+  const { data: session } = useSession();
+  const myId = session?.user?.profileId;
   const [open, setOpen] = useState(false);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
@@ -83,7 +86,10 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
         setEmployees(
           rows
             .map((r) => r.profile)
+            // The viewer first, so marking yourself out is one click.
             .sort((a, b) => {
+              if (a.id === myId) return -1;
+              if (b.id === myId) return 1;
               const an = (a.name || a.email).toLowerCase();
               const bn = (b.name || b.email).toLowerCase();
               return an.localeCompare(bn);
@@ -97,7 +103,7 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [open, viewAsOffice]);
+  }, [open, viewAsOffice, myId]);
 
   const subOptions = TIME_OFF_SUBCATEGORIES[form.type];
 
@@ -160,11 +166,11 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Mark an employee out</DialogTitle>
+          <DialogTitle>Mark someone out</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="employee">Employee</Label>
+            <Label htmlFor="employee">Who</Label>
             <Select
               value={form.profile_id}
               onValueChange={(v) => setForm((f) => ({ ...f, profile_id: v }))}
@@ -175,7 +181,7 @@ export function MarkDayOffDialog({ onCreated, viewAsOffice }: Props) {
               <SelectContent>
                 {employees.map((e) => (
                   <SelectItem key={e.id} value={e.id}>
-                    {e.name || e.email}
+                    {e.id === myId ? `Me (${e.name || e.email})` : e.name || e.email}
                     {e.office ? ` · ${e.office}` : ""}
                   </SelectItem>
                 ))}

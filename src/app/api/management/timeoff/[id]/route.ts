@@ -35,24 +35,30 @@ const editSchema = z.object({
 // scope rules requireTimeDataAccessWithProfile enforces. The embed names
 // the FK explicitly — the table has two FKs to profiles (profile_id and
 // decided_by).
+// A manager's own row is off limits unless they marked it themselves
+// (decided_by = self, via "Mark day off"), so they can fix or remove it.
 async function loadRowWithScope(id: string) {
   const gate = await requireTimeDataAccess(null, "edit");
   if (!gate.ok) return { fail: gate.response };
 
   const { data: reqRow } = await gate.supabase
     .from("time_off_requests")
-    .select("profile_id, status, type, profile:profiles!profile_id(department, office, is_active)")
+    .select("profile_id, status, type, decided_by, profile:profiles!profile_id(department, office, is_active)")
     .eq("id", id)
     .single<{
       profile_id: string;
       status: string;
+      decided_by: string | null;
       type: keyof typeof TIME_OFF_SUBCATEGORIES;
       profile: ScopedProfile | null;
     }>();
   if (!reqRow) {
     return { fail: NextResponse.json({ error: "Not found" }, { status: 404 }) };
   }
-  if (isOwnRecord(gate.viewerIsAdmin, gate.session, reqRow.profile_id)) {
+  if (
+    isOwnRecord(gate.viewerIsAdmin, gate.session, reqRow.profile_id) &&
+    reqRow.decided_by !== gate.session.user.profileId
+  ) {
     return { fail: ownRecordResponse() };
   }
   if (!reqRow.profile) {

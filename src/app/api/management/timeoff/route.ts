@@ -77,7 +77,9 @@ export async function POST(req: NextRequest) {
 
   // Scope check binds to the target profile — manager can only mark
   // people inside their department/office, admins can mark anyone.
-  const gate = await requireTimeDataAccess(parsed.data.profile_id, "edit");
+  // Managers may mark themselves out too; they still can't approve their
+  // own pending requests (see [id]/route.ts).
+  const gate = await requireTimeDataAccess(parsed.data.profile_id, "edit", { allowSelf: true });
   if (!gate.ok) return gate.response;
   const { session, supabase } = gate;
 
