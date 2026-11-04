@@ -25,7 +25,7 @@ import {
 import { MemoPanel } from "@/components/features/memos/MemoPanel";
 import { canViewAs } from "@/lib/launcher/view-as";
 import { resolveAppsOnly } from "@/lib/auth/perm-role";
-import { MyGoalsCard } from "@/components/features/goals/MyGoals";
+import { MyGoalsCard, TeamReportsCard } from "@/components/features/goals/MyGoals";
 import { listMemosForEmployee } from "@/lib/memos/queries";
 import {
   formatDays,
@@ -212,6 +212,7 @@ export default async function ProfilePage({
       </div>
 
       <MyGoalsCard asProfileId={viewingAs ? profileId : undefined} />
+      <TeamReportsCard asProfileId={viewingAs ? profileId : undefined} />
 
       <Card>
         <CardHeader>
@@ -287,6 +288,7 @@ export default async function ProfilePage({
           initialRows={incidents}
           employeeFullName={profile?.name || null}
           readOnly={viewingAs}
+          viewAsProfileId={viewingAs ? profileId : undefined}
           title="Incident reports"
           description="Reports issued to you. Sign any awaiting your signature; archived reports remain viewable here."
         />

@@ -7,6 +7,7 @@ import {
   Target,
   TrendingDown,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -676,81 +677,16 @@ export function MyGoalsCard({ asProfileId }: { asProfileId?: string }) {
                         })()}
                   </span>
                 </h3>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 px-2"
-                    aria-label="Back"
-                    disabled={busy}
-                    onClick={() => setDate(step(tab, state.data.date, -1))}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 px-2"
-                    aria-label="Forward"
-                    disabled={busy || !date}
-                    onClick={() => {
-                      const next = step(tab, state.data.date, 1);
-                      setDate(next >= state.data.today ? undefined : next);
-                    }}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                  <Input
-                    type="date"
-                    aria-label="Go to a date"
-                    className="h-7 w-36 text-xs"
-                    max={state.data.today}
-                    min="2024-01-01"
-                    value={state.data.date}
-                    onChange={(e) =>
-                      e.target.value &&
-                      setDate(
-                        e.target.value >= state.data.today
-                          ? undefined
-                          : e.target.value,
-                      )
-                    }
-                  />
-                  {date && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setDate(undefined)}
-                    >
-                      Today
-                    </Button>
-                  )}
-                  <div
-                    className="inline-flex rounded-md border p-0.5 text-xs"
-                    role="tablist"
-                  >
-                    {state.data.periods.map((p) => (
-                      <button
-                        key={p.key}
-                        type="button"
-                        role="tab"
-                        aria-selected={tab === p.key}
-                        onClick={() => setTab(p.key)}
-                        className={
-                          tab === p.key
-                            ? "rounded bg-primary px-3 py-1 text-primary-foreground"
-                            : "rounded px-3 py-1 text-muted-foreground hover:bg-accent"
-                        }
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <PeriodNav
+                  periods={state.data.periods}
+                  tab={tab}
+                  setTab={setTab}
+                  date={date}
+                  setDate={setDate}
+                  shown={state.data.date}
+                  today={state.data.today}
+                  busy={busy}
+                />
               </div>
               <PeriodTable p={state.data.periods.find((p) => p.key === tab)!} />
               <p className="text-xs text-muted-foreground">
@@ -797,7 +733,126 @@ export function MyNumbersCompact() {
         <Target className="h-3.5 w-3.5" aria-hidden />
         Your numbers vs last month
       </div>
-      {d.periods
+      <CompactPeriods periods={d.periods} whose="your" />
+      {rank && vpl?.rank != null && (
+        <p className="text-xs text-muted-foreground">
+          This month: #{vpl.rank} of {rank.of} on value per lead (
+          {fmt("valuePerLead", vpl.value)})
+        </p>
+      )}
+      {d.goals.canSubmit && (
+        <p className="text-xs font-medium text-primary">
+          Set your {monthName(d.month)} goals on your profile by{" "}
+          {dayName(d.goals.windowEnds)}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Day / Week / Month, back and forward a step, any date, and back to today. */
+function PeriodNav({
+  periods,
+  tab,
+  setTab,
+  date,
+  setDate,
+  shown,
+  today,
+  busy,
+}: {
+  periods: { key: Kind; label: string }[];
+  tab: Kind;
+  setTab: (k: Kind) => void;
+  /** The day picked (undefined: today). */
+  date: string | undefined;
+  setDate: (d: string | undefined) => void;
+  /** The day the numbers on screen are for. */
+  shown: string;
+  today: string;
+  busy: boolean;
+}) {
+  const go = (d: string) => setDate(d >= today ? undefined : d);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 px-2"
+        aria-label="Back"
+        disabled={busy}
+        onClick={() => go(step(tab, shown, -1))}
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 px-2"
+        aria-label="Forward"
+        disabled={busy || !date}
+        onClick={() => go(step(tab, shown, 1))}
+      >
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+      <Input
+        type="date"
+        aria-label="Go to a date"
+        className="h-7 w-36 text-xs"
+        max={today}
+        min="2024-01-01"
+        value={shown}
+        onChange={(e) => e.target.value && go(e.target.value)}
+      />
+      {date && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => setDate(undefined)}
+        >
+          Today
+        </Button>
+      )}
+      <div
+        className="inline-flex rounded-md border p-0.5 text-xs"
+        role="tablist"
+      >
+        {periods.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === p.key}
+            onClick={() => setTab(p.key)}
+            className={
+              tab === p.key
+                ? "rounded bg-primary px-3 py-1 text-primary-foreground"
+                : "rounded px-3 py-1 text-muted-foreground hover:bg-accent"
+            }
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Today and this month: four numbers each, with the goal and the change on last month. */
+function CompactPeriods({
+  periods,
+  whose,
+}: {
+  periods: RepSelf["periods"];
+  whose: "your" | "the team's" | "the office's";
+}) {
+  return (
+    <>
+      {periods
         .filter((p) => p.key !== "week")
         .map((p) => (
           <div key={p.key} className="space-y-1">
@@ -810,7 +865,7 @@ export function MyNumbersCompact() {
                   <div key={k}>
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
                       <Hint
-                        text={`${HELP[k]} “goal” is ${p.key === "day" ? "today's" : "this month's"} share of your monthly goal; the % compares with the same days last month.`}
+                        text={`${HELP[k]} “goal” is ${p.key === "day" ? "today's" : "this month's"} share of ${whose === "your" ? "your monthly goal" : `${whose} reps' monthly goals added up`}; the % compares with the same days last month.`}
                       >
                         {ROWS.find((r) => r.key === k)!.label}
                       </Hint>
@@ -828,18 +883,249 @@ export function MyNumbersCompact() {
             </div>
           </div>
         ))}
-      {rank && vpl?.rank != null && (
-        <p className="text-xs text-muted-foreground">
-          This month: #{vpl.rank} of {rank.of} on value per lead (
-          {fmt("valuePerLead", vpl.value)})
-        </p>
+    </>
+  );
+}
+
+// ---- Team and office reports (team leaders and managers) ----------------
+
+type GroupPeriod = RepSelf["periods"][number] & {
+  reps: {
+    name: string;
+    now: Numbers;
+    was: Numbers;
+    goal: Record<Metric, number | null>;
+  }[];
+};
+interface GroupReport {
+  key: "team" | "office";
+  title: string;
+  reps: number;
+  periods: GroupPeriod[];
+}
+type GroupState =
+  | { status: "loading" }
+  | { status: "error"; error: string }
+  | { status: "ok"; today: string; date: string; reports: GroupReport[] };
+
+/** The team report (team leaders) and office report (managers) from Rep Insights (/api/my-reports). */
+function useGroupReports(asProfileId?: string, date?: string) {
+  const [state, setState] = useState<GroupState>({ status: "loading" });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const q = new URLSearchParams();
+    if (asProfileId) q.set("as", asProfileId);
+    if (date) q.set("date", date);
+    setBusy(true);
+    fetch(`/api/my-reports${q.size ? `?${q}` : ""}`)
+      .then(async (r) => {
+        const b = await r.json().catch(() => ({}));
+        if (cancelled) return;
+        if (r.ok)
+          setState({
+            status: "ok",
+            today: b.today,
+            date: b.date,
+            reports: b.reports ?? [],
+          });
+        else
+          setState({
+            status: "error",
+            error:
+              typeof b.error === "string"
+                ? b.error
+                : "Couldn't load the report",
+          });
+      })
+      .catch(
+        () =>
+          !cancelled &&
+          setState({ status: "error", error: "Couldn't load the report" }),
+      )
+      .finally(() => !cancelled && setBusy(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [asProfileId, date]);
+  return [state, busy] as const;
+}
+
+const reportName = (r: GroupReport) =>
+  r.key === "team" ? "Team report" : "Office report";
+
+/** done / goal, green with a check once met. */
+function DoneOfGoal({
+  k,
+  done,
+  goal,
+}: {
+  k: Metric;
+  done: number;
+  goal: number | null;
+}) {
+  const met = goal != null && goal > 0 && done >= goal;
+  return (
+    <>
+      <span
+        className={
+          met ? "font-medium text-emerald-600 dark:text-emerald-400" : ""
+        }
+      >
+        {fmt(k, done)}
+        {met ? " \u2713" : ""}
+      </span>
+      {goal != null && (
+        <span className="text-xs text-muted-foreground"> / {fmt(k, goal)}</span>
       )}
-      {d.goals.canSubmit && (
-        <p className="text-xs font-medium text-primary">
-          Set your {monthName(d.month)} goals on your profile by{" "}
-          {dayName(d.goals.windowEnds)}.
-        </p>
-      )}
+    </>
+  );
+}
+
+function RepTable({ p, office }: { p: GroupPeriod; office: boolean }) {
+  const keys = ["sales", "business", "quotes", "talk_hours"] as const;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground">
+            <th className="py-1.5 font-medium">
+              <Hint
+                text={`Every rep on ${office ? "the office's roster" : "the team"}, most business first. Each number is done / their goal for these dates; green with a check means it's met.`}
+              >
+                Rep
+              </Hint>
+            </th>
+            {keys.map((k) => (
+              <th key={k} className="py-1.5 text-right font-medium">
+                <Hint text={HELP[k]}>
+                  {ROWS.find((r) => r.key === k)!.label}
+                </Hint>
+              </th>
+            ))}
+            <th className="py-1.5 text-right font-medium">
+              <Hint text={HELP.valuePerLead}>Value per lead</Hint>
+            </th>
+            <th className="py-1.5 text-right font-medium">
+              <Hint text="Their business against the same days last month: (now − then) ÷ then.">
+                Business change
+              </Hint>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {p.reps.map((r) => (
+            <tr key={r.name} className="border-t">
+              <td className="py-1.5 whitespace-nowrap">{r.name}</td>
+              {keys.map((k) => (
+                <td
+                  key={k}
+                  className="py-1.5 text-right tabular-nums whitespace-nowrap"
+                >
+                  <DoneOfGoal k={k} done={r.now[k]} goal={r.goal[k]} />
+                </td>
+              ))}
+              <td className="py-1.5 text-right tabular-nums">
+                {fmt("valuePerLead", r.now.valuePerLead)}
+              </td>
+              <td className="py-1.5 text-right tabular-nums">
+                <Change now={r.now.business} was={r.was.business} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
+  );
+}
+
+/**
+ * The profile's team report (a team leader's teams) and office report (a
+ * manager's office): the totals against the reps' goals added up and the same
+ * days last month, then rep by rep, for any day, week or month.
+ * `asProfileId`: View as, that person's reports.
+ */
+export function TeamReportsCard({ asProfileId }: { asProfileId?: string }) {
+  const [date, setDate] = useState<string | undefined>(undefined);
+  const [state, busy] = useGroupReports(asProfileId, date);
+  const [tab, setTab] = useState<Kind>("month");
+  if (state.status === "loading") return null;
+  if (state.status === "error")
+    return <p className="text-sm text-destructive">{state.error}</p>;
+  return (
+    <>
+      {state.reports.map((r) => {
+        const p = r.periods.find((x) => x.key === tab)!;
+        return (
+          <Card key={r.key}>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" aria-hidden />
+                {reportName(r)} — {r.title}
+              </CardTitle>
+              <Badge variant="outline">
+                {r.reps} rep{r.reps === 1 ? "" : "s"}
+              </Badge>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">
+                  <Hint
+                    text={`All ${r.reps} reps added up. The goal is their goals added up (each rep's own, or the office default).`}
+                  >
+                    Totals
+                  </Hint>
+                  <span
+                    className={`ml-2 font-normal text-muted-foreground ${busy ? "animate-pulse" : ""}`}
+                  >
+                    {tab === "month"
+                      ? monthName(p.start.slice(0, 7), {
+                          month: "long",
+                          year: "numeric",
+                        })
+                      : range(p.start, p.end)}
+                  </span>
+                </h3>
+                <PeriodNav
+                  periods={r.periods}
+                  tab={tab}
+                  setTab={setTab}
+                  date={date}
+                  setDate={setDate}
+                  shown={state.date}
+                  today={state.today}
+                  busy={busy}
+                />
+              </div>
+              <PeriodTable p={p} />
+              <h3 className="text-sm font-semibold">Rep by rep</h3>
+              <RepTable p={p} office={r.key === "office"} />
+            </CardContent>
+          </Card>
+        );
+      })}
+    </>
+  );
+}
+
+/** The clock-in screen's: each report's today and this month, in a few lines. */
+export function TeamReportsCompact() {
+  const [state] = useGroupReports();
+  if (state.status !== "ok" || !state.reports.length) return null;
+  return (
+    <>
+      {state.reports.map((r) => (
+        <div key={r.key} className="mt-6 space-y-3 border-t pt-4 text-left">
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <Users className="h-3.5 w-3.5" aria-hidden />
+            {reportName(r)}: {r.title} · {r.reps} reps
+          </div>
+          <CompactPeriods
+            periods={r.periods}
+            whose={r.key === "team" ? "the team's" : "the office's"}
+          />
+        </div>
+      ))}
+    </>
   );
 }

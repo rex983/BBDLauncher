@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { AlarmClock, CalendarCheck, Clock, LogIn, LogOut } from "lucide-react";
 import { fmtTime } from "@/components/shared/format";
-import { MyNumbersCompact } from "@/components/features/goals/MyGoals";
+import { MyNumbersCompact, TeamReportsCompact } from "@/components/features/goals/MyGoals";
 import type { LiveState, PunchEventType } from "@/lib/timesheets/state";
 import type { TodayScheduleData } from "@/lib/timesheets/server";
 import {
@@ -210,11 +210,11 @@ export function ClockGate({
       {children}
       {locked && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-background/90 p-4 backdrop-blur-md"
+          className="fixed inset-0 z-[60] flex overflow-y-auto bg-background/90 p-4 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
+          <div className="m-auto w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
             {late ? (
               <>
                 <AlarmClock className="mx-auto h-10 w-10 text-amber-500" />
@@ -274,6 +274,7 @@ export function ClockGate({
               Sign out
             </Button>
             <MyNumbersCompact />
+            <TeamReportsCompact />
             <UpcomingTimeOff />
           </div>
         </div>
