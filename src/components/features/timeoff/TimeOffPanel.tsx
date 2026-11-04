@@ -57,6 +57,8 @@ interface TimeOffPanelProps {
    * stays focused on what's coming up.
    */
   upcomingOnly?: boolean;
+  /** View as: the person's panel exactly, but nothing saves. */
+  readOnly?: boolean;
 }
 
 export function TimeOffPanel({
@@ -64,6 +66,7 @@ export function TimeOffPanel({
   title = "My time off",
   description,
   upcomingOnly = false,
+  readOnly = false,
 }: TimeOffPanelProps) {
   const filter = (list: TimeOffRequest[]) =>
     upcomingOnly
@@ -114,6 +117,7 @@ export function TimeOffPanel({
   };
 
   const uploadFile = async (file: File) => {
+    if (readOnly) return setError("Read-only while viewing as someone. Exit View as to make changes.");
     setUploading(true);
     setError(null);
     const body = new FormData();
@@ -135,6 +139,7 @@ export function TimeOffPanel({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (readOnly) return setError("Read-only while viewing as someone. Exit View as to make changes.");
     setSubmitting(true);
     setError(null);
     const res = await fetch("/api/timeoff", {
@@ -163,6 +168,7 @@ export function TimeOffPanel({
   };
 
   const cancel = async (id: string) => {
+    if (readOnly) return alert("Read-only while viewing as someone. Exit View as to make changes.");
     if (!confirm("Cancel this request?")) return;
     const res = await fetch(`/api/timeoff/${id}`, { method: "DELETE" });
     if (!res.ok) {

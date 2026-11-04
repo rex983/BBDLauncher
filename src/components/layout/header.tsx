@@ -87,9 +87,9 @@ export function Header() {
                 </div>
               </div>
               <DropdownMenuSeparator />
-              {!user?.appsOnly && (
+              {!(viewAsUser ? viewAsUser.apps_only : user?.appsOnly) && (
                 <DropdownMenuItem asChild>
-                  <Link href="/profile">
+                  <Link href={buildPreviewHref("/profile", viewAsUser)}>
                     <UserCircle className="mr-2 h-4 w-4" />
                     My Profile
                   </Link>

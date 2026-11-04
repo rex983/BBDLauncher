@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import type { UserRole } from "@/types/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,8 @@ import {
   type IncidentSummary,
 } from "@/components/features/incidents/IncidentPanel";
 import { MemoPanel } from "@/components/features/memos/MemoPanel";
+import { canViewAs } from "@/lib/launcher/view-as";
+import { resolveAppsOnly } from "@/lib/auth/perm-role";
 import { MyGoalsCard } from "@/components/features/goals/MyGoals";
 import { listMemosForEmployee } from "@/lib/memos/queries";
 import {
@@ -44,14 +47,33 @@ function fmtDate(d: string) {
   });
 }
 
-export default async function ProfilePage() {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
-  // "Apps only" roles (migration 062) see only the apps grid.
-  if (session.user.appsOnly) redirect("/dashboard");
-  const profileId = session.user.profileId;
+const UUID = /^[0-9a-f-]{36}$/i;
 
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ viewAsUser?: string | string[] }>;
+}) {
+  const [session, sp] = await Promise.all([auth(), searchParams]);
+  if (!session?.user) redirect("/login");
   const supabase = createAdminClient();
+
+  // View as (?viewAsUser=): their profile exactly as they see it, when the
+  // viewer may View as them (migration 052's rule); nothing on it saves.
+  // Anyone else's id, or a failed check, is the viewer's own profile.
+  const asId = Array.isArray(sp.viewAsUser) ? sp.viewAsUser[0] : sp.viewAsUser;
+  const viewingAs = !!asId && UUID.test(asId) && asId !== session.user.profileId && (await canViewAs(session.user.profileId, asId)) === true;
+  const profileId = viewingAs ? asId! : session.user.profileId;
+  // "Apps only" roles (migration 062) see only the apps grid.
+  const appsOnly = viewingAs
+    ? await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", profileId)
+        .single()
+        .then(({ data }) => resolveAppsOnly((data?.role as UserRole | undefined) ?? null))
+    : session.user.appsOnly;
+  if (appsOnly) redirect(viewingAs ? `/dashboard?viewAsUser=${profileId}` : "/dashboard");
 
   // 14-day window for hours + activity. Day boundaries follow ET so
   // "today" here matches what the timesheet stack reports.
@@ -189,7 +211,7 @@ export default async function ProfilePage() {
         <Stat label="Last 14d lunch + breaks" value={formatDuration(lunch14 + break14)} />
       </div>
 
-      <MyGoalsCard />
+      <MyGoalsCard asProfileId={viewingAs ? profileId : undefined} />
 
       <Card>
         <CardHeader>
@@ -252,6 +274,7 @@ export default async function ProfilePage() {
       <TimeOffPanel
         initialRequests={timeoff}
         upcomingOnly
+        readOnly={viewingAs}
         title="My upcoming time off"
         description="Submit new requests and see the status of ones that haven't happened yet."
       />
@@ -263,6 +286,7 @@ export default async function ProfilePage() {
         <IncidentPanel
           initialRows={incidents}
           employeeFullName={profile?.name || null}
+          readOnly={viewingAs}
           title="Incident reports"
           description="Reports issued to you. Sign any awaiting your signature; archived reports remain viewable here."
         />

@@ -50,7 +50,10 @@ export function IncidentPanel({
   employeeFullName,
   title = "Incident reports",
   description,
+  readOnly = false,
 }: {
+  /** View as: the person's panel exactly, but nothing is signed. */
+  readOnly?: boolean;
   initialRows?: IncidentSummary[];
   employeeFullName: string | null;
   title?: string;
@@ -179,6 +182,7 @@ export function IncidentPanel({
         }}
         onSigned={load}
         employeeFullName={employeeFullName}
+        readOnly={readOnly}
       />
     </>
   );

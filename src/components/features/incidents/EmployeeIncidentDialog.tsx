@@ -49,7 +49,9 @@ export function EmployeeIncidentDialog({
   onOpenChange,
   onSigned,
   employeeFullName,
+  readOnly = false,
 }: {
+  readOnly?: boolean;
   incidentId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -107,6 +109,10 @@ export function EmployeeIncidentDialog({
     const expected = employeeFullName.trim().toLowerCase().replace(/\s+/g, " ");
     if (normalized !== expected) {
       setError("Type your full name exactly as it appears on your profile.");
+      return;
+    }
+    if (readOnly) {
+      setError("Read-only while viewing as someone. Exit View as to make changes.");
       return;
     }
     setSigning(true);

@@ -57,11 +57,11 @@ const monthName = (m: string, opts: Intl.DateTimeFormatOptions = { month: "long"
 const dayName = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
 const range = (a: string, b: string) => (a === b ? dayName(a) : `${dayName(a)} – ${dayName(b)}`);
 
-function useMyGoals() {
+function useMyGoals(asProfileId?: string) {
   const [state, setState] = useState<State>({ status: "loading" });
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/my-goals")
+    fetch(asProfileId ? `/api/my-goals?as=${encodeURIComponent(asProfileId)}` : "/api/my-goals")
       .then(async (r) => {
         const b = await r.json().catch(() => ({}));
         if (cancelled) return;
@@ -73,7 +73,7 @@ function useMyGoals() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [asProfileId]);
   return [state, setState] as const;
 }
 
@@ -167,7 +167,7 @@ function Ranks({ ranks }: { ranks: RepSelf["ranks"] }) {
   );
 }
 
-function GoalForm({ data, onSaved }: { data: RepSelf; onSaved: (d: RepSelf) => void }) {
+function GoalForm({ data, onSaved, readOnly }: { data: RepSelf; onSaved: (d: RepSelf) => void; readOnly: boolean }) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(data.goals.metrics.map((m) => [m.key, m.target == null ? "" : String(m.target)])),
   );
@@ -176,6 +176,7 @@ function GoalForm({ data, onSaved }: { data: RepSelf; onSaved: (d: RepSelf) => v
   const ready = data.goals.metrics.every((m) => values[m.key]?.trim() !== "" && Number(values[m.key]) >= 0);
   const submit = async () => {
     if (!ready || busy) return;
+    if (readOnly) return setError("Read-only while viewing as someone. Exit View as to make changes.");
     if (!window.confirm("Submit your goals? After this only your manager or team lead can change them.")) return;
     setBusy(true);
     setError(null);
@@ -234,9 +235,13 @@ function GoalForm({ data, onSaved }: { data: RepSelf; onSaved: (d: RepSelf) => v
   );
 }
 
-/** The profile's card: set goals (1st–5th), the goals, the track record and where they rank. */
-export function MyGoalsCard() {
-  const [state, setState] = useMyGoals();
+/**
+ * The profile's card: set goals (1st–5th), the goals, the track record and
+ * where they rank. `asProfileId`: View as, that person's card exactly, but
+ * submitting is refused.
+ */
+export function MyGoalsCard({ asProfileId }: { asProfileId?: string }) {
+  const [state, setState] = useMyGoals(asProfileId);
   const [tab, setTab] = useState<"day" | "week" | "month">("month");
   const onSaved = useCallback((d: RepSelf) => setState({ status: "ok", data: d }), [setState]);
   if (state.status === "none") return null;
@@ -260,7 +265,7 @@ export function MyGoalsCard() {
         {state.status === "ok" && (
           <>
             {state.data.goals.canSubmit ? (
-              <GoalForm data={state.data} onSaved={onSaved} />
+              <GoalForm data={state.data} onSaved={onSaved} readOnly={!!asProfileId} />
             ) : (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 {state.data.goals.metrics.map((m) => {
