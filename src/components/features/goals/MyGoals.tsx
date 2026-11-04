@@ -42,7 +42,7 @@ interface RepSelf {
       unit: string;
       step: number;
       target: number | null;
-      from: "rep" | "office" | null;
+      from: "rep" | null;
     }[];
     submittedAt: string | null;
     windowEnds: string;
@@ -105,7 +105,7 @@ const HELP: Record<Metric | "valuePerLead", string> = {
     "Business ÷ leads quoted. Leads quoted are the phone numbers you gave a new quote in these dates (web leads included), so it shows what each lead was worth to you.",
 };
 const GOAL_HELP =
-  "Your goal for the month. For a day or a week it's that share of the month's goal by calendar days: one day of a 30-day month gets 1/30 of it. With no goal of your own, your office's default is used.";
+  "Your goal for the month. For a day or a week it's that share of the month's goal by calendar days: one day of a 30-day month gets 1/30 of it. A month with no goal set is 0, never last month's.";
 
 /**
  * A label with a dotted underline that shows a small box explaining it on
@@ -396,7 +396,7 @@ function GoalForm({
     Object.fromEntries(
       data.goals.metrics.map((m) => [
         m.key,
-        m.target == null ? "" : String(m.target),
+        m.from === "rep" ? String(m.target) : "",
       ]),
     ),
   );
@@ -634,7 +634,7 @@ export function MyGoalsCard({ asProfileId }: { asProfileId?: string }) {
                     <div key={m.key} className="rounded-md border p-3">
                       <div className="text-xs uppercase tracking-wider text-muted-foreground">
                         <Hint
-                          text={`${HELP[m.key]} Done this month / your goal${m.from === "office" ? " (your office's default: you don't have one of your own)" : ""}. The bar turns green once it's met.`}
+                          text={`${HELP[m.key]} Done this month / your goal${m.from === "rep" ? "" : " (none set for this month, so 0)"}. The bar turns green once it's met.`}
                         >
                           {m.label}
                         </Hint>
@@ -1074,7 +1074,7 @@ export function TeamReportsCard({ asProfileId }: { asProfileId?: string }) {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold">
                     <Hint
-                      text={`All ${r.reps} reps added up. The goal is their goals added up (each rep's own, or the office default).`}
+                      text={`All ${r.reps} reps added up. The goal is their goals for these dates added up (a rep with none set counts 0).`}
                     >
                       Totals
                     </Hint>
