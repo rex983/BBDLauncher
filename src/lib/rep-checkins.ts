@@ -25,7 +25,6 @@ export async function salesRepProfiles(
   const leading = new Set((leaders.data ?? []).map((t) => t.leader_id as string));
   const value = setting.data?.value;
   const roles = Array.isArray(value) ? value.filter((r): r is string => typeof r === "string") : ["sales_rep"];
-  if (roles.includes("sales_rep") && !roles.includes("team_lead")) roles.push("team_lead");
   const ids = [...new Set((reps.data ?? []).map((r) => r.profile_id as string))];
   if (!ids.length) return [];
   const { data, error } = await supabase.from("profiles").select("id, role, is_active, full_name, email").in("id", ids);

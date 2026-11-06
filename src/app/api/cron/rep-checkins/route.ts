@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { cronRoute } from "@/lib/cron";
 import { fetchAllPages } from "@/app/api/_lib/paged";
 import { salesRepProfiles } from "@/lib/rep-checkins";
+import { CHECKPOINTS, checkinTitle } from "@/lib/checkins";
+import { createNotifications } from "@/lib/notifications/service";
 
 export const maxDuration = 60;
 
@@ -14,7 +16,6 @@ export const maxDuration = 60;
 // more than an hour old (the cron was down) is skipped, not sent late.
 // Who counts as a sales rep: src/lib/rep-checkins.ts.
 
-const CHECKPOINTS = [6, 3];
 const HOUR = 3_600_000;
 
 async function handle() {
@@ -22,6 +23,7 @@ async function handle() {
   const now = new Date();
   const day = localDateInZone(now);
   const startOfDay = startOfDayInZone(now);
+  const done = (sent: number) => NextResponse.json({ ok: true, sent, ran_at: now.toISOString() });
 
   // Today's punches, oldest first: the first clock_in and the latest event per person.
   const { data: punches, error: punchErr } = await fetchAllPages<{
@@ -46,19 +48,17 @@ async function handle() {
     latest.set(p.profile_id, p.event_type);
   }
 
-  // Who's due: on the clock now, and within an hour past a checkpoint.
-  const due = new Map<string, number>();
+  // Who's due: on the clock now, and within the hour after a checkpoint.
+  let due = new Map<string, number>();
   for (const [profileId, since] of firstIn) {
-    if (latest.get(profileId) === "clock_out") continue;
-    const hours = (now.getTime() - since) / HOUR;
-    const checkpoint = CHECKPOINTS.find((c) => hours >= c);
-    if (checkpoint && hours < checkpoint + 1) due.set(profileId, checkpoint);
+    const hours = Math.floor((now.getTime() - since) / HOUR);
+    if (latest.get(profileId) !== "clock_out" && CHECKPOINTS.includes(hours)) due.set(profileId, hours);
   }
-  if (!due.size) return NextResponse.json({ ok: true, sent: 0, ran_at: now.toISOString() });
-
-  const reps = new Set((await salesRepProfiles(supabase)).map((r) => r.id));
-  for (const id of [...due.keys()]) if (!reps.has(id)) due.delete(id);
-  if (!due.size) return NextResponse.json({ ok: true, sent: 0, ran_at: now.toISOString() });
+  if (due.size) {
+    const reps = new Set((await salesRepProfiles(supabase)).map((r) => r.id));
+    due = new Map([...due].filter(([id]) => reps.has(id)));
+  }
+  if (!due.size) return done(0);
 
   // Already sent today (dismissed ones too).
   const { data: sent, error: sentErr } = await supabase
@@ -70,21 +70,19 @@ async function handle() {
   if (sentErr) return NextResponse.json({ error: sentErr.message }, { status: 500 });
   const already = new Set((sent ?? []).map((n) => `${n.user_id}|${(n.metadata as { checkpoint?: number } | null)?.checkpoint}`));
 
-  const rows = [...due]
-    .filter(([id, c]) => !already.has(`${id}|${c}`))
-    .map(([id, c]) => ({
-      user_id: id,
+  let sentNow = 0;
+  for (const c of CHECKPOINTS) {
+    const ids = [...due].filter(([id, at]) => at === c && !already.has(`${id}|${c}`)).map(([id]) => id);
+    sentNow += ids.length;
+    await createNotifications(ids, {
       type: "rep_checkin",
-      title: `${c} hours in: how's today going?`,
+      title: checkinTitle(c),
       body: "Your numbers so far today against your goal. Take a look, or skip it.",
       href: `/dashboard?checkin=${c}`,
       metadata: { checkpoint: c, day },
-    }));
-  if (rows.length) {
-    const { error } = await supabase.from("notifications").insert(rows);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    });
   }
-  return NextResponse.json({ ok: true, sent: rows.length, ran_at: now.toISOString() });
+  return done(sentNow);
 }
 
 export const { GET, POST } = cronRoute(handle);

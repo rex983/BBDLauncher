@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/notifications — return the current user's non-dismissed
 // notifications, newest first. Optional ?unread=1 restricts to unread only
-// so the bell dropdown can render a filtered view without a second call.
+// so the bell dropdown can render a filtered view without a second call;
+// ?type= to one kind (the check-in popup looks for rep_checkin).
 export async function GET(req: NextRequest) {
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
@@ -12,6 +13,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const unreadOnly = url.searchParams.get("unread") === "1";
   const limit = Math.min(Number(url.searchParams.get("limit") || "50"), 200);
+  const type = url.searchParams.get("type");
 
   const supabase = createAdminClient();
   let query = supabase
@@ -24,6 +26,7 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(limit);
   if (unreadOnly) query = query.is("read_at", null);
+  if (type) query = query.eq("type", type);
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
