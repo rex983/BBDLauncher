@@ -5,6 +5,7 @@ import { RolePreviewProvider } from "@/components/features/launcher/role-preview
 import { PreviewBanner } from "@/components/features/launcher/preview-banner";
 import { ClockGate } from "@/components/features/timeclock/ClockGate";
 import { ShiftEndPrompt } from "@/components/features/timeclock/ShiftEndPrompt";
+import { CheckInPrompt } from "@/components/features/goals/CheckInPrompt";
 import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -65,6 +66,7 @@ export default async function DashboardLayout({
               </div>
             </div>
             <ShiftEndPrompt />
+            <CheckInPrompt />
           </ClockGate>
         </RolePreviewProvider>
       </Suspense>

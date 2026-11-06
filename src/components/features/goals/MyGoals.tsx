@@ -720,10 +720,25 @@ export function MyGoalsCard({ asProfileId }: { asProfileId?: string }) {
   );
 }
 
-/** The clock-in screen's: today and this month against goal and last month, in a few lines. */
-export function MyNumbersCompact() {
+/**
+ * The clock-in screen's: today and this month against goal and last month, in
+ * a few lines. `showStatus`: say so while loading or when there's nothing
+ * (the check-in popup), instead of showing nothing.
+ */
+export function MyNumbersCompact({ showStatus = false }: { showStatus?: boolean }) {
   const [state] = useMyGoals();
-  if (state.status !== "ok") return null;
+  if (state.status !== "ok") {
+    if (!showStatus) return null;
+    return (
+      <p className="py-4 text-sm text-muted-foreground">
+        {state.status === "loading"
+          ? "Loading your numbers…"
+          : state.status === "error"
+            ? state.error
+            : "There are no numbers for you yet."}
+      </p>
+    );
+  }
   const d = state.data;
   const rank = d.ranks.find((k) => k.key === "month");
   const vpl = rank?.items.find((i) => i.key === "valuePerLead");

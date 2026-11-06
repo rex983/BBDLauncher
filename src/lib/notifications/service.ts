@@ -16,6 +16,8 @@ export type NotificationType =
   | "time_off_decided"
   | "offboarding_task_assigned"
   | "offboarding_opened"
+  // 3 and 6 hours into a sales rep's shift (cron /api/cron/rep-checkins; popped up by CheckInPrompt)
+  | "rep_checkin"
   | "generic";
 
 export interface CreateNotificationParams {
