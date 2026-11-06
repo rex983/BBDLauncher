@@ -49,6 +49,42 @@ export type AnalyticsTotals = {
   top_destination_launches: number;
 };
 
+// Time spent in the apps (launcher migration 063, launcher_usage_report): the
+// kit's once-a-minute heartbeat. Minutes come from pm_usage_daily (since Oct
+// 2026); visits and time of day from launcher_usage_hourly (since
+// tracked_since). Opens are launcher clicks (launcher_sso_audit_log). Eastern.
+export interface UsageReport {
+  tracked_since: string | null;
+  totals: { minutes: number; people: number; person_days: number; visits: number; visit_minutes: number; opens: number };
+  daily: { day: string; minutes: number; people: number; visits: number; opens: number }[];
+  hours: { dow: number; hour: number; minutes: number; visits: number; opens: number }[];
+  apps: {
+    app_id: string;
+    name: string;
+    minutes: number;
+    people: number;
+    days: number;
+    visits: number;
+    visit_minutes: number;
+    last_seen: string;
+  }[];
+  users: {
+    profile_id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    office: string | null;
+    minutes: number;
+    days: number;
+    visits: number;
+    visit_minutes: number;
+    apps: number;
+    top_app: string | null;
+    top_app_minutes: number | null;
+    last_seen: string;
+  }[];
+}
+
 export interface AnalyticsData {
   range: AnalyticsRange;
   since: string | null;
@@ -57,11 +93,13 @@ export interface AnalyticsData {
   links: AnalyticsDestStat[];
   users: AnalyticsUserStat[];
   recent: AnalyticsRecentEvent[];
+  /** null: migration 063 isn't applied yet. */
+  usage: UsageReport | null;
 }
 
 // Payload returned by the get_launcher_analytics RPC — everything except
-// `range` / `since`, which the caller decorates.
-type AnalyticsRpcPayload = Omit<AnalyticsData, "range" | "since">;
+// `range` / `since` / `usage`, which the caller decorates.
+type AnalyticsRpcPayload = Omit<AnalyticsData, "range" | "since" | "usage">;
 
 function emptyAnalytics(range: AnalyticsRange, since: string | null): AnalyticsData {
   return {
@@ -81,6 +119,7 @@ function emptyAnalytics(range: AnalyticsRange, since: string | null): AnalyticsD
     links: [],
     users: [],
     recent: [],
+    usage: null,
   };
 }
 
@@ -111,15 +150,21 @@ export async function getLauncherAnalytics(
     }
   }
 
-  // Single round-trip: the RPC does the pagination + aggregation server-side
-  // and returns the already-shaped payload.
-  const { data, error } = await supabase.rpc("get_launcher_analytics", {
-    p_since: sinceIso,
-    p_allowed_user_ids: allowedUserIds,
-  });
+  // The RPCs do the aggregation server-side and return already-shaped payloads.
+  const [{ data, error }, usage] = await Promise.all([
+    supabase.rpc("get_launcher_analytics", {
+      p_since: sinceIso,
+      p_allowed_user_ids: allowedUserIds,
+    }),
+    supabase.rpc("launcher_usage_report", { p_since: sinceIso, p_allowed: allowedUserIds }),
+  ]);
 
   if (error) {
     throw new Error(error.message);
+  }
+  // Missing function (migration 063 not applied): the page says so.
+  if (usage.error && usage.error.code !== "PGRST202" && usage.error.code !== "42883") {
+    throw new Error(usage.error.message);
   }
 
   // The RPC contract guarantees this shape; if the audit log was empty for
@@ -139,5 +184,6 @@ export async function getLauncherAnalytics(
     links: payload.links,
     users: payload.users,
     recent: payload.recent,
+    usage: usage.error ? null : (usage.data as UsageReport),
   };
 }

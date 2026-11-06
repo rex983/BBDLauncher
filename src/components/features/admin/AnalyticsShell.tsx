@@ -5,7 +5,6 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -32,6 +31,8 @@ import type { AnalyticsData } from "@/lib/analytics/server";
 import { ANALYTICS_RANGE_OPTIONS, type AnalyticsRange } from "@/lib/analytics/ranges";
 import { fmtDateTimeUS as formatDateTime, fmtRelative } from "@/components/shared/format";
 import { KindBadge } from "./kind-badge";
+import { UsageOverview } from "./usage-overview";
+import { fmtMinutes } from "./usage-charts";
 
 // Lazy-load the three heavy tabs so the initial /admin/analytics bundle
 // doesn't ship the calendar grid, aggregation table, or dialog with the
@@ -58,21 +59,98 @@ function TabLoading() {
   );
 }
 
-type DestStat = AnalyticsData["apps"][number];
-type UserStat = AnalyticsData["users"][number];
+// Launcher clicks merged with time in the apps (data.usage, migration 063).
+// People is everyone who used or opened it; an app nobody opened from the
+// launcher (bookmarked) still shows.
+type UsageCols = { minutes: number; visits: number; visit_minutes: number; people: number; last_used: string };
+type DestStat = AnalyticsData["apps"][number] & UsageCols;
+type UserStat = AnalyticsData["users"][number] & {
+  minutes: number;
+  visits: number;
+  visit_minutes: number;
+  days: number;
+  top_app: string | null;
+  last_active: string;
+};
 type RecentEvent = AnalyticsData["recent"][number];
 
 const formatRelative = (iso: string) => fmtRelative(iso, formatDateTime);
+const later = (a: string, b: string) => (Date.parse(a) >= Date.parse(b) ? a : b);
+const avgVisit = (r: { visits: number; visit_minutes: number }) => (r.visits ? r.visit_minutes / r.visits : 0);
+const NO_USAGE = { minutes: 0, visits: 0, visit_minutes: 0 };
+
+function appRows(data: AnalyticsData): DestStat[] {
+  const rows = new Map<string, DestStat>(
+    data.apps.map((a) => [a.id, { ...a, ...NO_USAGE, people: a.unique_users, last_used: a.last_launch }]),
+  );
+  for (const u of data.usage?.apps ?? []) {
+    const used = { minutes: u.minutes, visits: u.visits, visit_minutes: u.visit_minutes };
+    const row = rows.get(u.app_id);
+    if (row) Object.assign(row, used, { people: Math.max(row.people, u.people), last_used: later(row.last_used, u.last_seen) });
+    else
+      rows.set(u.app_id, {
+        id: u.app_id,
+        name: u.name,
+        kind: "app",
+        launches: 0,
+        unique_users: 0,
+        last_launch: u.last_seen,
+        ...used,
+        people: u.people,
+        last_used: u.last_seen,
+      });
+  }
+  return [...rows.values()];
+}
+
+const linkRows = (data: AnalyticsData): DestStat[] =>
+  data.links.map((l) => ({ ...l, ...NO_USAGE, people: l.unique_users, last_used: l.last_launch }));
+
+function userRows(data: AnalyticsData): UserStat[] {
+  const rows = new Map<string, UserStat>(
+    data.users.map((u) => [u.user_id, { ...u, ...NO_USAGE, days: 0, top_app: null, last_active: u.last_launch }]),
+  );
+  for (const u of data.usage?.users ?? []) {
+    const used = { minutes: u.minutes, visits: u.visits, visit_minutes: u.visit_minutes, days: u.days, top_app: u.top_app };
+    const row = rows.get(u.profile_id);
+    if (row) Object.assign(row, used, { last_active: later(row.last_active, u.last_seen) });
+    else
+      rows.set(u.profile_id, {
+        user_id: u.profile_id,
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        office: u.office,
+        launches: 0,
+        last_launch: u.last_seen,
+        top_destination: null,
+        top_destination_kind: null,
+        top_destination_launches: 0,
+        ...used,
+        last_active: u.last_seen,
+      });
+  }
+  return [...rows.values()];
+}
 
 // Export column sets — kept next to the shell so the labels here match
 // what the user sees in the on-screen table (any relabel touches both).
 const DEST_COLUMNS = (
   countLabel: string,
+  usage = false,
 ): ExportColumn<DestStat>[] => [
   { key: "name", label: "Name", get: (r) => r.name },
+  ...(usage
+    ? ([
+        { key: "minutes", label: "Minutes in app", get: (r) => r.minutes },
+        { key: "visits", label: "Visits", get: (r) => r.visits },
+        { key: "avg", label: "Average visit (min)", get: (r) => Math.round(avgVisit(r)) },
+        { key: "people", label: "People", get: (r) => r.people },
+      ] satisfies ExportColumn<DestStat>[])
+    : []),
   { key: "count", label: countLabel, get: (r) => r.launches },
-  { key: "unique_users", label: "Unique users", get: (r) => r.unique_users },
-  { key: "last_used", label: "Last used", get: (r) => new Date(r.last_launch) },
+  { key: "unique_users", label: usage ? "Opened by" : "Unique users", get: (r) => r.unique_users },
+  { key: "last_used", label: "Last used", get: (r) => new Date(r.last_used) },
 ];
 
 const USER_COLUMNS: ExportColumn<UserStat>[] = [
@@ -80,7 +158,12 @@ const USER_COLUMNS: ExportColumn<UserStat>[] = [
   { key: "email", label: "Email", get: (u) => u.email },
   { key: "role", label: "Role", get: (u) => u.role },
   { key: "office", label: "Office", get: (u) => u.office ?? "" },
-  { key: "clicks", label: "Clicks", get: (u) => u.launches },
+  { key: "minutes", label: "Minutes in apps", get: (u) => u.minutes },
+  { key: "visits", label: "Visits", get: (u) => u.visits },
+  { key: "avg", label: "Average visit (min)", get: (u) => Math.round(avgVisit(u)) },
+  { key: "days", label: "Days active", get: (u) => u.days },
+  { key: "top_app", label: "Most-used app", get: (u) => u.top_app ?? "" },
+  { key: "clicks", label: "Launcher clicks", get: (u) => u.launches },
   { key: "top_destination", label: "Top destination", get: (u) => u.top_destination ?? "" },
   {
     key: "top_destination_kind",
@@ -92,7 +175,7 @@ const USER_COLUMNS: ExportColumn<UserStat>[] = [
     label: "Top clicks",
     get: (u) => u.top_destination_launches ?? 0,
   },
-  { key: "last_active", label: "Last active", get: (u) => new Date(u.last_launch) },
+  { key: "last_active", label: "Last active", get: (u) => new Date(u.last_active) },
 ];
 
 const RECENT_COLUMNS: ExportColumn<RecentEvent>[] = [
@@ -103,23 +186,31 @@ const RECENT_COLUMNS: ExportColumn<RecentEvent>[] = [
   { key: "type", label: "Type", get: (e) => e.kind },
 ];
 
-type DestSortKey = "name" | "count" | "unique_users" | "last_used";
+type DestSortKey = "name" | "minutes" | "visits" | "avg" | "people" | "count" | "unique_users" | "last_used";
 // Sort getters live at module scope so useSortableRows' memo stays stable.
 const DEST_SORT = {
   name: (r: DestStat) => r.name.toLowerCase(),
+  minutes: (r: DestStat) => r.minutes,
+  visits: (r: DestStat) => r.visits,
+  avg: (r: DestStat) => avgVisit(r),
+  people: (r: DestStat) => r.people,
   count: (r: DestStat) => r.launches,
   unique_users: (r: DestStat) => r.unique_users,
-  last_used: (r: DestStat) => new Date(r.last_launch),
+  last_used: (r: DestStat) => new Date(r.last_used),
 };
-type UserSortKey = "name" | "role" | "office" | "clicks" | "top" | "last_active";
+type UserSortKey = "name" | "role" | "office" | "minutes" | "visits" | "avg" | "days" | "clicks" | "top" | "last_active";
 type RecentSortKey = "when" | "name" | "destination" | "type";
 const USER_SORT = {
   name: (u: UserStat) => (u.name || u.email).toLowerCase(),
   role: (u: UserStat) => u.role,
   office: (u: UserStat) => u.office ?? "",
+  minutes: (u: UserStat) => u.minutes,
+  visits: (u: UserStat) => u.visits,
+  avg: (u: UserStat) => avgVisit(u),
+  days: (u: UserStat) => u.days,
   clicks: (u: UserStat) => u.launches,
-  top: (u: UserStat) => u.top_destination_launches ?? 0,
-  last_active: (u: UserStat) => new Date(u.last_launch),
+  top: (u: UserStat) => (u.top_app ?? u.top_destination ?? "").toLowerCase(),
+  last_active: (u: UserStat) => new Date(u.last_active),
 };
 const RECENT_SORT = {
   when: (e: RecentEvent) => new Date(e.created_at),
@@ -186,31 +277,33 @@ export default function AnalyticsShell({
     };
   }, [range]);
 
+  const apps = useMemo(() => (data ? appRows(data) : []), [data]);
+  const links = useMemo(() => (data ? linkRows(data) : []), [data]);
+  const users = useMemo(() => (data ? userRows(data) : []), [data]);
+  const hasUsage = !!data?.usage;
+
   const filteredApps = useMemo(() => {
-    if (!data) return [];
     const q = appQuery.toLowerCase().trim();
-    return q ? data.apps.filter((a) => a.name.toLowerCase().includes(q)) : data.apps;
-  }, [data, appQuery]);
+    return q ? apps.filter((a) => a.name.toLowerCase().includes(q)) : apps;
+  }, [apps, appQuery]);
 
   const filteredLinks = useMemo(() => {
-    if (!data) return [];
     const q = linkQuery.toLowerCase().trim();
-    return q ? data.links.filter((l) => l.name.toLowerCase().includes(q)) : data.links;
-  }, [data, linkQuery]);
+    return q ? links.filter((l) => l.name.toLowerCase().includes(q)) : links;
+  }, [links, linkQuery]);
 
   const filteredUsers = useMemo(() => {
-    if (!data) return [];
     const q = userQuery.toLowerCase().trim();
-    if (!q) return data.users;
-    return data.users.filter(
+    if (!q) return users;
+    return users.filter(
       (u) =>
         u.email.toLowerCase().includes(q) ||
         (u.name?.toLowerCase().includes(q) ?? false)
     );
-  }, [data, userQuery]);
+  }, [users, userQuery]);
 
   const appSort = useSortableRows<DestStat, DestSortKey>(filteredApps, DEST_SORT, {
-    key: "count",
+    key: initialData?.usage ? "minutes" : "count",
     direction: "desc",
   });
   const linkSort = useSortableRows<DestStat, DestSortKey>(filteredLinks, DEST_SORT, {
@@ -219,7 +312,7 @@ export default function AnalyticsShell({
   });
 
   const userSort = useSortableRows<UserStat, UserSortKey>(filteredUsers, USER_SORT, {
-    key: "clicks",
+    key: initialData?.usage ? "minutes" : "clicks",
     direction: "desc",
   });
   const recentSort = useSortableRows<RecentEvent, RecentSortKey>(
@@ -234,7 +327,8 @@ export default function AnalyticsShell({
         <div>
           <h1 className="text-2xl font-bold">App Analytics</h1>
           <p className="text-muted-foreground">
-            Which users are launching which apps and clicking which links, and how often.
+            Who uses which apps, how often they come back, how long they stay and when — plus what they open from the
+            launcher.
           </p>
         </div>
         <Select value={range} onValueChange={(v) => setRange(v as AnalyticsRange)}>
@@ -257,36 +351,7 @@ export default function AnalyticsShell({
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total clicks"
-          value={loading ? "…" : data?.totals.launches.toLocaleString() ?? "0"}
-          subvalue={
-            data
-              ? `${data.totals.app_launches.toLocaleString()} apps · ${data.totals.link_clicks.toLocaleString()} links`
-              : undefined
-          }
-        />
-        <StatCard
-          title="Active users"
-          value={loading ? "…" : data?.totals.unique_users.toLocaleString() ?? "0"}
-        />
-        <StatCard
-          title="Destinations used"
-          value={loading ? "…" : data?.totals.unique_destinations.toLocaleString() ?? "0"}
-        />
-        <StatCard
-          title="Most-clicked"
-          value={loading ? "…" : data?.totals.top_destination ?? "—"}
-          subvalue={
-            data?.totals.top_destination_launches
-              ? `${data.totals.top_destination_launches.toLocaleString()} ${
-                  data.totals.top_destination_kind === "link" ? "clicks" : "launches"
-                }`
-              : undefined
-          }
-        />
-      </div>
+      <UsageOverview data={data} people={users.length} loading={loading} />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="space-y-4">
         <TabsList className="print:hidden">
@@ -309,14 +374,15 @@ export default function AnalyticsShell({
             <ExportMenu
               filename={`analytics-apps-${range}`}
               rows={appSort.sorted}
-              columns={DEST_COLUMNS("Launches")}
+              columns={DEST_COLUMNS("Launcher opens", hasUsage)}
             />
           </div>
           <DestinationTable
             rows={appSort.sorted}
             loading={loading}
-            emptyMessage="No app launches in this range."
-            countHeader="Launches"
+            emptyMessage="No app use in this range."
+            countHeader="Launcher opens"
+            showUsage={hasUsage}
             hrefKind="apps"
             range={range}
             sort={appSort.sort}
@@ -385,16 +451,24 @@ export default function AnalyticsShell({
                   sort={userSort.sort}
                   onToggle={userSort.toggle}
                 />
+                {hasUsage && (
+                  <>
+                    <SortHeader columnKey="minutes" label="Time" sort={userSort.sort} onToggle={userSort.toggle} align="right" />
+                    <SortHeader columnKey="visits" label="Visits" sort={userSort.sort} onToggle={userSort.toggle} align="right" />
+                    <SortHeader columnKey="avg" label="Avg visit" sort={userSort.sort} onToggle={userSort.toggle} align="right" />
+                    <SortHeader columnKey="days" label="Days" sort={userSort.sort} onToggle={userSort.toggle} align="right" />
+                  </>
+                )}
                 <SortHeader
                   columnKey="clicks"
-                  label="Clicks"
+                  label="Launcher clicks"
                   sort={userSort.sort}
                   onToggle={userSort.toggle}
                   align="right"
                 />
                 <SortHeader
                   columnKey="top"
-                  label="Top destination"
+                  label={hasUsage ? "Most-used app" : "Top destination"}
                   sort={userSort.sort}
                   onToggle={userSort.toggle}
                 />
@@ -436,14 +510,20 @@ export default function AnalyticsShell({
                       )}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    <Link href={href} className="block">
-                      {u.launches.toLocaleString()}
-                    </Link>
-                  </TableCell>
+                  {hasUsage && (
+                    <>
+                      <NumCell href={href} v={u.minutes} fmt={fmtMinutes} />
+                      <NumCell href={href} v={u.visits} />
+                      <NumCell href={href} v={avgVisit(u)} fmt={fmtMinutes} />
+                      <NumCell href={href} v={u.days} />
+                    </>
+                  )}
+                  <NumCell href={href} v={u.launches} />
                   <TableCell>
                     <Link href={href} className="block">
-                      {u.top_destination ? (
+                      {hasUsage && u.top_app ? (
+                        u.top_app
+                      ) : u.top_destination ? (
                         <div className="flex items-center gap-2">
                           <span>{u.top_destination}</span>
                           <KindBadge kind={u.top_destination_kind!} />
@@ -458,10 +538,10 @@ export default function AnalyticsShell({
                   </TableCell>
                   <TableCell
                     className="text-muted-foreground"
-                    title={formatDateTime(u.last_launch)}
+                    title={formatDateTime(u.last_active)}
                   >
                     <Link href={href} className="block">
-                      {formatRelative(u.last_launch)}
+                      {formatRelative(u.last_active)}
                     </Link>
                   </TableCell>
                 </TableRow>
@@ -469,7 +549,7 @@ export default function AnalyticsShell({
               })}
               {!loading && userSort.sorted.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={hasUsage ? 10 : 6} className="py-8 text-center text-muted-foreground">
                     No active users in this range.
                   </TableCell>
                 </TableRow>
@@ -577,6 +657,7 @@ function DestinationTable({
   loading,
   emptyMessage,
   countHeader,
+  showUsage = false,
   hrefKind,
   range,
   sort,
@@ -586,6 +667,8 @@ function DestinationTable({
   loading: boolean;
   emptyMessage: string;
   countHeader: string;
+  /** Apps: time in the app, visits, average visit and people next to launcher opens. */
+  showUsage?: boolean;
   hrefKind: "apps" | "links";
   range: string;
   sort: SortState<DestSortKey>;
@@ -601,6 +684,14 @@ function DestinationTable({
             sort={sort}
             onToggle={onToggle}
           />
+          {showUsage && (
+            <>
+              <SortHeader columnKey="minutes" label="Time" sort={sort} onToggle={onToggle} align="right" />
+              <SortHeader columnKey="visits" label="Visits" sort={sort} onToggle={onToggle} align="right" />
+              <SortHeader columnKey="avg" label="Avg visit" sort={sort} onToggle={onToggle} align="right" />
+              <SortHeader columnKey="people" label="People" sort={sort} onToggle={onToggle} align="right" />
+            </>
+          )}
           <SortHeader
             columnKey="count"
             label={countHeader}
@@ -610,7 +701,7 @@ function DestinationTable({
           />
           <SortHeader
             columnKey="unique_users"
-            label="Unique users"
+            label={showUsage ? "Opened by" : "Unique users"}
             sort={sort}
             onToggle={onToggle}
             align="right"
@@ -638,6 +729,14 @@ function DestinationTable({
                 {r.name}
               </Link>
             </TableCell>
+            {showUsage && (
+              <>
+                <NumCell href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`} v={r.minutes} fmt={fmtMinutes} />
+                <NumCell href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`} v={r.visits} />
+                <NumCell href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`} v={avgVisit(r)} fmt={fmtMinutes} />
+                <NumCell href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`} v={r.people} />
+              </>
+            )}
             <TableCell className="text-right tabular-nums">
               <Link
                 href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`}
@@ -656,13 +755,13 @@ function DestinationTable({
             </TableCell>
             <TableCell
               className="text-muted-foreground"
-              title={formatDateTime(r.last_launch)}
+              title={formatDateTime(r.last_used)}
             >
               <Link
                 href={`/admin/analytics/${hrefKind}/${r.id}?range=${range}`}
                 className="block"
               >
-                {formatRelative(r.last_launch)}
+                {formatRelative(r.last_used)}
               </Link>
             </TableCell>
             <TableCell className="text-muted-foreground">
@@ -678,7 +777,7 @@ function DestinationTable({
         ))}
         {!loading && rows.length === 0 && (
           <TableRow>
-            <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+            <TableCell colSpan={showUsage ? 9 : 5} className="py-8 text-center text-muted-foreground">
               {emptyMessage}
             </TableCell>
           </TableRow>
@@ -688,30 +787,13 @@ function DestinationTable({
   );
 }
 
-function StatCard({
-  title,
-  value,
-  subvalue,
-}: {
-  title: string;
-  value: string;
-  subvalue?: string;
-}) {
+/** A right-aligned number cell linking to the drill-down; 0 shows dimmed. */
+function NumCell({ href, v, fmt = (n) => n.toLocaleString() }: { href: string; v: number; fmt?: (n: number) => string }) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold truncate" title={value}>
-          {value}
-        </div>
-        {subvalue && (
-          <p className="mt-1 text-xs text-muted-foreground">{subvalue}</p>
-        )}
-      </CardContent>
-    </Card>
+    <TableCell className={`text-right tabular-nums ${v ? "" : "text-muted-foreground/60"}`}>
+      <Link href={href} className="block">
+        {v ? fmt(v) : "—"}
+      </Link>
+    </TableCell>
   );
 }
