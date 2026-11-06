@@ -12,6 +12,7 @@ import {
 } from "@/lib/incidents/pdf";
 import { formatIncidentNumber } from "@/lib/incidents/types";
 import { isTargetInScope, type ScopedProfile } from "@/lib/auth/scope-check";
+import { canViewAs } from "@/lib/launcher/view-as";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -24,13 +25,15 @@ export const maxDuration = 30;
 //   - Subject employee (report is theirs AND status is
 //     awaiting_employee_sig or completed) → PDF WITHOUT manager_notes
 //   - Admin OR scoped manager-tier viewer → PDF WITH manager_notes
+//   - ?as=<subject id> from someone who may View as them → the subject's
+//     version (no manager_notes), exactly what they'd download
 //   - Anyone else → 404
 //
 // Content-Disposition is `inline` so clicking the link opens the PDF in
 // a new tab; the browser's built-in viewer still exposes a download
 // button, so users can save to disk from there.
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
@@ -50,7 +53,10 @@ export async function GET(
   }
 
   const viewerId = session.user.profileId;
-  const isSubject = report.employee_profile_id === viewerId;
+  const as = req.nextUrl.searchParams.get("as");
+  const isSubject =
+    report.employee_profile_id === viewerId ||
+    (!!as && as === report.employee_profile_id && (await canViewAs(viewerId, as)) === true);
 
   // Decide access + whether to include manager_notes.
   let includeManagerNotes = false;

@@ -50,8 +50,11 @@ export function EmployeeIncidentDialog({
   onSigned,
   employeeFullName,
   readOnly = false,
+  viewAsProfileId,
 }: {
   readOnly?: boolean;
+  /** View as: load the report as this person (the API checks the viewer may). */
+  viewAsProfileId?: string;
   incidentId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -64,6 +67,7 @@ export function EmployeeIncidentDialog({
   const [signing, setSigning] = useState(false);
   const [signatureText, setSignatureText] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
+  const asQuery = viewAsProfileId ? `?as=${encodeURIComponent(viewAsProfileId)}` : "";
 
   useEffect(() => {
     if (!open || !incidentId) return;
@@ -73,7 +77,7 @@ export function EmployeeIncidentDialog({
     setReport(null);
     setSignatureText("");
     setAcknowledged(false);
-    fetch(`/api/incidents/${incidentId}`)
+    fetch(`/api/incidents/${incidentId}${asQuery}`)
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json()).error || "Failed to load");
         return res.json();
@@ -92,7 +96,7 @@ export function EmployeeIncidentDialog({
     return () => {
       cancelled = true;
     };
-  }, [incidentId, open]);
+  }, [incidentId, open, asQuery]);
 
   const sign = async () => {
     if (!report) return;
@@ -280,7 +284,7 @@ export function EmployeeIncidentDialog({
                 asChild
               >
                 <a
-                  href={`/api/incidents/${report.id}/pdf`}
+                  href={`/api/incidents/${report.id}/pdf${asQuery}`}
                   target="_blank"
                   rel="noreferrer"
                 >
