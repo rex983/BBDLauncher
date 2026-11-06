@@ -3,7 +3,7 @@ import { localDateInZone, startOfDayInZone } from "@/lib/timesheets/tz";
 import { NextResponse } from "next/server";
 import { cronRoute } from "@/lib/cron";
 import { fetchAllPages } from "@/app/api/_lib/paged";
-import { permRoleResolver } from "@/lib/auth/perm-role";
+import { salesRepProfiles } from "@/lib/rep-checkins";
 
 export const maxDuration = 60;
 
@@ -12,46 +12,10 @@ export const maxDuration = 60;
 // day ("how's today going?"); the launcher pops it up (CheckInPrompt) and
 // they look at their numbers or skip it. One of each a day; a checkpoint
 // more than an hour old (the cron was down) is skipped, not sent late.
-//
-// Sales reps: people Rep Insights counts (bbd-rep-insights
-// src/lib/counted-roles.ts: active, linked to a rep in rep_reps, launcher
-// role in rep_settings.counted_roles) whose highest level is sales rep. When
-// someone fits more than one, the higher wins (admin > manager > team lead >
-// sales rep): a role acting as anything but sales_rep, or leading a team in
-// the launcher, means no check-ins.
+// Who counts as a sales rep: src/lib/rep-checkins.ts.
 
 const CHECKPOINTS = [6, 3];
 const HOUR = 3_600_000;
-
-async function salesRepProfiles(supabase: ReturnType<typeof createAdminClient>): Promise<Set<string>> {
-  const [reps, setting, leaders, permRole] = await Promise.all([
-    supabase.from("rep_reps").select("profile_id").eq("active", true).not("profile_id", "is", null),
-    supabase.from("rep_settings").select("value").eq("key", "counted_roles").maybeSingle(),
-    supabase.from("launcher_teams").select("leader_id").not("leader_id", "is", null),
-    permRoleResolver(),
-  ]);
-  if (reps.error) throw new Error(`rep_reps: ${reps.error.message}`);
-  if (leaders.error) throw new Error(`launcher_teams: ${leaders.error.message}`);
-  const leading = new Set((leaders.data ?? []).map((t) => t.leader_id as string));
-  const value = setting.data?.value;
-  const roles = Array.isArray(value) ? value.filter((r): r is string => typeof r === "string") : ["sales_rep"];
-  if (roles.includes("sales_rep") && !roles.includes("team_lead")) roles.push("team_lead");
-  const ids = [...new Set((reps.data ?? []).map((r) => r.profile_id as string))];
-  if (!ids.length) return new Set();
-  const { data, error } = await supabase.from("profiles").select("id, role, is_active").in("id", ids);
-  if (error) throw new Error(`profiles: ${error.message}`);
-  return new Set(
-    (data ?? [])
-      .filter(
-        (p) =>
-          p.is_active !== false &&
-          roles.includes(p.role as string) &&
-          permRole(p.role as string) === "sales_rep" &&
-          !leading.has(p.id as string),
-      )
-      .map((p) => p.id as string),
-  );
-}
 
 async function handle() {
   const supabase = createAdminClient();
@@ -92,7 +56,7 @@ async function handle() {
   }
   if (!due.size) return NextResponse.json({ ok: true, sent: 0, ran_at: now.toISOString() });
 
-  const reps = await salesRepProfiles(supabase);
+  const reps = new Set((await salesRepProfiles(supabase)).map((r) => r.id));
   for (const id of [...due.keys()]) if (!reps.has(id)) due.delete(id);
   if (!due.size) return NextResponse.json({ ok: true, sent: 0, ran_at: now.toISOString() });
 

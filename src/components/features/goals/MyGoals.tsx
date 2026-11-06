@@ -723,10 +723,11 @@ export function MyGoalsCard({ asProfileId }: { asProfileId?: string }) {
 /**
  * The clock-in screen's: today and this month against goal and last month, in
  * a few lines. `showStatus`: say so while loading or when there's nothing
- * (the check-in popup), instead of showing nothing.
+ * (the check-in popup), instead of showing nothing. `asProfileId`: someone
+ * else's, for an admin's View as (the API checks they may).
  */
-export function MyNumbersCompact({ showStatus = false }: { showStatus?: boolean }) {
-  const [state] = useMyGoals();
+export function MyNumbersCompact({ showStatus = false, asProfileId }: { showStatus?: boolean; asProfileId?: string }) {
+  const [state] = useMyGoals(asProfileId);
   if (state.status !== "ok") {
     if (!showStatus) return null;
     return (
