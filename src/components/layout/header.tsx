@@ -62,7 +62,7 @@ export function Header() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                <LauncherAvatar profileId={user?.profileId} name={user?.name || user?.email} fallbackSrc={user?.image} size={32} />
+                <LauncherAvatar profileId={user?.profileId} name={user?.name || user?.email} size={32} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">

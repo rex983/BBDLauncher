@@ -28,13 +28,11 @@ export function ProfilePhoto({
   profileId,
   name,
   hasPhoto,
-  fallbackSrc,
   readOnly,
 }: {
   profileId: string;
   name: string;
   hasPhoto: boolean;
-  fallbackSrc?: string | null;
   readOnly: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
@@ -84,7 +82,7 @@ export function ProfilePhoto({
         disabled={readOnly || busy}
         aria-label="Change profile photo"
       >
-        <LauncherAvatar profileId={profileId} name={name} fallbackSrc={fallbackSrc} size={72} />
+        <LauncherAvatar profileId={profileId} name={name} size={72} />
         {!readOnly && (
           <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition group-hover:opacity-100">
             <Camera className="h-5 w-5" />

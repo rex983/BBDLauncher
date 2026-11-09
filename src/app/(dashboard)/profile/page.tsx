@@ -192,7 +192,6 @@ export default async function ProfilePage({
         profileId={profileId}
         name={profile?.name || profile?.email || ""}
         hasPhoto={!!profile?.avatar_url}
-        fallbackSrc={viewingAs ? null : session.user.image}
         readOnly={viewingAs}
       />
       <div>
