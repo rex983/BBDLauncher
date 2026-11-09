@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { PresencePerson } from "./presence";
+import { LauncherAvatar, avatarColor as color } from "./launcher-avatar";
 
 // "Currently viewing" avatars, like Google Sheets. Render <PresenceAvatars />
 // in the header (variant "floating" pins it top-right for apps without one).
@@ -33,19 +34,6 @@ function tabId(): string {
   }
 }
 
-function initials(name: string): string {
-  const parts = name.replace(/@.*/, "").split(/[\s._-]+/).filter(Boolean);
-  return ((parts[0]?.[0] ?? "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
-}
-
-// Google's collaborator colours: bright, distinct, readable with white text.
-const COLORS = ["#1a73e8", "#d93025", "#188038", "#e37400", "#9334e6", "#007b83", "#c5221f", "#b06000", "#3949ab", "#ad1457"];
-
-function color(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return COLORS[h % COLORS.length];
-}
 
 const ID_LIKE = /^([0-9a-f]{8}-[0-9a-f-]{27}|[0-9a-f]{16,}|\d+)$/i;
 
@@ -83,7 +71,8 @@ function Avatar({ person, size = 32, ring = true }: { person: PresencePerson; si
         boxShadow: ring && person.samePage && !person.idle ? `0 0 0 2px var(--background, #fff), 0 0 0 4px ${c}` : undefined,
       }}
     >
-      {initials(person.name)}
+      {/* Their launcher photo, or the same coloured initials. */}
+      <LauncherAvatar profileId={person.id} name={person.name} size={size} />
     </span>
   );
 }

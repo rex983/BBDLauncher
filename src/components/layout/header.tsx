@@ -1,7 +1,7 @@
 "use client";
 
 import { signOut, useSession } from "next-auth/react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { LauncherAvatar } from "../../../kit/launcher-kit/launcher-avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -28,14 +28,6 @@ export function Header() {
   const user = session?.user;
   const { viewAsUser } = useRolePreview();
   const dashboardHref = buildPreviewHref("/dashboard", viewAsUser);
-
-  const initials = user?.name
-    ? user.name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-    : "?";
 
   return (
     <header className="border-b bg-background print:hidden">
@@ -70,10 +62,7 @@ export function Header() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={user?.image || undefined} alt={user?.name || ""} />
-                  <AvatarFallback>{initials}</AvatarFallback>
-                </Avatar>
+                <LauncherAvatar profileId={user?.profileId} name={user?.name || user?.email} fallbackSrc={user?.image} size={32} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">

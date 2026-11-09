@@ -19,6 +19,8 @@ const publicPaths = [
   "/api/cron",
   // Server-to-server webhooks that check their own shared secret.
   "/api/integrations",
+  // Profile photos: an <img> src in every BBD app, loaded without our cookie.
+  "/api/avatar/",
 ];
 
 // Paths where cross-origin POST is legitimate and expected. The Origin

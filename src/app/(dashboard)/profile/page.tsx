@@ -23,6 +23,7 @@ import {
   type IncidentSummary,
 } from "@/components/features/incidents/IncidentPanel";
 import { MemoPanel } from "@/components/features/memos/MemoPanel";
+import { ProfilePhoto } from "@/components/features/profile/ProfilePhoto";
 import { canViewAs } from "@/lib/launcher/view-as";
 import { resolveAppsOnly } from "@/lib/auth/perm-role";
 import { MyGoalsCard, TeamReportsCard } from "@/components/features/goals/MyGoals";
@@ -86,7 +87,7 @@ export default async function ProfilePage({
   const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes, incidentsRes, memoRows] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, email, name:full_name, role, office, department, is_it, created_at")
+      .select("id, email, name:full_name, role, office, department, is_it, created_at, avatar_url")
       .eq("id", profileId)
       .single(),
     supabase
@@ -186,6 +187,14 @@ export default async function ProfilePage({
 
   return (
     <div className="space-y-6 max-w-5xl">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
+      <ProfilePhoto
+        profileId={profileId}
+        name={profile?.name || profile?.email || ""}
+        hasPhoto={!!profile?.avatar_url}
+        fallbackSrc={viewingAs ? null : session.user.image}
+        readOnly={viewingAs}
+      />
       <div>
         <h1 className="text-2xl font-bold">
           {profile?.name || profile?.email || "My profile"}
@@ -202,6 +211,7 @@ export default async function ProfilePage({
             Joined {fmtDate(profile.created_at.slice(0, 10))}
           </p>
         )}
+      </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
