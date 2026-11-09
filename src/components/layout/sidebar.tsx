@@ -11,6 +11,7 @@ import {
   canAccessManagementPath,
   canManageContent,
   canRunOffboarding,
+  canUseOnboarding,
   canViewTimeData,
   isAdmin as isAdminRole,
 } from "@/lib/auth/permissions";
@@ -35,6 +36,7 @@ import {
   AlertTriangle,
   Megaphone,
   UserMinus,
+  UserPlus,
   UserCheck,
   MailWarning,
   History,
@@ -69,9 +71,8 @@ const managementItems: NavItem[] = [
   { href: "/management/teams", label: "Teams", icon: UsersRound },
 ];
 
-const offboardingItems: NavItem[] = [
-  { href: "/offboarding", label: "Offboarding", icon: UserMinus },
-];
+const onboardingItem: NavItem = { href: "/onboarding", label: "Onboarding", icon: UserPlus };
+const offboardingItem: NavItem = { href: "/offboarding", label: "Offboarding", icon: UserMinus };
 
 const adminItems: NavItem[] = [
   { href: "/admin/apps", label: "Manage Apps", icon: Settings },
@@ -222,8 +223,12 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
     const items = managementItems.filter((i) => canAccessManagementPath(effectiveRole, i.href));
     if (items.length) sections.push({ id: "management", label: "Management", items });
   }
-  if (showOffboarding) {
-    sections.push({ id: "people", label: "People", items: offboardingItems });
+  const peopleItems = [
+    ...(!appsOnly && canUseOnboarding(effectiveRole) ? [onboardingItem] : []),
+    ...(showOffboarding ? [offboardingItem] : []),
+  ];
+  if (peopleItems.length) {
+    sections.push({ id: "people", label: "People", items: peopleItems });
   }
   if (canManageContent(effectiveRole) && !appsOnly) {
     const items = adminItems.filter((i) => canAccessAdminPath(effectiveRole, i.href));

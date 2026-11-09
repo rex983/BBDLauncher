@@ -179,6 +179,12 @@ export function canRunOffboarding(
   return isAdmin(role) || !!canOffboard;
 }
 
+// New-hire onboarding (/onboarding): managers open a request, admins work
+// the checklist and hand the login back. Managers see only their own.
+export function canUseOnboarding(role: UserRole | undefined | null): boolean {
+  return isAdmin(role) || isManagerTier(role);
+}
+
 export type TeamScope =
   | { allowed: false }
   | { allowed: true; office: Office | null };
