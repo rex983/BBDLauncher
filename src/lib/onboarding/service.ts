@@ -8,6 +8,8 @@ import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canUseOnboarding, isAdmin } from "@/lib/auth/permissions";
 import { createNotifications } from "@/lib/notifications/service";
+import { slackApi, slackUserId } from "@/lib/slack/bot";
+import { slackName } from "@/lib/offboarding/notify";
 import {
   ONBOARDING_STEP_KEYS,
   type OnboardingDetail,
@@ -118,18 +120,44 @@ export async function purgeExpired(): Promise<number> {
 
 const fullName = (r: Pick<OnboardingRequest, "first_name" | "last_name">) => `${r.first_name} ${r.last_name}`;
 
-// New request → bell for every active admin except whoever opened it.
+// Slack tags only Rex, who sets the accounts up.
+const SLACK_TAG_EMAIL = "rex@bigbuildingsdirect.com";
+const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
+
+// Posts to SLACK_ONBOARDING_CHANNEL (falling back to the offboarding
+// channel), or DMs Rex when neither is set. Name and hire date only: Slack
+// keeps messages, so the DOB and documents stay in the launcher, where they
+// expire. Best-effort and skipped without SLACK_BOT_TOKEN.
+async function notifySlack(r: OnboardingRequest): Promise<void> {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) return;
+  const rexId = await slackUserId(token, SLACK_TAG_EMAIL);
+  const channel = process.env.SLACK_ONBOARDING_CHANNEL || process.env.SLACK_OFFBOARDING_CHANNEL || rexId;
+  if (!channel) return;
+  const hire = new Date(r.hire_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const text =
+    `${rexId ? `<@${rexId}>` : "*Rex*"} *${slackName(r.created_by_name || "A manager")}* has submitted a new hire: ` +
+    `*${slackName(fullName(r))}*\nDate of hire: ${hire}\n<${LAUNCHER_URL}/onboarding/${r.id}|Open the checklist>`;
+  const res = await slackApi("chat.postMessage", token, { channel, text, unfurl_links: false, unfurl_media: false });
+  if (!res.ok) console.error("[onboarding] slack post failed:", res.error);
+}
+
+// New request → bell for every active admin except whoever opened it, and
+// a Slack message tagging Rex.
 export async function notifyOpened(r: OnboardingRequest, openerId: string): Promise<void> {
   const { data } = await createAdminClient().from("profiles").select("id, is_active").eq("role", "admin");
   const ids = (data || []).filter((p) => p.is_active !== false && p.id !== openerId).map((p) => p.id);
-  await createNotifications(ids, {
-    type: "onboarding_opened",
-    title: `New hire to set up: ${fullName(r)}`,
-    body: `${r.created_by_name || "A manager"} opened an onboarding request.`,
-    href: `/onboarding/${r.id}`,
-    referenceType: REFERENCE_TYPE,
-    referenceId: r.id,
-  });
+  await Promise.all([
+    createNotifications(ids, {
+      type: "onboarding_opened",
+      title: `New hire to set up: ${fullName(r)}`,
+      body: `${r.created_by_name || "A manager"} opened an onboarding request.`,
+      href: `/onboarding/${r.id}`,
+      referenceType: REFERENCE_TYPE,
+      referenceId: r.id,
+    }),
+    notifySlack(r).catch((e) => console.error("[onboarding] slack error:", e)),
+  ]);
 }
 
 // Login entered → bell for the manager who asked.
