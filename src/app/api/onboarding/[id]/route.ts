@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin } from "@/lib/auth/permissions";
 import { encryptPassword } from "@/lib/onboarding/crypto";
 import {
+  closedError,
   getDetail,
   getRequest,
   notifyLoginReady,
@@ -41,6 +42,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const current = await getRequest(session, id);
   if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const closed = closedError(current);
+  if (closed) return closed;
 
   const parsed = patchSchema.safeParse(await req.json());
   if (!parsed.success) return validationError(parsed.error);
@@ -74,8 +77,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   return NextResponse.json(await getDetail(session, id));
 }
 
-// Delete now instead of waiting out the 7 days: an admin, or the manager
-// who opened it.
+// Delete now, open or closed (closed ones are otherwise kept): an admin, or
+// the manager who opened it.
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const session = await requireOnboardingUser();
   if (session instanceof NextResponse) return session;

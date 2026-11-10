@@ -6,15 +6,19 @@ import {
   readUploadForm,
   storeAttachment,
 } from "@/app/api/_lib/attachment-upload";
-import { getRequest, ONBOARDING_BUCKET, requireOnboardingUser } from "@/lib/onboarding/service";
+import { closedError, getRequest, ONBOARDING_BUCKET, requireOnboardingUser } from "@/lib/onboarding/service";
 
 // POST /api/onboarding/[id]/documents — one file per call into the private
-// onboarding-docs bucket at {id}/{uuid}-{name}. Deleted with the request.
+// onboarding-docs bucket at {id}/{uuid}-{name}. Kept when the request
+// closes; deleted with it ("Delete now").
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireOnboardingUser();
   if (session instanceof NextResponse) return session;
   const { id } = await params;
-  if (!(await getRequest(session, id))) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const current = await getRequest(session, id);
+  if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const closed = closedError(current);
+  if (closed) return closed;
 
   const upload = await readUploadForm(req);
   if (upload instanceof NextResponse) return upload;

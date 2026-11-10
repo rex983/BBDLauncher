@@ -33,6 +33,8 @@ export function OnboardingDetailShell({
   const { viewAsUser } = useRolePreview();
   // View as shows the page as-is; only saving is blocked.
   const readOnly = !!viewAsUser;
+  // Closed requests are kept for reference but can't be changed.
+  const locked = readOnly || initial.closed;
   const [r, setR] = useState(initial);
   const [error, setError] = useState<string | null>(
     search.get("uploadFailed") ? "Some documents didn't upload. Add them again below." : null,
@@ -90,8 +92,8 @@ export function OnboardingDetailShell({
             <Badge variant={status.variant}>{status.label}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            Requested by {r.created_by_name || "a manager"} on {fmtWhen(r.created_at)} · deletes itself in{" "}
-            {left === 1 ? "1 day" : `${left} days`}
+            Requested by {r.created_by_name || "a manager"} on {fmtWhen(r.created_at)} ·{" "}
+            {r.closed ? `closed ${fmtWhen(r.expires_at)}` : `closes in ${left === 1 ? "1 day" : `${left} days`}`}
           </p>
         </div>
         <Button variant="outline" onClick={remove} disabled={busy || readOnly}>
@@ -100,6 +102,11 @@ export function OnboardingDetailShell({
         </Button>
       </div>
 
+      {r.closed && (
+        <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+          This request closed 7 days after it was opened. It&apos;s kept here for reference and can&apos;t be changed.
+        </p>
+      )}
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Card>
@@ -130,7 +137,7 @@ export function OnboardingDetailShell({
                   type="checkbox"
                   className="h-4 w-4"
                   checked={!!doneAt}
-                  disabled={!isAdmin || readOnly}
+                  disabled={!isAdmin || locked}
                   onChange={(e) => toggleTask(t.id, e.target.checked)}
                 />
                 <span className={doneAt ? "text-muted-foreground line-through" : ""}>{t.title}</span>
@@ -141,18 +148,24 @@ export function OnboardingDetailShell({
         </CardContent>
       </Card>
 
-      <Documents r={r} readOnly={readOnly} onChange={refresh} onError={setError} />
+      <Documents r={r} readOnly={locked} onChange={refresh} onError={setError} />
 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Login</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isAdmin && <SetLoginForm r={r} readOnly={readOnly} onSave={patch} />}
-          {isRequester ? (
-            <RevealLogin r={r} readOnly={readOnly} onRevealed={refresh} onError={setError} />
+          {r.closed ? (
+            <ClosedLogin r={r} />
           ) : (
-            !isAdmin && <p className="text-sm text-muted-foreground">Only the manager who asked can view the login.</p>
+            <>
+              {isAdmin && <SetLoginForm r={r} readOnly={readOnly} onSave={patch} />}
+              {isRequester ? (
+                <RevealLogin r={r} readOnly={readOnly} onRevealed={refresh} onError={setError} />
+              ) : (
+                !isAdmin && <p className="text-sm text-muted-foreground">Only the manager who asked can view the login.</p>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -257,6 +270,20 @@ function Documents({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Closed: what happened to the login. A password nobody viewed was wiped
+// when the request closed (the reveal is refused from then on).
+function ClosedLogin({ r }: { r: OnboardingDetail }) {
+  if (r.password_status === "none") return <p className="text-sm text-muted-foreground">No login was entered.</p>;
+  return (
+    <p className="text-sm text-muted-foreground">
+      Email: <span className="font-medium text-foreground">{r.account_email}</span> ·{" "}
+      {r.password_status === "viewed"
+        ? `Password viewed${r.password_viewed_at ? ` ${fmtWhen(r.password_viewed_at)}` : ""}, then deleted.`
+        : "The password was never viewed, so it was deleted when this request closed."}
+    </p>
   );
 }
 

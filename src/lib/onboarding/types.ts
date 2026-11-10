@@ -13,8 +13,8 @@ export interface TemplateTask {
   title: string;
 }
 
-// Every request deletes itself this long after it was opened.
-export const ONBOARDING_TTL_DAYS = 7;
+// Every request moves to Closed this long after it was opened (kept, read-only).
+export const ONBOARDING_OPEN_DAYS = 7;
 
 export interface OnboardingDoc {
   name: string; // storage object name inside the request's folder
@@ -23,13 +23,15 @@ export interface OnboardingDoc {
 }
 
 // "none": no password entered yet; "waiting": entered, the manager hasn't
-// looked; "viewed": the manager revealed it and it was wiped.
-export type PasswordStatus = "none" | "waiting" | "viewed";
+// looked; "viewed": the manager revealed it and it was wiped; "expired":
+// never viewed, wiped when the request closed.
+export type PasswordStatus = "none" | "waiting" | "viewed" | "expired";
 
 export interface OnboardingRequest {
   id: string;
   created_at: string;
-  expires_at: string;
+  expires_at: string; // when it closes
+  closed: boolean;
   created_by: string;
   created_by_name: string | null;
   first_name: string;
@@ -52,6 +54,7 @@ export function tasksDone(r: Pick<OnboardingRequest, "tasks">): number {
 }
 
 export function onboardingStatus(r: OnboardingRequest): { label: string; variant: "default" | "secondary" | "outline" } {
+  if (r.closed) return { label: "Closed", variant: "outline" };
   if (r.password_status === "viewed") return { label: "Login viewed", variant: "outline" };
   if (r.password_status === "waiting") return { label: "Login ready", variant: "default" };
   return tasksDone(r) === 0
@@ -59,7 +62,7 @@ export function onboardingStatus(r: OnboardingRequest): { label: string; variant
     : { label: "In progress", variant: "secondary" };
 }
 
-// Whole days left before it deletes itself (0 = today).
+// Whole days left before it closes (0 = closed).
 export function daysLeft(expiresAt: string, now = Date.now()): number {
   return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - now) / 86_400_000));
 }

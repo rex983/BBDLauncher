@@ -9,12 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AtSign, ListPlus, Paperclip, UserPlus, X } from "lucide-react";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { fmtDay } from "@/components/shared/format";
 import {
   daysLeft,
-  ONBOARDING_TTL_DAYS,
+  ONBOARDING_OPEN_DAYS,
   onboardingStatus,
   tasksDone,
   type OnboardingRequest,
@@ -26,7 +27,13 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
   const [newOpen, setNewOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [taggingOpen, setTaggingOpen] = useState(false);
+  const [tab, setTab] = useState<"open" | "closed">("open");
   const { viewAsUser } = useRolePreview();
+  const openCount = initial.filter((r) => !r.closed).length;
+  // Open: oldest first (closest to closing). Closed: most recent first.
+  const rows = initial
+    .filter((r) => (tab === "open" ? !r.closed : r.closed))
+    .sort((a, b) => (tab === "open" ? a.expires_at.localeCompare(b.expires_at) : b.expires_at.localeCompare(a.expires_at)));
 
   return (
     <div className="space-y-6">
@@ -37,7 +44,7 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
             {isAdmin
               ? "New hires managers have asked for. Work the checklist, then enter their login."
               : "Add a new hire and their accounts get set up. You'll get their login here."}{" "}
-            Each request deletes itself after {ONBOARDING_TTL_DAYS} days.
+            Requests move to Closed after {ONBOARDING_OPEN_DAYS} days and are kept there.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -60,9 +67,19 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
         </div>
       </div>
 
-      {initial.length === 0 ? (
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+        <TabsList>
+          <TabsTrigger value="open">
+            Open
+            <Badge variant="secondary" className="ml-2">{openCount}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="closed">Closed</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {rows.length === 0 ? (
         <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-          No open onboarding requests.
+          {tab === "open" ? "No open onboarding requests." : "No closed requests yet."}
         </p>
       ) : (
         <Table>
@@ -73,11 +90,11 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
               {isAdmin && <TableHead>Requested by</TableHead>}
               <TableHead>Checklist</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Deletes in</TableHead>
+              <TableHead className="text-right">{tab === "open" ? "Closes in" : "Closed"}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {initial.map((r) => {
+            {rows.map((r) => {
               const status = onboardingStatus(r);
               const left = daysLeft(r.expires_at);
               return (
@@ -96,7 +113,7 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {left === 1 ? "1 day" : `${left} days`}
+                    {r.closed ? fmtDay(r.expires_at.slice(0, 10)) : left === 1 ? "1 day" : `${left} days`}
                   </TableCell>
                 </TableRow>
               );

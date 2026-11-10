@@ -1,5 +1,5 @@
-// Server-side onboarding helpers: the permission gate, scoped reads, and the
-// purge that deletes a request with its documents and bell notifications.
+// Server-side onboarding helpers: the permission gate, scoped reads, closing
+// requests after 7 days, and deleting one (with its documents and bells).
 // See supabase/migrations/065_onboarding.sql for what is (not) kept.
 
 import { NextResponse } from "next/server";
@@ -43,7 +43,14 @@ function toRequest(row: Row): OnboardingRequest {
     dob: row.dob as string,
     tasks,
     account_email: (row.account_email as string) ?? null,
-    password_status: row.password_cipher ? "waiting" : row.password_viewed_at ? "viewed" : "none",
+    closed: new Date(row.expires_at as string).getTime() <= Date.now(),
+    password_status: row.password_cipher
+      ? "waiting"
+      : row.password_viewed_at
+        ? "viewed"
+        : row.password_set_at
+          ? "expired"
+          : "none",
     password_set_at: (row.password_set_at as string) ?? null,
     password_viewed_at: (row.password_viewed_at as string) ?? null,
   };
@@ -58,13 +65,12 @@ export async function requireOnboardingUser(): Promise<Session | NextResponse> {
   return session;
 }
 
-// Admins see every request; managers only the ones they opened. Expired
-// rows are hidden even if the purge cron hasn't run yet.
+// Admins see every request; managers only the ones they opened. Open and
+// closed alike: closed ones are kept for reference.
 function scoped(session: Session) {
   let q = createAdminClient()
     .from("onboarding_requests")
-    .select(COLUMNS)
-    .gt("expires_at", new Date().toISOString());
+    .select(COLUMNS);
   if (!isAdmin(session.user.permRole)) q = q.eq("created_by", session.user.profileId);
   return q;
 }
@@ -98,7 +104,7 @@ export async function getDetail(session: Session, id: string): Promise<Onboardin
   return { ...req, documents: await listDocuments(id) };
 }
 
-// Deletes the request, its documents and every bell notification about it.
+// "Delete now": the request, its documents and every bell about it.
 export async function purgeRequest(id: string): Promise<void> {
   const supabase = createAdminClient();
   const docs = await listDocuments(id);
@@ -111,14 +117,23 @@ export async function purgeRequest(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function purgeExpired(): Promise<number> {
+// Requests close on their own 7 days after they were opened (reads compare
+// expires_at, so this needs no status flip). The one thing not kept is a
+// password nobody viewed: the hourly cron wipes it once the request closes.
+export async function wipeClosedPasswords(): Promise<number> {
   const { data, error } = await createAdminClient()
     .from("onboarding_requests")
-    .select("id")
-    .lte("expires_at", new Date().toISOString());
+    .update({ password_cipher: null })
+    .lte("expires_at", new Date().toISOString())
+    .not("password_cipher", "is", null)
+    .select("id");
   if (error) throw new Error(error.message);
-  for (const r of data || []) await purgeRequest(r.id);
   return data?.length ?? 0;
+}
+
+// Closed requests are read-only. Returns a 409 to send back, or null.
+export function closedError(r: Pick<OnboardingRequest, "closed">): NextResponse | null {
+  return r.closed ? NextResponse.json({ error: "This request is closed." }, { status: 409 }) : null;
 }
 
 // ---------- default checklist + who gets tagged (admins edit both) ----------
