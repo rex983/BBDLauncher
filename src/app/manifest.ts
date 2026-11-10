@@ -8,7 +8,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Sign in once and open every BBD app",
     start_url: "/dashboard",
     display: "standalone",
-    background_color: "#ffffff",
+    background_color: "#0A1022",
     theme_color: "#ee5a24",
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
