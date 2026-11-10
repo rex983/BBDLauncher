@@ -70,6 +70,7 @@ export function LauncherAvatar({
   const box: React.CSSProperties = { width: size, height: size, ...style };
 
   if (src) {
+    const fail = () => setFailed({ key, step: step === 0 && fallbackSrc ? 1 : 2 });
     return (
       // eslint-disable-next-line @next/next/no-img-element -- cross-origin, tiny, already sized
       <img
@@ -79,7 +80,13 @@ export function LauncherAvatar({
         width={size}
         height={size}
         referrerPolicy="no-referrer"
-        onError={() => setFailed({ key, step: step === 0 && fallbackSrc ? 1 : 2 })}
+        onError={fail}
+        // A server-rendered <img> can 404 before React hydrates, and then
+        // onError never fires and the broken-image icon stays. Catch that
+        // case on mount: finished loading with no pixels = failed.
+        ref={(img) => {
+          if (img?.complete && img.naturalWidth === 0) fail();
+        }}
         className={`inline-block shrink-0 rounded-full object-cover ${className}`}
         style={box}
       />
