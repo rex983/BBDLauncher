@@ -21,6 +21,7 @@ import {
   useRolePreview,
 } from "@/components/features/launcher/role-preview-context";
 import { NotificationsBell } from "@/components/layout/NotificationsBell";
+import { AppRefreshButton } from "@/components/layout/AppRefreshButton";
 
 export function Header() {
   const { data: session } = useSession();
@@ -38,6 +39,7 @@ export function Header() {
         </Link>
 
         <div className="ml-auto flex items-center gap-4">
+          <AppRefreshButton />
           <NotificationsBell />
 
           <Button

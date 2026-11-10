@@ -50,6 +50,28 @@ interface TimeClockContextValue {
 // often than this. Alt-tabbing used to fire a request every time.
 const REFRESH_EVERY_MS = 60_000;
 
+// A visible window also re-checks on this beat with no focus change at all.
+// Reps who installed the launcher as a desktop app leave that window open
+// on a second monitor for days — it never loses visibility, so without this
+// it kept showing "clocked in" after the shift-end auto clock-out and stayed
+// on the dashboard after the midnight sign-out.
+const POLL_EVERY_MS = 2 * 60_000;
+
+// The server no longer accepts this session (midnight sign-out, signed out
+// elsewhere, deactivated). Reload onto the login page so the window follows
+// the same sign-in rules as a fresh browser tab instead of sitting on a
+// stale dashboard.
+function sendToLogin() {
+  const here = window.location.pathname + window.location.search;
+  window.location.assign(`/login?callbackUrl=${encodeURIComponent(here)}`);
+}
+
+// 401 from our API, or middleware bounced a cookie-less request to /login
+// (fetch follows the redirect and gets the login page's HTML).
+function sessionGone(res: Response): boolean {
+  return res.status === 401 || (res.redirected && new URL(res.url).pathname === "/login");
+}
+
 const TimeClockContext = createContext<TimeClockContextValue | null>(null);
 
 export function useTimeClock(): TimeClockContextValue {
@@ -103,6 +125,10 @@ export function ClockGate({
     loadedAt.current = Date.now();
     try {
       const res = await fetch("/api/timeclock/me", { cache: "no-store" });
+      if (sessionGone(res)) {
+        sendToLogin();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setState(data.state ?? null);
@@ -132,7 +158,9 @@ export function ClockGate({
     };
     window.addEventListener("focus", onBack);
     document.addEventListener("visibilitychange", onBack);
+    const poll = window.setInterval(onBack, POLL_EVERY_MS);
     return () => {
+      window.clearInterval(poll);
       window.removeEventListener("focus", onBack);
       document.removeEventListener("visibilitychange", onBack);
     };
@@ -148,6 +176,10 @@ export function ClockGate({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event_type }),
       });
+      if (sessionGone(res)) {
+        sendToLogin();
+        return null;
+      }
       if (!res.ok) {
         if (res.status === 409) {
           await load();
@@ -179,6 +211,10 @@ export function ClockGate({
           late_reason: late ? lateReason.trim() : undefined,
         }),
       });
+      if (sessionGone(res)) {
+        sendToLogin();
+        return;
+      }
       const body = await res.json().catch(() => ({}));
       if (res.ok) {
         setState(body.state);
