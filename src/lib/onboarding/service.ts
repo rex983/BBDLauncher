@@ -143,6 +143,60 @@ export async function copyTemplateTo(requestId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+// After any change to the default checklist, every open request follows it:
+// missing tasks are added, order matches, and tasks taken off the list are
+// removed unless they were already ticked (those stay, at the end).
+// Tasks match by title.
+export async function syncOpenRequests(): Promise<void> {
+  const supabase = createAdminClient();
+  const template = await getTemplate();
+  const { data: open, error } = await supabase
+    .from("onboarding_requests")
+    .select("id, tasks:onboarding_tasks(id, title, position, done_at)")
+    .gt("expires_at", new Date().toISOString());
+  if (error) throw new Error(error.message);
+
+  const key = (title: string) => title.trim().toLowerCase();
+  const inserts: { request_id: string; title: string; position: number }[] = [];
+  const moves: { id: string; position: number }[] = [];
+  const deletes: string[] = [];
+
+  for (const req of open || []) {
+    const tasks = [...((req.tasks as (OnboardingTask & { position: number })[]) ?? [])].sort((a, b) => a.position - b.position);
+    const used = new Set<string>();
+    template.forEach((t, position) => {
+      const match = tasks.find((x) => !used.has(x.id) && key(x.title) === key(t.title));
+      if (!match) return inserts.push({ request_id: req.id, title: t.title, position });
+      used.add(match.id);
+      if (match.position !== position) moves.push({ id: match.id, position });
+    });
+    let extra = template.length;
+    for (const x of tasks) {
+      if (used.has(x.id)) continue;
+      if (!x.done_at) {
+        deletes.push(x.id);
+        continue;
+      }
+      if (x.position !== extra) moves.push({ id: x.id, position: extra });
+      extra++;
+    }
+  }
+
+  if (inserts.length) {
+    const { error: e } = await supabase.from("onboarding_tasks").insert(inserts);
+    if (e) throw new Error(e.message);
+  }
+  if (deletes.length) {
+    const { error: e } = await supabase.from("onboarding_tasks").delete().in("id", deletes);
+    if (e) throw new Error(e.message);
+  }
+  const results = await Promise.all(
+    moves.map((m) => supabase.from("onboarding_tasks").update({ position: m.position }).eq("id", m.id)),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
+}
+
 export async function getTagIds(): Promise<string[]> {
   const { data } = await createAdminClient().from("onboarding_settings").select("tag_profile_ids").eq("id", 1).maybeSingle();
   return (data?.tag_profile_ids as string[] | null) ?? [];

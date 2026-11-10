@@ -13,8 +13,8 @@ async function readError(res: Response, fallback: string) {
   return typeof body.error === "string" ? body.error : fallback;
 }
 
-// Admin: the default checklist every new hire starts with. "Add task" puts
-// a task on the end; open requests keep the list they were opened with.
+// Admin: the default checklist. "Add task" puts a task on the end; every
+// change also updates open requests (syncOpenRequests).
 export function ChecklistDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const [tasks, setTasks] = useState<TemplateTask[] | null>(null);
   const [title, setTitle] = useState("");
@@ -54,7 +54,7 @@ export function ChecklistDialog({ open, onOpenChange }: { open: boolean; onOpenC
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Default checklist</DialogTitle>
-          <DialogDescription>Every new hire starts with these tasks. Requests already open aren&apos;t changed.</DialogDescription>
+          <DialogDescription>Every new hire gets these tasks, including requests already open. Removing a task keeps it on requests where it&apos;s already ticked.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={add} className="flex gap-2">
