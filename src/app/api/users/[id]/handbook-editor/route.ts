@@ -4,7 +4,7 @@ import { requireSession, requireAdmin } from "@/lib/auth/require-session";
 import { canManageContent } from "@/lib/auth/permissions";
 import { validationError } from "@/app/api/_lib/validation";
 import { bustLauncherCache } from "@/lib/launcher/cache";
-import { readHandbookEditor, setHandbookEditor } from "@/lib/handbook-training";
+import { readHandbookEditor, setHandbookEditor } from "@/lib/handbook-editor";
 
 // "Can edit the Employee Handbook", beyond admins and senior/junior managers
 // (who always can). Anyone on the users page can see it; only admins change
