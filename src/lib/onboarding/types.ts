@@ -1,14 +1,17 @@
 // Client-safe onboarding types. Server code lives in ./service.ts.
 
-export const ONBOARDING_STEPS = [
-  { key: "laptop", label: "Prepare laptop" },
-  { key: "gmail", label: "Create Gmail account" },
-  { key: "strapi", label: "Create Strapi account" },
-  { key: "launcher", label: "Create launcher account" },
-] as const;
+// A request's checklist item: its own copy of the default checklist
+// (onboarding_template_tasks, editable by admins) made when it was opened.
+export interface OnboardingTask {
+  id: string;
+  title: string;
+  done_at: string | null;
+}
 
-export type OnboardingStep = (typeof ONBOARDING_STEPS)[number]["key"];
-export const ONBOARDING_STEP_KEYS = ONBOARDING_STEPS.map((s) => s.key) as [OnboardingStep, ...OnboardingStep[]];
+export interface TemplateTask {
+  id: string;
+  title: string;
+}
 
 // Every request deletes itself this long after it was opened.
 export const ONBOARDING_TTL_DAYS = 7;
@@ -33,7 +36,7 @@ export interface OnboardingRequest {
   last_name: string;
   hire_date: string;
   dob: string;
-  steps: Record<OnboardingStep, string | null>;
+  tasks: OnboardingTask[];
   account_email: string | null;
   password_status: PasswordStatus;
   password_set_at: string | null;
@@ -44,14 +47,14 @@ export interface OnboardingDetail extends OnboardingRequest {
   documents: OnboardingDoc[];
 }
 
-export function stepsDone(r: Pick<OnboardingRequest, "steps">): number {
-  return ONBOARDING_STEP_KEYS.filter((k) => r.steps[k]).length;
+export function tasksDone(r: Pick<OnboardingRequest, "tasks">): number {
+  return r.tasks.filter((t) => t.done_at).length;
 }
 
 export function onboardingStatus(r: OnboardingRequest): { label: string; variant: "default" | "secondary" | "outline" } {
   if (r.password_status === "viewed") return { label: "Login viewed", variant: "outline" };
   if (r.password_status === "waiting") return { label: "Login ready", variant: "default" };
-  return stepsDone(r) === 0
+  return tasksDone(r) === 0
     ? { label: "Not started", variant: "secondary" }
     : { label: "In progress", variant: "secondary" };
 }

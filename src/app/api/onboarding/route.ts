@@ -2,7 +2,14 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { validationError } from "@/app/api/_lib/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getRequest, listRequests, notifyOpened, requireOnboardingUser } from "@/lib/onboarding/service";
+import {
+  copyTemplateTo,
+  getRequest,
+  listRequests,
+  notifyOpened,
+  purgeRequest,
+  requireOnboardingUser,
+} from "@/lib/onboarding/service";
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "pick a date");
 
@@ -38,6 +45,12 @@ export async function POST(req: NextRequest) {
     .select("id")
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    await copyTemplateTo(data.id);
+  } catch (e) {
+    await purgeRequest(data.id).catch(() => undefined);
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Couldn't save" }, { status: 500 });
+  }
 
   const created = await getRequest(session, data.id);
   if (created) {

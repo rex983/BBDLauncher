@@ -11,7 +11,6 @@ import {
   purgeRequest,
   requireOnboardingUser,
 } from "@/lib/onboarding/service";
-import { ONBOARDING_STEP_KEYS } from "@/lib/onboarding/types";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -23,10 +22,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json(detail);
 }
 
-// Admin only: tick a checklist step, or hand back the login. A new password
+// Admin only: tick a checklist task, or hand back the login. A new password
 // replaces any earlier one (and re-arms the one-time view).
 const patchSchema = z.union([
-  z.object({ step: z.enum(ONBOARDING_STEP_KEYS), done: z.boolean() }),
+  z.object({ task_id: z.string().uuid(), done: z.boolean() }),
   z.object({
     account_email: z.string().trim().email().max(200),
     password: z.string().min(1, "required").max(200),
@@ -48,16 +47,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = parsed.data;
 
   const now = new Date().toISOString();
-  const update =
-    "step" in body
-      ? { [`${body.step}_at`]: body.done ? now : null }
-      : {
-          account_email: body.account_email,
-          password_cipher: encryptPassword(body.password),
-          password_set_at: now,
-          password_viewed_at: null,
-        };
-  const { error } = await createAdminClient().from("onboarding_requests").update(update).eq("id", id);
+  const supabase = createAdminClient();
+  const { error } =
+    "task_id" in body
+      ? await supabase
+          .from("onboarding_tasks")
+          .update({ done_at: body.done ? now : null })
+          .eq("id", body.task_id)
+          .eq("request_id", id)
+      : await supabase
+          .from("onboarding_requests")
+          .update({
+            account_email: body.account_email,
+            password_cipher: encryptPassword(body.password),
+            password_set_at: now,
+            password_viewed_at: null,
+          })
+          .eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   if ("password" in body) {

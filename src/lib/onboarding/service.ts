@@ -11,23 +11,26 @@ import { createNotifications } from "@/lib/notifications/service";
 import { slackApi, slackUserId } from "@/lib/slack/bot";
 import { slackName } from "@/lib/offboarding/notify";
 import {
-  ONBOARDING_STEP_KEYS,
   type OnboardingDetail,
   type OnboardingDoc,
   type OnboardingRequest,
+  type OnboardingTask,
+  type TemplateTask,
 } from "./types";
 
 export const ONBOARDING_BUCKET = "onboarding-docs";
 const REFERENCE_TYPE = "onboarding_request";
 
 const COLUMNS =
-  "id, created_at, expires_at, created_by, created_by_name, first_name, last_name, hire_date, dob, laptop_at, gmail_at, strapi_at, launcher_at, account_email, password_cipher, password_set_at, password_viewed_at";
+  "id, created_at, expires_at, created_by, created_by_name, first_name, last_name, hire_date, dob, account_email, password_cipher, password_set_at, password_viewed_at, tasks:onboarding_tasks(id, title, position, done_at)";
 
 type Row = Record<string, unknown> & { password_cipher: string | null };
 
 // The cipher never leaves the server; callers only learn whether one is waiting.
 function toRequest(row: Row): OnboardingRequest {
-  const steps = Object.fromEntries(ONBOARDING_STEP_KEYS.map((k) => [k, (row[`${k}_at`] as string) ?? null]));
+  const tasks = ((row.tasks as (OnboardingTask & { position: number })[]) ?? [])
+    .sort((a, b) => a.position - b.position)
+    .map(({ id, title, done_at }) => ({ id, title, done_at }));
   return {
     id: row.id as string,
     created_at: row.created_at as string,
@@ -38,7 +41,7 @@ function toRequest(row: Row): OnboardingRequest {
     last_name: row.last_name as string,
     hire_date: row.hire_date as string,
     dob: row.dob as string,
-    steps: steps as OnboardingRequest["steps"],
+    tasks,
     account_email: (row.account_email as string) ?? null,
     password_status: row.password_cipher ? "waiting" : row.password_viewed_at ? "viewed" : "none",
     password_set_at: (row.password_set_at as string) ?? null,
@@ -118,45 +121,99 @@ export async function purgeExpired(): Promise<number> {
   return data?.length ?? 0;
 }
 
-const fullName = (r: Pick<OnboardingRequest, "first_name" | "last_name">) => `${r.first_name} ${r.last_name}`;
+// ---------- default checklist + who gets tagged (admins edit both) ----------
 
-// Slack tags only Rex, who sets the accounts up.
-const SLACK_TAG_EMAIL = "rex@bigbuildingsdirect.com";
-const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
-
-// Posts to SLACK_ONBOARDING_CHANNEL (falling back to the offboarding
-// channel), or DMs Rex when neither is set. Name and hire date only: Slack
-// keeps messages, so the DOB and documents stay in the launcher, where they
-// expire. Best-effort and skipped without SLACK_BOT_TOKEN.
-async function notifySlack(r: OnboardingRequest): Promise<void> {
-  const token = process.env.SLACK_BOT_TOKEN;
-  if (!token) return;
-  const rexId = await slackUserId(token, SLACK_TAG_EMAIL);
-  const channel = process.env.SLACK_ONBOARDING_CHANNEL || process.env.SLACK_OFFBOARDING_CHANNEL || rexId;
-  if (!channel) return;
-  const hire = new Date(r.hire_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  const text =
-    `${rexId ? `<@${rexId}>` : "*Rex*"} *${slackName(r.created_by_name || "A manager")}* has submitted a new hire: ` +
-    `*${slackName(fullName(r))}*\nDate of hire: ${hire}\n<${LAUNCHER_URL}/onboarding/${r.id}|Open the checklist>`;
-  const res = await slackApi("chat.postMessage", token, { channel, text, unfurl_links: false, unfurl_media: false });
-  if (!res.ok) console.error("[onboarding] slack post failed:", res.error);
+export async function getTemplate(): Promise<TemplateTask[]> {
+  const { data, error } = await createAdminClient()
+    .from("onboarding_template_tasks")
+    .select("id, title")
+    .order("position")
+    .order("created_at");
+  if (error) throw new Error(error.message);
+  return data || [];
 }
 
-// New request → bell for every active admin except whoever opened it, and
-// a Slack message tagging Rex.
+// A new request gets its own copy, so later edits never change it.
+export async function copyTemplateTo(requestId: string): Promise<void> {
+  const template = await getTemplate();
+  if (!template.length) return;
+  const { error } = await createAdminClient()
+    .from("onboarding_tasks")
+    .insert(template.map((t, i) => ({ request_id: requestId, title: t.title, position: i })));
+  if (error) throw new Error(error.message);
+}
+
+export async function getTagIds(): Promise<string[]> {
+  const { data } = await createAdminClient().from("onboarding_settings").select("tag_profile_ids").eq("id", 1).maybeSingle();
+  return (data?.tag_profile_ids as string[] | null) ?? [];
+}
+
+const fullName = (r: Pick<OnboardingRequest, "first_name" | "last_name">) => `${r.first_name} ${r.last_name}`;
+
+const LAUNCHER_URL = process.env.LAUNCHER_URL || "https://bbd-launcher.vercel.app";
+
+interface Tagged {
+  id: string;
+  email: string;
+  name: string | null;
+}
+
+// The people admins picked on /onboarding (Rex by default), still active.
+async function taggedPeople(): Promise<Tagged[]> {
+  const ids = await getTagIds();
+  if (!ids.length) return [];
+  const { data } = await createAdminClient()
+    .from("profiles")
+    .select("id, email, name:full_name, is_active")
+    .in("id", ids);
+  return (data || []).filter((p) => p.is_active !== false) as Tagged[];
+}
+
+// Posts to SLACK_ONBOARDING_CHANNEL (falling back to the offboarding
+// channel) tagging the picked people, or DMs each of them when neither is
+// set. Name and hire date only: Slack keeps messages, so the DOB and
+// documents stay in the launcher, where they expire. Best-effort and
+// skipped without SLACK_BOT_TOKEN.
+async function notifySlack(r: OnboardingRequest, people: Tagged[]): Promise<void> {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token || !people.length) return;
+  const ids = await Promise.all(people.map((p) => slackUserId(token, p.email)));
+  const tags = people.map((p, i) => (ids[i] ? `<@${ids[i]}>` : `*${slackName(p.name || p.email)}*`)).join(" ");
+  const hire = new Date(r.hire_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const text =
+    `${tags} *${slackName(r.created_by_name || "A manager")}* has submitted a new hire: ` +
+    `*${slackName(fullName(r))}*\nDate of hire: ${hire}\n<${LAUNCHER_URL}/onboarding/${r.id}|Open the checklist>`;
+  const post = (channel: string) =>
+    slackApi("chat.postMessage", token, { channel, text, unfurl_links: false, unfurl_media: false });
+  const channel = process.env.SLACK_ONBOARDING_CHANNEL || process.env.SLACK_OFFBOARDING_CHANNEL;
+  const results = channel
+    ? [await post(channel)]
+    : await Promise.all(ids.filter((id): id is string => !!id).map(post));
+  for (const res of results) if (!res.ok) console.error("[onboarding] slack post failed:", res.error);
+}
+
+// New request → Slack tag + bell for the picked people (the bell skips
+// whoever opened it). Nobody picked → bell every active admin, no Slack.
 export async function notifyOpened(r: OnboardingRequest, openerId: string): Promise<void> {
-  const { data } = await createAdminClient().from("profiles").select("id, is_active").eq("role", "admin");
-  const ids = (data || []).filter((p) => p.is_active !== false && p.id !== openerId).map((p) => p.id);
+  const people = await taggedPeople();
+  let bellIds = people.map((p) => p.id);
+  if (!bellIds.length) {
+    const { data } = await createAdminClient().from("profiles").select("id, is_active").eq("role", "admin");
+    bellIds = (data || []).filter((p) => p.is_active !== false).map((p) => p.id);
+  }
   await Promise.all([
-    createNotifications(ids, {
-      type: "onboarding_opened",
-      title: `New hire to set up: ${fullName(r)}`,
-      body: `${r.created_by_name || "A manager"} opened an onboarding request.`,
-      href: `/onboarding/${r.id}`,
-      referenceType: REFERENCE_TYPE,
-      referenceId: r.id,
-    }),
-    notifySlack(r).catch((e) => console.error("[onboarding] slack error:", e)),
+    createNotifications(
+      bellIds.filter((id) => id !== openerId),
+      {
+        type: "onboarding_opened",
+        title: `New hire to set up: ${fullName(r)}`,
+        body: `${r.created_by_name || "A manager"} opened an onboarding request.`,
+        href: `/onboarding/${r.id}`,
+        referenceType: REFERENCE_TYPE,
+        referenceId: r.id,
+      },
+    ),
+    notifySlack(r, people).catch((e) => console.error("[onboarding] slack error:", e)),
   ]);
 }
 

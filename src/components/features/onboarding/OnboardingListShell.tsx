@@ -9,21 +9,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Paperclip, UserPlus, X } from "lucide-react";
+import { AtSign, ListPlus, Paperclip, UserPlus, X } from "lucide-react";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { fmtDay } from "@/components/shared/format";
 import {
   daysLeft,
-  ONBOARDING_STEPS,
   ONBOARDING_TTL_DAYS,
   onboardingStatus,
-  stepsDone,
+  tasksDone,
   type OnboardingRequest,
 } from "@/lib/onboarding/types";
 import { ACCEPT_DOCS, uploadDocuments } from "./upload";
+import { ChecklistDialog, TaggingDialog } from "./OnboardingSettings";
 
 export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingRequest[]; isAdmin: boolean }) {
   const [newOpen, setNewOpen] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [taggingOpen, setTaggingOpen] = useState(false);
   const { viewAsUser } = useRolePreview();
 
   return (
@@ -38,10 +40,24 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
             Each request deletes itself after {ONBOARDING_TTL_DAYS} days.
           </p>
         </div>
-        <Button onClick={() => setNewOpen(true)} disabled={!!viewAsUser}>
-          <UserPlus className="mr-2 h-4 w-4" />
-          New hire
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {isAdmin && (
+            <>
+              <Button variant="outline" onClick={() => setTaggingOpen(true)} disabled={!!viewAsUser}>
+                <AtSign className="mr-2 h-4 w-4" />
+                Who gets tagged
+              </Button>
+              <Button variant="outline" onClick={() => setChecklistOpen(true)} disabled={!!viewAsUser}>
+                <ListPlus className="mr-2 h-4 w-4" />
+                Add task
+              </Button>
+            </>
+          )}
+          <Button onClick={() => setNewOpen(true)} disabled={!!viewAsUser}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            New hire
+          </Button>
+        </div>
       </div>
 
       {initial.length === 0 ? (
@@ -74,7 +90,7 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
                   <TableCell>{fmtDay(r.hire_date)}</TableCell>
                   {isAdmin && <TableCell>{r.created_by_name || "—"}</TableCell>}
                   <TableCell className="tabular-nums">
-                    {stepsDone(r)}/{ONBOARDING_STEPS.length}
+                    {tasksDone(r)}/{r.tasks.length}
                   </TableCell>
                   <TableCell>
                     <Badge variant={status.variant}>{status.label}</Badge>
@@ -90,6 +106,8 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
       )}
 
       <NewHireDialog open={newOpen} onOpenChange={setNewOpen} />
+      {isAdmin && <ChecklistDialog open={checklistOpen} onOpenChange={setChecklistOpen} />}
+      {isAdmin && <TaggingDialog open={taggingOpen} onOpenChange={setTaggingOpen} />}
     </div>
   );
 }

@@ -11,13 +11,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, Copy, Download, Eye, EyeOff, Paperclip, Trash2 } from "lucide-react";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { fmtDay, fmtWhen } from "@/components/shared/format";
-import {
-  daysLeft,
-  ONBOARDING_STEPS,
-  onboardingStatus,
-  type OnboardingDetail,
-  type OnboardingStep,
-} from "@/lib/onboarding/types";
+import { daysLeft, onboardingStatus, type OnboardingDetail } from "@/lib/onboarding/types";
 import { ACCEPT_DOCS, uploadDocuments } from "./upload";
 
 async function readError(res: Response, fallback: string) {
@@ -65,7 +59,7 @@ export function OnboardingDetailShell({
     return true;
   };
 
-  const toggleStep = (step: OnboardingStep, done: boolean) => patch({ step, done });
+  const toggleTask = (taskId: string, done: boolean) => patch({ task_id: taskId, done });
 
   const remove = async () => {
     if (!confirm(`Delete the onboarding request for ${r.first_name} ${r.last_name} and its documents now?`)) return;
@@ -127,18 +121,19 @@ export function OnboardingDetailShell({
           <CardTitle className="text-base">Checklist</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {ONBOARDING_STEPS.map((s) => {
-            const doneAt = r.steps[s.key];
+          {r.tasks.length === 0 && <p className="text-sm text-muted-foreground">No tasks.</p>}
+          {r.tasks.map((t) => {
+            const doneAt = t.done_at;
             return (
-              <label key={s.key} className="flex items-center gap-3 text-sm">
+              <label key={t.id} className="flex items-center gap-3 text-sm">
                 <input
                   type="checkbox"
                   className="h-4 w-4"
                   checked={!!doneAt}
                   disabled={!isAdmin || readOnly}
-                  onChange={(e) => toggleStep(s.key, e.target.checked)}
+                  onChange={(e) => toggleTask(t.id, e.target.checked)}
                 />
-                <span className={doneAt ? "text-muted-foreground line-through" : ""}>{s.label}</span>
+                <span className={doneAt ? "text-muted-foreground line-through" : ""}>{t.title}</span>
                 {doneAt && <span className="text-xs text-muted-foreground">{fmtWhen(doneAt)}</span>}
               </label>
             );
