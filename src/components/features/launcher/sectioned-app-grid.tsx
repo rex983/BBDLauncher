@@ -14,22 +14,36 @@ import {
 } from "@dnd-kit/core";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AppCard } from "./app-card";
 import { AppListRow } from "./app-list-row";
 import { AppGrid, type ViewType } from "./app-grid";
+import { ImportantLinks } from "./important-links";
 import { applyReorderUpdates, computeReorderUpdates } from "./reorder";
-import { Search, ChevronDown, ChevronRight, Star, LayoutGrid, List } from "lucide-react";
+import { DEFAULT_SORT, SORT_OPTIONS, isSortMode, sortItems, type ClickStats, type SortMode } from "./sort";
+import { Search, ChevronDown, ChevronRight, Star, LayoutGrid, List, ArrowUpDown } from "lucide-react";
 import type { LauncherApp, LauncherSection } from "@/types/app";
+import type { ImportantLink } from "@/types/link";
 
 interface SectionedAppGridProps {
   apps: LauncherApp[];
   sections: LauncherSection[];
   isAdmin: boolean;
+  links: ImportantLink[];
+  /** The viewer's own opens, for the click sorts. */
+  clickStats: ClickStats;
 }
 
 const FAVORITES_KEY = "bbd-favorites";
 const COLLAPSE_KEY = "bbd-section-collapse";
 const VIEW_TYPE_KEY = "bbd-view-type";
+const SORT_KEY = "bbd-sort";
 const FAVORITES_ID = "__favorites__";
 const UNSORTED_ID = "__unsorted__";
 
@@ -45,7 +59,11 @@ function readJSON<T>(key: string, fallback: T): T {
 
 function writeJSON(key: string, value: unknown) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Private window / blocked storage: the choice just isn't remembered.
+  }
 }
 
 function SectionHeader({
@@ -105,11 +123,12 @@ function DroppableSection({
   );
 }
 
-export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridProps) {
+export function SectionedAppGrid({ apps, sections, isAdmin, links, clickStats }: SectionedAppGridProps) {
   const [search, setSearch] = useState("");
   const [favorites, setFavorites] = useState<string[]>([]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [viewType, setViewType] = useState<ViewType>("cards");
+  const [sort, setSort] = useState<SortMode>(DEFAULT_SORT);
   // Admin-only local working copy of apps so drag-drop feels instant.
   // Re-seeded during render whenever the server sends a new `apps` list.
   const [workingApps, setWorkingApps] = useState<LauncherApp[]>(apps);
@@ -118,13 +137,23 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
     setSeededFrom(apps);
     setWorkingApps(apps);
   }
+  const [workingLinks, setWorkingLinks] = useState<ImportantLink[]>(links);
+  const [linksSeededFrom, setLinksSeededFrom] = useState(links);
+  if (linksSeededFrom !== links) {
+    setLinksSeededFrom(links);
+    setWorkingLinks(links);
+  }
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  // Dragging only makes sense while the page shows the saved order.
+  const canDrag = isAdmin && sort === "custom";
 
   useEffect(() => {
     setFavorites(readJSON<string[]>(FAVORITES_KEY, []));
     setCollapsed(readJSON<Record<string, boolean>>(COLLAPSE_KEY, {}));
     const savedView = readJSON<ViewType>(VIEW_TYPE_KEY, "cards");
     setViewType(savedView === "list" ? "list" : "cards");
+    const savedSort = readJSON<unknown>(SORT_KEY, DEFAULT_SORT);
+    setSort(isSortMode(savedSort) ? savedSort : DEFAULT_SORT);
   }, []);
 
   const sensors = useSensors(
@@ -134,6 +163,12 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
   const changeViewType = (next: ViewType) => {
     setViewType(next);
     writeJSON(VIEW_TYPE_KEY, next);
+  };
+
+  const changeSort = (next: string) => {
+    if (!isSortMode(next)) return;
+    setSort(next);
+    writeJSON(SORT_KEY, next);
   };
 
   const toggleFavorite = (appId: string) => {
@@ -171,16 +206,21 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(app);
     }
-    for (const list of map.values()) {
-      list.sort((a, b) => a.display_order - b.display_order);
+    for (const [key, list] of map) {
+      map.set(key, sortItems(list, sort, clickStats.apps));
     }
     return map;
-  }, [filteredApps]);
+  }, [filteredApps, sort, clickStats]);
 
   const favoriteApps = useMemo(() => {
     const set = new Set(favorites);
-    return filteredApps.filter((a) => set.has(a.id));
-  }, [filteredApps, favorites]);
+    return sortItems(filteredApps.filter((a) => set.has(a.id)), sort, clickStats.apps);
+  }, [filteredApps, favorites, sort, clickStats]);
+
+  const sortedLinks = useMemo(
+    () => sortItems(workingLinks, sort, clickStats.links),
+    [workingLinks, sort, clickStats],
+  );
 
   const unsortedApps = appsBySection.get(null) || [];
   const isSearching = search.trim().length > 0;
@@ -273,10 +313,10 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
             />
             {!isCollapsed && (
               <div id={`section-${section.id}`}>
-                <DroppableSection id={section.id} enabled={isAdmin}>
+                <DroppableSection id={section.id} enabled={canDrag}>
                   {list.length === 0 ? (
                     <div className="text-xs text-muted-foreground border border-dashed rounded-md p-4 text-center">
-                      {isAdmin ? "Drop apps here" : "No apps in this section."}
+                      {canDrag ? "Drop apps here" : "No apps in this section."}
                     </div>
                   ) : (
                     <AppGrid
@@ -284,7 +324,8 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
                       viewType={viewType}
                       favorites={favorites}
                       onToggleFavorite={toggleFavorite}
-                      sortable={isAdmin}
+                      sortable={canDrag}
+                      showDragHandle={canDrag}
                     />
                   )}
                 </DroppableSection>
@@ -305,13 +346,14 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
           />
           {!effectiveCollapsed(UNSORTED_ID) && (
             <div id={`section-${UNSORTED_ID}`}>
-              <DroppableSection id={UNSORTED_ID} enabled={isAdmin}>
+              <DroppableSection id={UNSORTED_ID} enabled={canDrag}>
                 <AppGrid
                   apps={unsortedApps}
                   viewType={viewType}
                   favorites={favorites}
                   onToggleFavorite={toggleFavorite}
-                  sortable={isAdmin}
+                  sortable={canDrag}
+                  showDragHandle={canDrag}
                 />
               </DroppableSection>
             </div>
@@ -347,6 +389,26 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
             className="pl-10"
           />
         </div>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <ArrowUpDown className="h-4 w-4 text-muted-foreground" aria-hidden />
+          <Select value={sort} onValueChange={changeSort}>
+            <SelectTrigger size="sm" className="w-[150px]" aria-label="Sort by">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isAdmin && sort !== "custom" && (
+            <span className="hidden md:inline text-xs text-muted-foreground">
+              Pick Custom order to drag
+            </span>
+          )}
+        </div>
         <div
           className="inline-flex rounded-md border p-0.5 self-start sm:self-auto"
           role="group"
@@ -377,7 +439,7 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
         </div>
       </div>
 
-      {isAdmin ? (
+      {canDrag ? (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -397,6 +459,13 @@ export function SectionedAppGrid({ apps, sections, isAdmin }: SectionedAppGridPr
         </DndContext>
       ) : (
         content
+      )}
+
+      {sortedLinks.length > 0 && (
+        <>
+          <hr className="border-border" />
+          <ImportantLinks links={sortedLinks} sortable={canDrag} onReordered={setWorkingLinks} />
+        </>
       )}
     </div>
   );

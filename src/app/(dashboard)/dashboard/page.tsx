@@ -1,7 +1,6 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SectionedAppGrid } from "@/components/features/launcher/sectioned-app-grid";
-import { ImportantLinks } from "@/components/features/launcher/important-links";
 import { ViewAsUser } from "@/components/features/launcher/view-as-user";
 import type { PreviewUser } from "@/components/features/launcher/role-preview-context";
 import { allowedAppIds, personalGrants } from "@/lib/launcher/access";
@@ -15,6 +14,8 @@ import {
   permRoleFor,
 } from "@/lib/auth/permissions";
 import { viewAsTargets } from "@/lib/launcher/view-as";
+import { getClickStats } from "@/lib/launcher/click-stats";
+import type { ClickStats } from "@/components/features/launcher/sort";
 import { getOfficeNames } from "@/lib/org/lists";
 import {
   getCachedApps,
@@ -94,6 +95,7 @@ export default async function DashboardPage({
   let links: ImportantLink[] = [];
   let previewUsers: PreviewUser[] = [];
   let quote: MotivationalQuote | null = null;
+  let clickStats: ClickStats = { apps: {}, links: {} };
   // Who the page is for: the signed-in person, or whoever they're viewing as.
   let target: PreviewUser | null = null;
   // "Apps only" roles (migration 062): granted apps + the time clock only.
@@ -101,8 +103,11 @@ export default async function DashboardPage({
   try {
     // Everything below is cached (see src/lib/launcher/cache.ts). On a
     // cache hit this whole block is zero Supabase round-trips (the View as
-    // people list is cached for a minute).
-    const [allApps, accessRows, userAccessRows, sectionsData, linksData, people, quoteData, officeNames] =
+    // people list is cached for a minute). Click counts are per person and
+    // not cached; they're fetched for the View as id up front and redone
+    // below in the rare case that id isn't allowed.
+    const statsFor = viewAsUser || session.user.profileId;
+    const [allApps, accessRows, userAccessRows, sectionsData, linksData, people, quoteData, officeNames, statsGuess] =
       await Promise.all([
         getCachedApps(),
         getCachedRoleAppAccess(),
@@ -112,6 +117,7 @@ export default async function DashboardPage({
         loadPreviewUsers(session.user),
         getCachedActiveQuote(),
         getOfficeNames(),
+        getClickStats(statsFor),
       ]);
     previewUsers = people;
 
@@ -123,6 +129,8 @@ export default async function DashboardPage({
         viewAsUser !== session.user.profileId &&
         previewUsers.find((u) => u.id === viewAsUser)) ||
       null;
+    const effectiveId = target?.id ?? session.user.profileId;
+    clickStats = effectiveId === statsFor ? statsGuess : await getClickStats(effectiveId);
     const effectiveRole = target?.role ?? session.user.role;
     if (target) appsOnly = target.apps_only;
     const effectiveOffice = target ? target.office : session.user.office;
@@ -189,13 +197,9 @@ export default async function DashboardPage({
           apps={apps}
           sections={sections}
           isAdmin={canManageContent(target ? target.perm_role : session.user.permRole)}
+          links={links}
+          clickStats={clickStats}
         />
-        {links.length > 0 && (
-          <>
-            <hr className="border-border" />
-            <ImportantLinks links={links} />
-          </>
-        )}
       </TimeClockShell>
     </div>
   );
