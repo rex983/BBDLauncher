@@ -100,7 +100,8 @@ const HELP: Record<Metric | "valuePerLead", string> = {
     "The subtotal of your closed sales in these dates, from Order Process.",
   quotes:
     "New quotes assigned to you in the quoting app in these dates. Revising a quote doesn't count again.",
-  talk_hours: "Time on calls in these dates: Five9 plus GHL, in hours.",
+  talk_hours:
+    "Phone time in these dates, in hours: Five9 on call + Five9 Ready (logged in, waiting for a call) + GHL talk.",
   valuePerLead:
     "Business ÷ leads quoted. Leads quoted are the phone numbers you gave a new quote in these dates (web leads included), so it shows what each lead was worth to you.",
 };
