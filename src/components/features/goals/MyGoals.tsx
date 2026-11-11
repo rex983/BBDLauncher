@@ -411,6 +411,23 @@ function GoalForm({
       return setError(
         "Read-only while viewing as someone. Exit View as to make changes.",
       );
+    // Exactly last month's goals again: ask them to think it through first.
+    const i = data.history.findIndex((h) => h.month === data.month);
+    const last = i > 0 ? data.history[i - 1] : undefined;
+    const same =
+      !!last &&
+      data.goals.metrics.every(
+        (m) =>
+          last.goal[m.key] != null &&
+          Number(values[m.key]) === last.goal[m.key],
+      );
+    if (
+      same &&
+      !window.confirm(
+        `These are exactly your goals from ${monthName(last.month, { month: "long" })}. Goals are meant to be set fresh each month: what do you want to hit this month?\n\nOK to submit them anyway, Cancel to change them.`,
+      )
+    )
+      return;
     if (
       !window.confirm(
         "Submit your goals? After this only your manager or team lead can change them.",
@@ -588,6 +605,8 @@ export function MyGoalsCard({ asProfileId }: { asProfileId?: string }) {
     [setState],
   );
   if (state.status === "none") return null;
+  // Setting this month's goals (1st–5th, not yet submitted).
+  const setting = state.status === "ok" && state.data.goals.canSubmit && !date;
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
@@ -618,7 +637,7 @@ export function MyGoalsCard({ asProfileId }: { asProfileId?: string }) {
         )}
         {state.status === "ok" && (
           <>
-            {state.data.goals.canSubmit && !date ? (
+            {setting ? (
               <GoalForm
                 data={state.data}
                 onSaved={onSaved}
@@ -657,62 +676,75 @@ export function MyGoalsCard({ asProfileId }: { asProfileId?: string }) {
               </div>
             )}
 
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">
-                  Track record
-                  <span
-                    className={`ml-2 font-normal text-muted-foreground ${busy ? "animate-pulse" : ""}`}
-                  >
-                    {tab === "month"
-                      ? monthName(state.data.month, {
-                          month: "long",
-                          year: "numeric",
-                        })
-                      : (() => {
-                          const p = state.data.periods.find(
-                            (x) => x.key === tab,
-                          )!;
-                          return range(p.start, p.end);
-                        })()}
-                  </span>
-                </h3>
-                <PeriodNav
-                  periods={state.data.periods}
-                  tab={tab}
-                  setTab={setTab}
-                  date={date}
-                  setDate={setDate}
-                  shown={state.data.date}
-                  today={state.data.today}
-                  busy={busy}
-                />
-              </div>
-              <PeriodTable p={state.data.periods.find((p) => p.key === tab)!} />
+            {setting ? (
               <p className="text-xs text-muted-foreground">
-                Compared with the same days last month. A goal for a day or week
-                is its share of the month&apos;s. Value per lead is closed
-                business ÷ leads quoted.
+                Set this month&apos;s goals fresh: your track record and past
+                months show again once you submit.
               </p>
-            </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold">
+                      Track record
+                      <span
+                        className={`ml-2 font-normal text-muted-foreground ${busy ? "animate-pulse" : ""}`}
+                      >
+                        {tab === "month"
+                          ? monthName(state.data.month, {
+                              month: "long",
+                              year: "numeric",
+                            })
+                          : (() => {
+                              const p = state.data.periods.find(
+                                (x) => x.key === tab,
+                              )!;
+                              return range(p.start, p.end);
+                            })()}
+                      </span>
+                    </h3>
+                    <PeriodNav
+                      periods={state.data.periods}
+                      tab={tab}
+                      setTab={setTab}
+                      date={date}
+                      setDate={setDate}
+                      shown={state.data.date}
+                      today={state.data.today}
+                      busy={busy}
+                    />
+                  </div>
+                  <PeriodTable
+                    p={state.data.periods.find((p) => p.key === tab)!}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Compared with the same days last month. A goal for a day or
+                    week is its share of the month&apos;s. Value per lead is
+                    closed business ÷ leads quoted.
+                  </p>
+                </div>
 
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold">
-                Where you rank in your department
-              </h3>
-              <Ranks ranks={state.data.ranks} />
-            </div>
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold">
+                    Where you rank in your department
+                  </h3>
+                  <Ranks ranks={state.data.ranks} />
+                </div>
 
-            <History
-              rows={state.data.history}
-              selected={state.data.month}
-              onPick={(m) => {
-                setTab("month");
-                setDate(
-                  m === state.data.today.slice(0, 7) ? undefined : `${m}-01`,
-                );
-              }}
-            />
+                <History
+                  rows={state.data.history}
+                  selected={state.data.month}
+                  onPick={(m) => {
+                    setTab("month");
+                    setDate(
+                      m === state.data.today.slice(0, 7)
+                        ? undefined
+                        : `${m}-01`,
+                    );
+                  }}
+                />
+              </>
+            )}
           </>
         )}
       </CardContent>
@@ -726,7 +758,13 @@ export function MyGoalsCard({ asProfileId }: { asProfileId?: string }) {
  * (the check-in popup), instead of showing nothing. `asProfileId`: someone
  * else's, for an admin's View as (the API checks they may).
  */
-export function MyNumbersCompact({ showStatus = false, asProfileId }: { showStatus?: boolean; asProfileId?: string }) {
+export function MyNumbersCompact({
+  showStatus = false,
+  asProfileId,
+}: {
+  showStatus?: boolean;
+  asProfileId?: string;
+}) {
   const [state] = useMyGoals(asProfileId);
   if (state.status !== "ok") {
     if (!showStatus) return null;
