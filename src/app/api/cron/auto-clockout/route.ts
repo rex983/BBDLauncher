@@ -47,13 +47,13 @@ async function handle() {
   );
   if (recentErr) return NextResponse.json({ error: recentErr }, { status: 500 });
 
-  const latest = new Map<string, PunchEventType>();
+  const latest = new Map<string, { type: PunchEventType; at: Date }>();
   for (const row of today) {
-    if (!latest.has(row.profile_id)) latest.set(row.profile_id, row.event_type as PunchEventType);
+    if (!latest.has(row.profile_id)) latest.set(row.profile_id, { type: row.event_type as PunchEventType, at: new Date(row.occurred_at) });
   }
   const onClock: string[] = [];
-  for (const [profile_id, eventType] of latest) {
-    if (eventType !== "clock_out") onClock.push(profile_id);
+  for (const [profile_id, last] of latest) {
+    if (last.type !== "clock_out") onClock.push(profile_id);
   }
   if (onClock.length === 0) {
     return NextResponse.json({ ok: true, clocked_out: 0, ran_at: now.toISOString() });
@@ -108,7 +108,13 @@ async function handle() {
     if (!effectiveEnd) continue;
     if (now < effectiveEnd) continue;
 
-    toClockOut.push({ profile_id, occurred_at: effectiveEnd.toISOString() });
+    // Never before their latest punch: a clock-out stamped earlier than, say, a
+    // break started after the end time (or a clock-in a minute past it) leaves
+    // that punch as their latest, so every run added another clock-out, and
+    // a later clock-in stayed open until the nightly cron (hours of extra time).
+    const lastAt = latest.get(profile_id)!.at;
+    const at = effectiveEnd > lastAt ? effectiveEnd : new Date(lastAt.getTime() + 1000);
+    toClockOut.push({ profile_id, occurred_at: at.toISOString() });
   }
 
   let clockedOut = 0;
