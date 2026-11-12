@@ -144,8 +144,9 @@ export function SectionedAppGrid({ apps, sections, isAdmin, links, clickStats }:
     setWorkingLinks(links);
   }
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  // Dragging only makes sense while the page shows the saved order.
-  const canDrag = isAdmin && sort === "custom";
+  // Admins can drag in any sort. Off "Custom order" a drop starts from the
+  // order on screen, then the page switches to Custom order to show it.
+  const canDrag = isAdmin;
 
   useEffect(() => {
     setFavorites(readJSON<string[]>(FAVORITES_KEY, []));
@@ -226,6 +227,24 @@ export function SectionedAppGrid({ apps, sections, isAdmin, links, clickStats }:
   const isSearching = search.trim().length > 0;
   const effectiveCollapsed = (id: string) => (isSearching ? false : !!collapsed[id]);
 
+  // display_order rewritten to match the current sort, section by section.
+  const asShown = (list: LauncherApp[]) => {
+    const bySection = new Map<string | null, LauncherApp[]>();
+    for (const app of list) {
+      const key = app.section_id ?? null;
+      if (!bySection.has(key)) bySection.set(key, []);
+      bySection.get(key)!.push(app);
+    }
+    return [...bySection.values()].flatMap((group) =>
+      sortItems(group, sort, clickStats.apps).map((a, i) => ({ ...a, display_order: i })),
+    );
+  };
+
+  const handleLinksReordered = (next: ImportantLink[]) => {
+    setWorkingLinks(next);
+    if (sort !== "custom") changeSort("custom");
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDragId(String(event.active.id));
   };
@@ -241,7 +260,7 @@ export function SectionedAppGrid({ apps, sections, isAdmin, links, clickStats }:
     ]);
 
     const updates = computeReorderUpdates({
-      apps: workingApps,
+      apps: sort === "custom" ? workingApps : asShown(workingApps),
       activeId: String(active.id),
       overId: String(over.id),
       sectionContainerIds,
@@ -251,6 +270,7 @@ export function SectionedAppGrid({ apps, sections, isAdmin, links, clickStats }:
 
     const previous = workingApps;
     setWorkingApps((prev) => applyReorderUpdates(prev, updates));
+    if (sort !== "custom") changeSort("custom");
 
     try {
       const res = await fetch("/api/apps/reorder", {
@@ -403,11 +423,6 @@ export function SectionedAppGrid({ apps, sections, isAdmin, links, clickStats }:
               ))}
             </SelectContent>
           </Select>
-          {isAdmin && sort !== "custom" && (
-            <span className="hidden md:inline text-xs text-muted-foreground">
-              Pick Custom order to drag
-            </span>
-          )}
         </div>
         <div
           className="inline-flex rounded-md border p-0.5 self-start sm:self-auto"
@@ -464,7 +479,7 @@ export function SectionedAppGrid({ apps, sections, isAdmin, links, clickStats }:
       {sortedLinks.length > 0 && (
         <>
           <hr className="border-border" />
-          <ImportantLinks links={sortedLinks} sortable={canDrag} onReordered={setWorkingLinks} />
+          <ImportantLinks links={sortedLinks} sortable={canDrag} onReordered={handleLinksReordered} />
         </>
       )}
     </div>
