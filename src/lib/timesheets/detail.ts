@@ -143,13 +143,24 @@ export async function loadEmployeeWindow(
   const yearStart = `${yearInZone(now)}-01-01`;
 
   const [punchesRes, windowTimeOffRes, ytdTimeOffRes, schedulesRes, overtimeRes] = await Promise.all([
-    supabase
-      .from("time_punches")
-      .select("id, profile_id, event_type, occurred_at, source, note, edited_by")
-      .eq("profile_id", profileId)
-      .gte("occurred_at", startISO)
-      .lte("occurred_at", endISO)
-      .order("occurred_at", { ascending: true }),
+    // Paged: a long custom range could pass PostgREST's 1,000-row cap.
+    (async () => {
+      const rows: TimePunch[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase
+          .from("time_punches")
+          .select("id, profile_id, event_type, occurred_at, source, note, edited_by")
+          .eq("profile_id", profileId)
+          .gte("occurred_at", startISO)
+          .lte("occurred_at", endISO)
+          .order("occurred_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, from + 999);
+        if (error) return { data: null, error };
+        rows.push(...((data ?? []) as TimePunch[]));
+        if (!data || data.length < 1000) return { data: rows, error: null };
+      }
+    })(),
     // Time-off entries whose window overlaps the visible range — pending
     // and approved, whether entered by the employee or a manager.
     supabase

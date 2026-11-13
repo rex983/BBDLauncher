@@ -80,15 +80,25 @@ export async function GET(req: NextRequest) {
     // aggregate summary. Kept independent of the `weeks` selector
     // because "days off this year" is what managers ask about, not
     // "days off in the last 4 weeks".
-    supabase
-      .rpc("get_scoped_time_off", {
-        p_office: sqlScope.office,
-        p_department: sqlScope.department,
-        p_include_inactive: sqlScope.includeInactive,
-      })
-      .select("profile_id, type, start_date, end_date, full_day, hours")
-      .eq("status", "approved")
-      .gte("start_date", `${yearInZone(now)}-01-01`),
+    // Scoped through the profile join (as the punches are); paged, since
+    // PostgREST stops at 1,000 rows whatever .limit() asks for.
+    (async () => {
+      const rows: Record<string, unknown>[] = [];
+      for (let from = 0; ; from += 1000) {
+        let q = supabase
+          .from("time_off_requests")
+          .select("id, profile_id, type, start_date, end_date, full_day, hours, profile:profiles!profile_id!inner(id)")
+          .eq("status", "approved")
+          .gte("start_date", `${yearInZone(now)}-01-01`);
+        if (!sqlScope.includeInactive) q = q.eq("profile.is_active", true);
+        if (sqlScope.office) q = q.eq("profile.office", sqlScope.office);
+        if (sqlScope.department) q = q.eq("profile.department", sqlScope.department);
+        const { data, error } = await q.order("id").range(from, from + 999);
+        if (error) return { data: null, error };
+        rows.push(...(data ?? []));
+        if (!data || data.length < 1000) return { data: rows, error: null };
+      }
+    })(),
     // Work schedules so day counts follow each person's workdays.
     supabase
       .from("work_schedules")

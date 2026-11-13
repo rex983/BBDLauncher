@@ -36,26 +36,31 @@ export async function fetchPunchesPaged(
 }
 
 // Same as fetchPunchesPaged, but for everyone in a (office, department,
-// active) scope — the scope is applied in SQL (get_scoped_time_punches,
-// migration 047) instead of sending every profile id in the URL.
+// active) scope, filtered in SQL through the profile join instead of sending
+// every profile id in the URL. A plain table read: paging a set-returning
+// RPC (get_scoped_time_punches, migration 047) re-ran the whole function for
+// every 1,000-row page.
 export async function fetchScopedPunchesPaged(
   supabase: SupabaseClient,
   scope: { office: string | null; department: string | null; includeInactive: boolean },
   fromISO: string,
 ): Promise<{ data: TimePunch[]; error: string | null }> {
-  return pageAll((from) =>
-    supabase
-      .rpc("get_scoped_time_punches", {
-        p_since: fromISO,
-        p_office: scope.office,
-        p_department: scope.department,
-        p_include_inactive: scope.includeInactive,
-      })
-      .select(PUNCH_COLUMNS)
+  const res = await pageAll((from) => {
+    let q = supabase
+      .from("time_punches")
+      .select(`${PUNCH_COLUMNS}, profile:profiles!profile_id!inner(id)`)
+      .gte("occurred_at", fromISO);
+    if (!scope.includeInactive) q = q.eq("profile.is_active", true);
+    if (scope.office) q = q.eq("profile.office", scope.office);
+    if (scope.department) q = q.eq("profile.department", scope.department);
+    return q
       .order("occurred_at", { ascending: true })
       .order("id", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1),
-  );
+      .range(from, from + PAGE_SIZE - 1);
+  });
+  // Drop the join's placeholder column.
+  for (const p of res.data as (TimePunch & { profile?: unknown })[]) delete p.profile;
+  return res;
 }
 
 async function pageAll(

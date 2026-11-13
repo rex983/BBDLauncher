@@ -110,17 +110,28 @@ export async function GET(req: NextRequest) {
 
   // A request overlaps [from, to] iff start_date <= to AND end_date >= from.
   const [{ data: requests, error }, { data: schedRows, error: schedErr }] = await Promise.all([
-    supabase
-    .from("time_off_requests")
-    .select(
-      "id, profile_id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_at, created_at, attachments",
-    )
-    .in("profile_id", profileIds)
-    .in("status", statuses)
-    .lte("start_date", to)
-    .gte("end_date", from)
-    .order("start_date", { ascending: true })
-    .limit(MAX_REQUESTS),
+    // Paged up to MAX_REQUESTS: .limit() alone stops at PostgREST's 1,000 rows.
+    (async () => {
+      const rows: Record<string, unknown>[] = [];
+      for (let off = 0; off < MAX_REQUESTS; off += 1000) {
+        const { data, error } = await supabase
+          .from("time_off_requests")
+          .select(
+            "id, profile_id, type, subcategory, start_date, end_date, full_day, hours, status, reason, decided_note, decided_at, created_at, attachments",
+          )
+          .in("profile_id", profileIds)
+          .in("status", statuses)
+          .lte("start_date", to)
+          .gte("end_date", from)
+          .order("start_date", { ascending: true })
+          .order("id", { ascending: true })
+          .range(off, Math.min(off + 1000, MAX_REQUESTS) - 1);
+        if (error) return { data: null, error };
+        rows.push(...(data ?? []));
+        if (!data || data.length < 1000) break;
+      }
+      return { data: rows, error: null };
+    })(),
     // Work schedules so clients count days on each person's workdays.
     supabase.from("work_schedules").select("profile_id, weekday").in("profile_id", profileIds),
   ]);
