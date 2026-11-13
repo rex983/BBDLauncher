@@ -1,5 +1,6 @@
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { NextResponse } from "next/server";
+import { yearInZone } from "@/lib/timesheets/tz";
 
 // Distinct years that have at least one time-off request in the viewer's
 // scope. Used by the summary tab to build a year-picker dropdown instead
@@ -9,7 +10,7 @@ import { NextResponse } from "next/server";
 export async function GET() {
   const gate = await requireTimeDataAccess(null, "view");
   if (!gate.ok) {
-    return NextResponse.json({ years: [new Date().getFullYear()] });
+    return NextResponse.json({ years: [yearInZone()] });
   }
   const { supabase, scope } = gate;
 
@@ -27,7 +28,7 @@ export async function GET() {
     base.order("start_date", { ascending: false }).limit(1),
   ]);
 
-  const currentYear = new Date().getFullYear();
+  const currentYear = yearInZone();
   const years = new Set<number>([currentYear]);
   const minYear = minRow?.[0]?.start_date ? Number(minRow[0].start_date.slice(0, 4)) : null;
   const maxYear = maxRow?.[0]?.start_date ? Number(maxRow[0].start_date.slice(0, 4)) : null;

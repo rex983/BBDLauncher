@@ -1,5 +1,5 @@
 import { requireTimeDataAccessWithProfile } from "@/lib/auth/scope-check";
-import { startOfDayInZone } from "@/lib/timesheets/tz";
+import { startOfDayInZoneDaysAgo } from "@/lib/timesheets/tz";
 import {
   EMPLOYEE_COLUMNS,
   loadEmployeeWindow,
@@ -27,8 +27,7 @@ export async function GET(
   const to = url.searchParams.get("to");
 
   const now = new Date();
-  const defaultFrom = startOfDayInZone(now);
-  defaultFrom.setDate(defaultFrom.getDate() - 7);
+  const defaultFrom = startOfDayInZoneDaysAgo(now, 7);
 
   const res = await loadEmployeeWindow(
     gate.supabase,

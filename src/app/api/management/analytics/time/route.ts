@@ -9,6 +9,7 @@ import {
 } from "@/lib/timesheets/weekly";
 import { fetchScopedPunchesPaged } from "@/lib/timesheets/punches";
 import { workdaysFrom } from "@/lib/timesheets/schedule";
+import { yearInZone } from "@/lib/timesheets/tz";
 import {
   emptyTimeOffByType,
   requestDays,
@@ -87,7 +88,7 @@ export async function GET(req: NextRequest) {
       })
       .select("profile_id, type, start_date, end_date, full_day, hours")
       .eq("status", "approved")
-      .gte("start_date", `${now.getFullYear()}-01-01`),
+      .gte("start_date", `${yearInZone(now)}-01-01`),
     // Work schedules so day counts follow each person's workdays.
     supabase
       .from("work_schedules")

@@ -52,6 +52,9 @@ const mrkdwn = (text: string) => ({ type: "mrkdwn", text });
 
 // "*Label*\nvalue" — the standard labelled field.
 const field = (label: string, value: string | number) => `*${label}*\n${value}`;
+/** "Nov 12, 2026, 4:00 PM ET": Slack posts are written on the server (UTC). */
+const etStamp = (iso: string) =>
+  `${new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" })} ET`;
 
 const headerSection = (...lines: string[]): Block => ({
   type: "section",
@@ -268,7 +271,7 @@ export async function notifyIncidentPurged(raw: IncidentPurgedPayload): Promise<
       fields: [
         field("Employee", person(p.employeeName, p.employeeEmail)),
         field("Prior status", p.priorStatus),
-        field("Filed", new Date(p.createdAt).toLocaleString()),
+        field("Filed", etStamp(p.createdAt)),
         p.attachmentCount > 0 && field("Attachments purged", p.attachmentCount),
       ],
       note: "This record has been permanently deleted. The row, its audit-event log, and all attachment files are gone.",
@@ -351,7 +354,7 @@ export async function notifyMemoPurged(raw: MemoPurgedPayload): Promise<void> {
         field("Author", person(p.authorName, p.authorEmail)),
         field("Prior status", p.priorStatus),
         field("Recipients erased", p.recipientCount),
-        field("Created", new Date(p.createdAt).toLocaleString()),
+        field("Created", etStamp(p.createdAt)),
         p.attachmentCount > 0 && field("Attachments purged", p.attachmentCount),
       ],
       note: "This memo, its recipient roster, audit log, and attachment files are permanently gone.",

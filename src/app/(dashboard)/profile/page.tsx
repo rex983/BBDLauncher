@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { computeState, formatDuration, STATUS_LABEL, type TimePunch } from "@/lib/timesheets/state";
 import { aggregatePunches } from "@/lib/timesheets/weekly";
-import { startOfDayInZone, localDateInZone } from "@/lib/timesheets/tz";
+import { startOfDayInZone, startOfDayInZoneDaysAgo, localDateInZone, yearInZone } from "@/lib/timesheets/tz";
 import {
   buildWeekView,
   formatClockTime,
@@ -80,8 +80,8 @@ export default async function ProfilePage({
   // "today" here matches what the timesheet stack reports.
   const now = new Date();
   const startOfToday = startOfDayInZone(now);
-  const from14 = new Date(startOfToday); from14.setDate(from14.getDate() - 14);
-  const currentYear = now.getFullYear();
+  const from14 = startOfDayInZoneDaysAgo(now, 14);
+  const currentYear = yearInZone(now);
   const yearStart = `${currentYear}-01-01`;
 
   const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes, incidentsRes, memoRows] = await Promise.all([
@@ -207,7 +207,7 @@ export default async function ProfilePage({
         </div>
         {profile?.created_at && (
           <p className="text-xs text-muted-foreground mt-2">
-            Joined {fmtDate(profile.created_at.slice(0, 10))}
+            Joined {fmtDate(localDateInZone(new Date(profile.created_at)))}
           </p>
         )}
       </div>
@@ -331,8 +331,8 @@ export default async function ProfilePage({
                 {launches.map((l, i) => (
                   <TableRow key={i}>
                     <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                      {new Date(l.created_at).toLocaleString([], {
-                        month: "short", day: "numeric",
+                      {new Date(l.created_at).toLocaleString("en-US", {
+                        timeZone: "America/New_York", month: "short", day: "numeric",
                         hour: "numeric", minute: "2-digit",
                       })}
                     </TableCell>

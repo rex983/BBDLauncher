@@ -4,7 +4,7 @@ import {
   resolveTimeDataScope,
   type GateFailure,
 } from "@/lib/auth/scope-check";
-import { startOfDayInZone } from "@/lib/timesheets/tz";
+import { localDateInZone, startOfDayInZoneDaysAgo, yearInZone } from "@/lib/timesheets/tz";
 import {
   emptyTimeOffByType,
   requestDays,
@@ -138,9 +138,9 @@ export async function loadEmployeeWindow(
 ): Promise<{ ok: true; data: Omit<EmployeeDetailData, "profile"> } | GateFailure> {
   // Time-off runs on YYYY-MM-DD dates, so bucket the window on those dates
   // rather than the timestamps used for punches.
-  const windowFromDate = startISO.slice(0, 10);
-  const windowToDate = endISO.slice(0, 10);
-  const yearStart = `${now.getFullYear()}-01-01`;
+  const windowFromDate = localDateInZone(new Date(startISO));
+  const windowToDate = localDateInZone(new Date(endISO));
+  const yearStart = `${yearInZone(now)}-01-01`;
 
   const [punchesRes, windowTimeOffRes, ytdTimeOffRes, schedulesRes, overtimeRes] = await Promise.all([
     supabase
@@ -239,8 +239,7 @@ export async function getEmployeeDetail(
 
   // Window = start of the ET day `days` days back, through now.
   const now = new Date();
-  const from = startOfDayInZone(now);
-  from.setDate(from.getDate() - days);
+  const from = startOfDayInZoneDaysAgo(now, days);
 
   const res = await loadEmployeeWindow(supabase, profileId, from.toISOString(), now.toISOString(), {
     includeOvertime,

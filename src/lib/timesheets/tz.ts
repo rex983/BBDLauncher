@@ -83,6 +83,23 @@ export function startOfDayInZone(
   return scheduledTimeInZone(date, "00:00", zone);
 }
 
+// Midnight of the zone-local day `days` calendar days before the one containing
+// `date`. Steps the calendar, not 24-hour blocks: setDate() on a UTC server
+// keeps the UTC hour, so across a DST change it landed at 11 PM or 1 AM.
+export function startOfDayInZoneDaysAgo(
+  date: Date,
+  days: number,
+  zone: string = DEFAULT_ZONE,
+): Date {
+  const [y, m, d] = localDateInZone(date, zone).split("-").map(Number);
+  return scheduledTimeInZone(new Date(Date.UTC(y, m - 1, d - days, 12)), "00:00", zone);
+}
+
+// The zone-local calendar year containing `date` (not the server's, UTC on Vercel).
+export function yearInZone(date: Date = new Date(), zone: string = DEFAULT_ZONE): number {
+  return Number(localDateInZone(date, zone).slice(0, 4));
+}
+
 // Midnight of the zone-local Sunday that begins the week containing `date`.
 export function startOfWeekSundayInZone(
   date: Date,

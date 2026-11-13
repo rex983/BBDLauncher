@@ -113,7 +113,7 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {r.closed ? fmtDay(r.expires_at.slice(0, 10)) : left === 1 ? "1 day" : `${left} days`}
+                    {r.closed ? fmtDay(new Date(r.expires_at).toLocaleDateString("en-CA", { timeZone: "America/New_York" })) : left === 1 ? "1 day" : `${left} days`}
                   </TableCell>
                 </TableRow>
               );

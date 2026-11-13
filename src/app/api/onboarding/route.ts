@@ -17,7 +17,7 @@ const createSchema = z.object({
   first_name: z.string().trim().min(1, "required").max(100),
   last_name: z.string().trim().min(1, "required").max(100),
   hire_date: day,
-  dob: day.refine((d) => d < new Date().toISOString().slice(0, 10), "must be in the past"),
+  dob: day.refine((d) => d < new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }), "must be in the past"),
 });
 
 export async function GET() {
