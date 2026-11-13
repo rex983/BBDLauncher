@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // people on them; people on an item, their own (who's on an item is set on
 // the default checklist). Hand back the login: admins, while
 // the request is open (a new password replaces any earlier one and re-arms
-// the one-time view). The checklist stays open after the 7 days; training
+// the one-time view). The checklist stays open after the 30 days; training
 // steps come later.
 const uuid = z.string().uuid();
 const patchSchema = z.union([

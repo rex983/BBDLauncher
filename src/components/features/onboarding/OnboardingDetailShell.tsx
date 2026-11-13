@@ -127,8 +127,8 @@ export function OnboardingDetailShell({ initial, me }: { initial: OnboardingDeta
       {r.closed && canAssign && (
         <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
           {isFinished(r)
-            ? "This request closed 7 days after it was opened and every item is done. It's kept here for reference."
-            : "The login and documents closed 7 days after this was opened. The checklist stays open until every item is done."}
+            ? "This request closed 30 days after it was opened and every item is done. It's kept here for reference."
+            : "The login and documents closed 30 days after this was opened. The checklist stays open until every item is done."}
         </p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -428,16 +428,28 @@ function SetLoginForm({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="pr-10"
+              className="pr-20"
             />
-            <button
-              type="button"
-              onClick={() => setShow((s) => !s)}
-              className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
-              aria-label={show ? "Hide password" : "Show password"}
-            >
-              {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
+            <div className="absolute inset-y-0 right-0 flex items-center">
+              <button
+                type="button"
+                onClick={() => setShow((s) => !s)}
+                className="flex h-full items-center px-2 text-muted-foreground hover:text-foreground"
+                aria-label={show ? "Hide password" : "Show password"}
+              >
+                {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+              <button
+                type="button"
+                disabled={!password}
+                onClick={() => navigator.clipboard.writeText(password).catch(() => undefined)}
+                className="flex h-full items-center px-2 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                aria-label="Copy password"
+                title="Copy password"
+              >
+                <Copy className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -474,7 +486,6 @@ function RevealLogin({
   const [login, setLogin] = useState<{ account_email: string | null; password: string } | null>(null);
   const [show, setShow] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const reveal = async () => {
     if (!confirm("You can see the password once. After this it's deleted for good. Show it now?")) return;
@@ -503,19 +514,13 @@ function RevealLogin({
           <Button variant="ghost" size="icon" onClick={() => setShow((s) => !s)} aria-label={show ? "Hide password" : "Show password"}>
             {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Copy password"
-            onClick={async () => {
-              await navigator.clipboard.writeText(login.password).catch(() => undefined);
-              setCopied(true);
-            }}
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-          {copied && <span className="text-xs text-muted-foreground">Copied</span>}
+          <CopyButton text={login.password} label="Copy password" />
         </div>
+        <CopyButton
+          text={`Email: ${login.account_email ?? ""}\nPassword: ${login.password}`}
+          label="Copy email and password"
+          variant="outline"
+        />
         <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
           This password has been deleted. Copy it now — it won&apos;t be shown again once you leave this page.
         </p>
@@ -548,4 +553,24 @@ function RevealLogin({
   }
 
   return <p className="text-sm text-muted-foreground">The login hasn&apos;t been entered yet. You&apos;ll get a notification when it is.</p>;
+}
+
+// Copies text and says so for a moment.
+function CopyButton({ text, label, variant = "ghost" }: { text: string; label: string; variant?: "ghost" | "outline" }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      type="button"
+      variant={variant}
+      size="sm"
+      onClick={async () => {
+        await navigator.clipboard.writeText(text).catch(() => undefined);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+    >
+      <Copy className="mr-1.5 h-4 w-4" />
+      {copied ? "Copied" : label}
+    </Button>
+  );
 }

@@ -32,7 +32,7 @@ export type OnboardingRole = "admin" | "requester" | "assignee";
 
 // The login and documents close this long after a request was opened. The
 // checklist stays open until every item is done (training steps come later).
-export const ONBOARDING_OPEN_DAYS = 7;
+export const ONBOARDING_OPEN_DAYS = 30;
 
 export interface OnboardingDoc {
   name: string; // storage object name inside the request's folder
@@ -72,7 +72,7 @@ export function tasksDone(r: Pick<OnboardingRequest, "tasks">): number {
   return r.tasks.filter((t) => t.done_at).length;
 }
 
-// Done = past the 7 days and every checklist item ticked. Until then it
+// Done = past the 30 days and every checklist item ticked. Until then it
 // stays on the Open tab.
 export function isFinished(r: Pick<OnboardingRequest, "closed" | "tasks">): boolean {
   return r.closed && tasksDone(r) === r.tasks.length;

@@ -4,7 +4,7 @@ import { wipeClosedPasswords } from "@/lib/onboarding/service";
 
 export const maxDuration = 60;
 
-// Hourly: onboarding requests move to Closed 7 days after they were opened
+// Hourly: onboarding requests move to Closed 30 days after they were opened
 // and are kept. This only wipes a password nobody viewed once its request
 // has closed. (Path kept from when it deleted requests.)
 async function handle() {

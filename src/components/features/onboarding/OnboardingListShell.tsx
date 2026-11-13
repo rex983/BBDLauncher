@@ -38,7 +38,7 @@ export function OnboardingListShell({
   const [taggingOpen, setTaggingOpen] = useState(false);
   const [tab, setTab] = useState<"open" | "closed">("open");
   const { viewAsUser } = useRolePreview();
-  // Open until every checklist item is done, even past the 7 days (training
+  // Open until every checklist item is done, even past the 30 days (training
   // steps come later). Open: oldest first. Closed: most recent first.
   const openCount = initial.filter((r) => !isFinished(r)).length;
   const rows = initial

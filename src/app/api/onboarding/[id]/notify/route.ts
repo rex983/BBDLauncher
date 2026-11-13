@@ -5,7 +5,7 @@ import { getDetail, getRequest, notifyTask, requireOnboardingUser } from "@/lib/
 
 // "Notify on Slack" for one checklist item: admins and the manager who opened
 // the request. Tags the item's people in Slack and rings their bell. Works
-// after the 7 days too (training steps come later).
+// after the 30 days too (training steps come later).
 const bodySchema = z.object({ task_id: z.string().uuid() });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

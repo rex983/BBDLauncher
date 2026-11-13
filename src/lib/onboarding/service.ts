@@ -1,5 +1,5 @@
 // Server-side onboarding helpers: the permission gate, scoped reads, closing
-// requests after 7 days, and deleting one (with its documents and bells).
+// requests after 30 days, and deleting one (with its documents and bells).
 // See supabase/migrations/065_onboarding.sql for what is (not) kept.
 
 import { NextResponse } from "next/server";
@@ -173,7 +173,7 @@ export async function purgeRequest(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-// Requests close on their own 7 days after they were opened (reads compare
+// Requests close on their own 30 days after they were opened (reads compare
 // expires_at, so this needs no status flip). The one thing not kept is a
 // password nobody viewed: the hourly cron wipes it once the request closes.
 export async function wipeClosedPasswords(): Promise<number> {
@@ -221,7 +221,7 @@ export async function copyTemplateTo(requestId: string): Promise<void> {
 }
 
 // After any change to the default checklist, every request that isn't
-// finished (past 7 days with every item ticked) follows it:
+// finished (past 30 days with every item ticked) follows it:
 // missing tasks are added, order matches, and tasks taken off the list are
 // removed unless they were already ticked (those stay, at the end).
 // Tasks match by title. Who's on an item comes from the default checklist:
