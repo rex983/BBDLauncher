@@ -10,9 +10,11 @@ type Params = { params: Promise<{ taskId: string }> };
 const patchSchema = z.union([
   z.object({ title: z.string().trim().min(1, "required").max(200) }),
   z.object({ move: z.enum(["up", "down"]) }),
+  z.object({ assignee_ids: z.array(z.string().uuid()).max(20) }),
 ]);
 
-// Rename, or move one place up/down (positions are rewritten 0..n-1).
+// Rename, set who new requests start with on it, or move one place up/down
+// (positions are rewritten 0..n-1).
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await requireAdmin();
   if (session instanceof NextResponse) return session;
@@ -22,8 +24,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = parsed.data;
   const supabase = createAdminClient();
 
-  if ("title" in body) {
-    const { error } = await supabase.from("onboarding_template_tasks").update({ title: body.title }).eq("id", taskId);
+  if ("title" in body || "assignee_ids" in body) {
+    const { error } = await supabase
+      .from("onboarding_template_tasks")
+      .update("title" in body ? { title: body.title } : { assignee_ids: [...new Set(body.assignee_ids)] })
+      .eq("id", taskId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     await syncOpenRequests();
     return NextResponse.json(await getTemplate());

@@ -18,6 +18,7 @@ export type NotificationType =
   | "offboarding_opened"
   | "onboarding_opened"
   | "onboarding_ready"
+  | "onboarding_task"
   // 3 and 6 hours into a sales rep's shift (cron /api/cron/rep-checkins; popped up by CheckInPrompt)
   | "rep_checkin"
   | "generic";

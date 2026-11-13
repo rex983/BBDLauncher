@@ -14,7 +14,7 @@ import {
   type OnboardingDetail,
   type OnboardingDoc,
   type OnboardingRequest,
-  type OnboardingTask,
+  type OnboardingRole,
   type TemplateTask,
 } from "./types";
 
@@ -22,15 +22,26 @@ export const ONBOARDING_BUCKET = "onboarding-docs";
 const REFERENCE_TYPE = "onboarding_request";
 
 const COLUMNS =
-  "id, created_at, expires_at, created_by, created_by_name, first_name, last_name, hire_date, dob, account_email, password_cipher, password_set_at, password_viewed_at, tasks:onboarding_tasks(id, title, position, done_at)";
+  "id, created_at, expires_at, created_by, created_by_name, first_name, last_name, hire_date, dob, account_email, password_cipher, password_set_at, password_viewed_at, tasks:onboarding_tasks(id, title, position, done_at, assignee_ids, notified_at, notified_by_name)";
 
-type Row = Record<string, unknown> & { password_cipher: string | null };
+type TaskRow = { id: string; title: string; position: number; done_at: string | null; assignee_ids: string[] | null; notified_at: string | null; notified_by_name: string | null };
+type Row = Record<string, unknown> & { password_cipher: string | null; tasks: TaskRow[] | null };
 
-// The cipher never leaves the server; callers only learn whether one is waiting.
-function toRequest(row: Row): OnboardingRequest {
-  const tasks = ((row.tasks as (OnboardingTask & { position: number })[]) ?? [])
+// The cipher never leaves the server; callers only learn whether one is
+// waiting. People who are only on a checklist item get the name, hire date
+// and checklist: no date of birth, no login.
+function toRequest(row: Row, role: OnboardingRole, names: Map<string, string>): OnboardingRequest {
+  const tasks = [...(row.tasks ?? [])]
     .sort((a, b) => a.position - b.position)
-    .map(({ id, title, done_at }) => ({ id, title, done_at }));
+    .map((t) => ({
+      id: t.id,
+      title: t.title,
+      done_at: t.done_at,
+      assignees: (t.assignee_ids ?? []).map((id) => ({ id, name: names.get(id) ?? "Unknown user" })),
+      notified_at: t.notified_at,
+      notified_by_name: t.notified_by_name,
+    }));
+  const full = role !== "assignee";
   return {
     id: row.id as string,
     created_at: row.created_at as string,
@@ -40,22 +51,26 @@ function toRequest(row: Row): OnboardingRequest {
     first_name: row.first_name as string,
     last_name: row.last_name as string,
     hire_date: row.hire_date as string,
-    dob: row.dob as string,
+    dob: full ? (row.dob as string) : null,
     tasks,
-    account_email: (row.account_email as string) ?? null,
+    account_email: full ? ((row.account_email as string) ?? null) : null,
     closed: new Date(row.expires_at as string).getTime() <= Date.now(),
-    password_status: row.password_cipher
-      ? "waiting"
-      : row.password_viewed_at
-        ? "viewed"
-        : row.password_set_at
-          ? "expired"
-          : "none",
-    password_set_at: (row.password_set_at as string) ?? null,
-    password_viewed_at: (row.password_viewed_at as string) ?? null,
+    password_status: !full
+      ? "none"
+      : row.password_cipher
+        ? "waiting"
+        : row.password_viewed_at
+          ? "viewed"
+          : row.password_set_at
+            ? "expired"
+            : "none",
+    password_set_at: full ? ((row.password_set_at as string) ?? null) : null,
+    password_viewed_at: full ? ((row.password_viewed_at as string) ?? null) : null,
+    role,
   };
 }
 
+// Admins and managers: opening requests, the full view.
 export async function requireOnboardingUser(): Promise<Session | NextResponse> {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -65,25 +80,66 @@ export async function requireOnboardingUser(): Promise<Session | NextResponse> {
   return session;
 }
 
-// Admins see every request; managers only the ones they opened. Open and
-// closed alike: closed ones are kept for reference.
-function scoped(session: Session) {
-  let q = createAdminClient()
-    .from("onboarding_requests")
-    .select(COLUMNS);
-  if (!isAdmin(session.user.permRole)) q = q.eq("created_by", session.user.profileId);
-  return q;
+// Anyone signed in: what they can see is decided per request (scopedRows),
+// so someone put on a checklist item can open it and tick it.
+export async function requireOnboardingViewer(): Promise<Session | NextResponse> {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  return session;
+}
+
+// Requests with a checklist item this person is on.
+export async function assignedRequestIds(profileId: string): Promise<string[]> {
+  const { data, error } = await createAdminClient()
+    .from("onboarding_tasks")
+    .select("request_id")
+    .contains("assignee_ids", [profileId]);
+  if (error) throw new Error(error.message);
+  return [...new Set((data || []).map((t) => t.request_id as string))];
+}
+
+function roleFor(session: Session, row: Row): OnboardingRole {
+  if (isAdmin(session.user.permRole)) return "admin";
+  // A manager who lost manager rights still sees their own requests only as
+  // a checklist person would.
+  if (row.created_by === session.user.profileId && canUseOnboarding(session.user.permRole)) return "requester";
+  return "assignee";
+}
+
+async function namesFor(rows: Row[]): Promise<Map<string, string>> {
+  const ids = [...new Set(rows.flatMap((r) => (r.tasks ?? []).flatMap((t) => t.assignee_ids ?? [])))];
+  if (!ids.length) return new Map();
+  const { data } = await createAdminClient().from("profiles").select("id, email, full_name").in("id", ids);
+  return new Map((data || []).map((p) => [p.id as string, (p.full_name as string) || (p.email as string)]));
+}
+
+// Admins see every request; managers the ones they opened; anyone the ones
+// with a checklist item they're on. Open and closed alike.
+async function scopedRows(session: Session, id?: string): Promise<OnboardingRequest[]> {
+  let q = createAdminClient().from("onboarding_requests").select(COLUMNS);
+  if (id) q = q.eq("id", id);
+  if (!isAdmin(session.user.permRole)) {
+    const me = session.user.profileId;
+    const assigned = await assignedRequestIds(me);
+    const own = canUseOnboarding(session.user.permRole) ? [`created_by.eq.${me}`] : [];
+    const filters = [...own, ...(assigned.length ? [`id.in.(${assigned.join(",")})`] : [])];
+    if (!filters.length) return [];
+    q = q.or(filters.join(","));
+  }
+  const { data, error } = await q.order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  const rows = data as unknown as Row[];
+  const names = await namesFor(rows);
+  return rows.map((r) => toRequest(r, roleFor(session, r), names));
 }
 
 export async function listRequests(session: Session): Promise<OnboardingRequest[]> {
-  const { data, error } = await scoped(session).order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data as unknown as Row[]).map(toRequest);
+  return scopedRows(session);
 }
 
 export async function getRequest(session: Session, id: string): Promise<OnboardingRequest | null> {
-  const { data } = await scoped(session).eq("id", id).maybeSingle();
-  return data ? toRequest(data as unknown as Row) : null;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  return (await scopedRows(session, id))[0] ?? null;
 }
 
 // Stored as {uuid}-{safe name}; strip the uuid for display.
@@ -101,7 +157,7 @@ export async function listDocuments(id: string): Promise<OnboardingDoc[]> {
 export async function getDetail(session: Session, id: string): Promise<OnboardingDetail | null> {
   const req = await getRequest(session, id);
   if (!req) return null;
-  return { ...req, documents: await listDocuments(id) };
+  return { ...req, documents: req.role === "assignee" ? [] : await listDocuments(id) };
 }
 
 // "Delete now": the request, its documents and every bell about it.
@@ -141,11 +197,11 @@ export function closedError(r: Pick<OnboardingRequest, "closed">): NextResponse 
 export async function getTemplate(): Promise<TemplateTask[]> {
   const { data, error } = await createAdminClient()
     .from("onboarding_template_tasks")
-    .select("id, title")
+    .select("id, title, assignee_ids")
     .order("position")
     .order("created_at");
   if (error) throw new Error(error.message);
-  return data || [];
+  return (data || []) as TemplateTask[];
 }
 
 // A new request gets its own copy, so later edits never change it.
@@ -154,36 +210,41 @@ export async function copyTemplateTo(requestId: string): Promise<void> {
   if (!template.length) return;
   const { error } = await createAdminClient()
     .from("onboarding_tasks")
-    .insert(template.map((t, i) => ({ request_id: requestId, title: t.title, position: i })));
+    .insert(template.map((t, i) => ({ request_id: requestId, title: t.title, position: i, assignee_ids: t.assignee_ids })));
   if (error) throw new Error(error.message);
 }
 
 // After any change to the default checklist, every open request follows it:
 // missing tasks are added, order matches, and tasks taken off the list are
 // removed unless they were already ticked (those stay, at the end).
-// Tasks match by title.
+// Tasks match by title. An item nobody was put on and nobody was notified
+// about picks up the default checklist's people.
 export async function syncOpenRequests(): Promise<void> {
   const supabase = createAdminClient();
   const template = await getTemplate();
   const { data: open, error } = await supabase
     .from("onboarding_requests")
-    .select("id, tasks:onboarding_tasks(id, title, position, done_at)")
+    .select("id, tasks:onboarding_tasks(id, title, position, done_at, assignee_ids, notified_at)")
     .gt("expires_at", new Date().toISOString());
   if (error) throw new Error(error.message);
 
   const key = (title: string) => title.trim().toLowerCase();
-  const inserts: { request_id: string; title: string; position: number }[] = [];
+  const inserts: { request_id: string; title: string; position: number; assignee_ids: string[] }[] = [];
   const moves: { id: string; position: number }[] = [];
+  const assigns: { id: string; assignee_ids: string[] }[] = [];
   const deletes: string[] = [];
 
   for (const req of open || []) {
-    const tasks = [...((req.tasks as (OnboardingTask & { position: number })[]) ?? [])].sort((a, b) => a.position - b.position);
+    const tasks = [...((req.tasks as TaskRow[] | null) ?? [])].sort((a, b) => a.position - b.position);
     const used = new Set<string>();
     template.forEach((t, position) => {
       const match = tasks.find((x) => !used.has(x.id) && key(x.title) === key(t.title));
-      if (!match) return inserts.push({ request_id: req.id, title: t.title, position });
+      if (!match) return inserts.push({ request_id: req.id, title: t.title, position, assignee_ids: t.assignee_ids });
       used.add(match.id);
       if (match.position !== position) moves.push({ id: match.id, position });
+      if (!match.done_at && !match.notified_at && !match.assignee_ids?.length && t.assignee_ids.length) {
+        assigns.push({ id: match.id, assignee_ids: t.assignee_ids });
+      }
     });
     let extra = template.length;
     for (const x of tasks) {
@@ -205,9 +266,10 @@ export async function syncOpenRequests(): Promise<void> {
     const { error: e } = await supabase.from("onboarding_tasks").delete().in("id", deletes);
     if (e) throw new Error(e.message);
   }
-  const results = await Promise.all(
-    moves.map((m) => supabase.from("onboarding_tasks").update({ position: m.position }).eq("id", m.id)),
-  );
+  const results = await Promise.all([
+    ...moves.map((m) => supabase.from("onboarding_tasks").update({ position: m.position }).eq("id", m.id)),
+    ...assigns.map((a) => supabase.from("onboarding_tasks").update({ assignee_ids: a.assignee_ids }).eq("id", a.id)),
+  ]);
   const failed = results.find((r) => r.error);
   if (failed?.error) throw new Error(failed.error.message);
 }
@@ -239,26 +301,87 @@ async function taggedPeople(): Promise<Tagged[]> {
 }
 
 // Posts to SLACK_ONBOARDING_CHANNEL (falling back to the offboarding
-// channel) tagging the picked people, or DMs each of them when neither is
-// set. Name and hire date only: Slack keeps messages, so the DOB and
-// documents stay in the launcher, where they expire. Best-effort and
-// skipped without SLACK_BOT_TOKEN.
-async function notifySlack(r: OnboardingRequest, people: Tagged[]): Promise<void> {
+// channel) tagging the people, or DMs each of them when neither is set.
+// Name and hire date only: Slack keeps messages, so the DOB and documents
+// stay in the launcher. Returns why it failed, or null; "skipped" without
+// SLACK_BOT_TOKEN.
+async function postSlack(people: Tagged[], text: (tags: string) => string): Promise<string | null> {
   const token = process.env.SLACK_BOT_TOKEN;
-  if (!token || !people.length) return;
+  if (!token) return "skipped";
+  if (!people.length) return null;
   const ids = await Promise.all(people.map((p) => slackUserId(token, p.email)));
   const tags = people.map((p, i) => (ids[i] ? `<@${ids[i]}>` : `*${slackName(p.name || p.email)}*`)).join(" ");
-  const hire = new Date(r.hire_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  const text =
-    `${tags} *${slackName(r.created_by_name || "A manager")}* has submitted a new hire: ` +
-    `*${slackName(fullName(r))}*\nDate of hire: ${hire}\n<${LAUNCHER_URL}/onboarding/${r.id}|Open the checklist>`;
   const post = (channel: string) =>
-    slackApi("chat.postMessage", token, { channel, text, unfurl_links: false, unfurl_media: false });
+    slackApi("chat.postMessage", token, { channel, text: text(tags), unfurl_links: false, unfurl_media: false });
   const channel = process.env.SLACK_ONBOARDING_CHANNEL || process.env.SLACK_OFFBOARDING_CHANNEL;
   const results = channel
     ? [await post(channel)]
     : await Promise.all(ids.filter((id): id is string => !!id).map(post));
-  for (const res of results) if (!res.ok) console.error("[onboarding] slack post failed:", res.error);
+  const failed = results.find((res) => !res.ok);
+  if (failed) console.error("[onboarding] slack post failed:", failed.error);
+  return failed ? failed.error || "Slack error" : results.length ? null : "nobody on Slack";
+}
+
+const hireDay = (r: Pick<OnboardingRequest, "hire_date">) =>
+  new Date(r.hire_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const checklistLink = (r: Pick<OnboardingRequest, "id">) => `<${LAUNCHER_URL}/onboarding/${r.id}|Open the checklist>`;
+
+async function notifySlack(r: OnboardingRequest, people: Tagged[]): Promise<void> {
+  await postSlack(
+    people,
+    (tags) =>
+      `${tags} *${slackName(r.created_by_name || "A manager")}* has submitted a new hire: ` +
+      `*${slackName(fullName(r))}*
+Date of hire: ${hireDay(r)}
+${checklistLink(r)}`,
+  );
+}
+
+// "Notify on Slack" on one checklist item: tags its people in Slack, rings
+// their bell (not the presser's) and stamps notified_at. Returns the Slack
+// problem to show, or null when it went out.
+export async function notifyTask(
+  r: OnboardingRequest,
+  taskId: string,
+  actor: { profileId: string; name: string },
+): Promise<{ error: string } | { slack: string | null }> {
+  const task = r.tasks.find((t) => t.id === taskId);
+  if (!task) return { error: "Not found" };
+  if (!task.assignees.length) return { error: "Put someone on this item first." };
+  const { data } = await createAdminClient()
+    .from("profiles")
+    .select("id, email, name:full_name, is_active")
+    .in("id", task.assignees.map((a) => a.id));
+  const people = (data || []).filter((p) => p.is_active !== false) as Tagged[];
+  if (!people.length) return { error: "Nobody on this item is active." };
+
+  const [slack] = await Promise.all([
+    postSlack(
+      people,
+      (tags) =>
+        `${tags} you're up for new hire *${slackName(fullName(r))}* (hired ${hireDay(r)}): *${slackName(task.title)}*
+` +
+        `${checklistLink(r)} and tick it when it's done. — ${slackName(actor.name)}`,
+    ),
+    createNotifications(
+      people.map((p) => p.id).filter((id) => id !== actor.profileId),
+      {
+        type: "onboarding_task",
+        title: `${task.title}: ${fullName(r)}`,
+        body: `${actor.name} asked you to do this for a new hire.`,
+        href: `/onboarding/${r.id}`,
+        referenceType: REFERENCE_TYPE,
+        referenceId: r.id,
+      },
+    ),
+  ]);
+  const { error } = await createAdminClient()
+    .from("onboarding_tasks")
+    .update({ notified_at: new Date().toISOString(), notified_by_name: actor.name })
+    .eq("id", taskId)
+    .eq("request_id", r.id);
+  if (error) return { error: error.message };
+  return { slack };
 }
 
 // New request → Slack tag + bell for the picked people (the bell skips

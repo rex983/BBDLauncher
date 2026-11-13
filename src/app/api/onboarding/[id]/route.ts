@@ -2,7 +2,6 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { validationError } from "@/app/api/_lib/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isAdmin } from "@/lib/auth/permissions";
 import { encryptPassword } from "@/lib/onboarding/crypto";
 import {
   closedError,
@@ -11,43 +10,65 @@ import {
   notifyLoginReady,
   purgeRequest,
   requireOnboardingUser,
+  requireOnboardingViewer,
 } from "@/lib/onboarding/service";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const session = await requireOnboardingUser();
+  const session = await requireOnboardingViewer();
   if (session instanceof NextResponse) return session;
   const detail = await getDetail(session, (await params).id);
   if (!detail) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(detail);
 }
 
-// Admin only: tick a checklist task, or hand back the login. A new password
-// replaces any earlier one (and re-arms the one-time view).
+// Tick a checklist item: admins any; the manager who opened it, items with
+// people on them; people on an item, their own. Put people on an item:
+// admins and the manager who opened it. Hand back the login: admins, while
+// the request is open (a new password replaces any earlier one and re-arms
+// the one-time view). The checklist stays open after the 7 days; training
+// steps come later.
+const uuid = z.string().uuid();
 const patchSchema = z.union([
-  z.object({ task_id: z.string().uuid(), done: z.boolean() }),
+  z.object({ task_id: uuid, done: z.boolean() }),
+  z.object({ task_id: uuid, assignee_ids: z.array(uuid).max(20) }),
   z.object({
     account_email: z.string().trim().email().max(200),
     password: z.string().min(1, "required").max(200),
   }),
 ]);
 
+const forbidden = (error: string) => NextResponse.json({ error }, { status: 403 });
+
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const session = await requireOnboardingUser();
+  const session = await requireOnboardingViewer();
   if (session instanceof NextResponse) return session;
-  if (!isAdmin(session.user.permRole)) {
-    return NextResponse.json({ error: "Only admins work the checklist" }, { status: 403 });
-  }
   const { id } = await params;
   const current = await getRequest(session, id);
   if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const closed = closedError(current);
-  if (closed) return closed;
 
   const parsed = patchSchema.safeParse(await req.json());
   if (!parsed.success) return validationError(parsed.error);
   const body = parsed.data;
+
+  if ("task_id" in body) {
+    const task = current.tasks.find((t) => t.id === body.task_id);
+    if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const me = session.user.profileId;
+    if ("done" in body) {
+      const mine = task.assignees.some((a) => a.id === me);
+      const ok =
+        current.role === "admin" || mine || (current.role === "requester" && task.assignees.length > 0);
+      if (!ok) return forbidden("Only the people on this item (or an admin) can tick it");
+    } else if (current.role === "assignee") {
+      return forbidden("Only admins and the manager who asked can put people on items");
+    }
+  } else {
+    if (current.role !== "admin") return forbidden("Only admins enter the login");
+    const closed = closedError(current);
+    if (closed) return closed;
+  }
 
   const now = new Date().toISOString();
   const supabase = createAdminClient();
@@ -55,7 +76,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     "task_id" in body
       ? await supabase
           .from("onboarding_tasks")
-          .update({ done_at: body.done ? now : null })
+          .update("done" in body ? { done_at: body.done ? now : null } : { assignee_ids: [...new Set(body.assignee_ids)] })
           .eq("id", body.task_id)
           .eq("request_id", id)
       : await supabase
@@ -83,7 +104,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const session = await requireOnboardingUser();
   if (session instanceof NextResponse) return session;
   const { id } = await params;
-  if (!(await getRequest(session, id))) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const current = await getRequest(session, id);
+  if (!current || current.role === "assignee") return NextResponse.json({ error: "Not found" }, { status: 404 });
   await purgeRequest(id);
   return NextResponse.json({ ok: true });
 }

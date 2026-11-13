@@ -15,6 +15,7 @@ import { useRolePreview } from "@/components/features/launcher/role-preview-cont
 import { fmtDay } from "@/components/shared/format";
 import {
   daysLeft,
+  isFinished,
   ONBOARDING_OPEN_DAYS,
   onboardingStatus,
   tasksDone,
@@ -23,16 +24,25 @@ import {
 import { ACCEPT_DOCS, uploadDocuments } from "./upload";
 import { ChecklistDialog, TaggingDialog } from "./OnboardingSettings";
 
-export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingRequest[]; isAdmin: boolean }) {
+export function OnboardingListShell({
+  initial,
+  isAdmin,
+  canOpen,
+}: {
+  initial: OnboardingRequest[];
+  isAdmin: boolean;
+  canOpen: boolean; // managers and admins open requests; others only see items they're on
+}) {
   const [newOpen, setNewOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [taggingOpen, setTaggingOpen] = useState(false);
   const [tab, setTab] = useState<"open" | "closed">("open");
   const { viewAsUser } = useRolePreview();
-  const openCount = initial.filter((r) => !r.closed).length;
-  // Open: oldest first (closest to closing). Closed: most recent first.
+  // Open until every checklist item is done, even past the 7 days (training
+  // steps come later). Open: oldest first. Closed: most recent first.
+  const openCount = initial.filter((r) => !isFinished(r)).length;
   const rows = initial
-    .filter((r) => (tab === "open" ? !r.closed : r.closed))
+    .filter((r) => (tab === "open" ? !isFinished(r) : isFinished(r)))
     .sort((a, b) => (tab === "open" ? a.expires_at.localeCompare(b.expires_at) : b.expires_at.localeCompare(a.expires_at)));
 
   return (
@@ -41,10 +51,13 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
         <div>
           <h1 className="text-2xl font-bold">Onboarding</h1>
           <p className="text-muted-foreground">
-            {isAdmin
-              ? "New hires managers have asked for. Work the checklist, then enter their login."
-              : "Add a new hire and their accounts get set up. You'll get their login here."}{" "}
-            Requests move to Closed after {ONBOARDING_OPEN_DAYS} days and are kept there.
+            {!canOpen
+              ? "New hires with a checklist item you're on. Tick it when it's done."
+              : isAdmin
+                ? "New hires managers have asked for. Set up their accounts, then enter their login."
+                : "Add a new hire and their accounts get set up. You'll get their login here, then put people on the training steps and notify them."}{" "}
+            {canOpen &&
+              `The login and documents close after ${ONBOARDING_OPEN_DAYS} days; a request moves to Closed once every item is done.`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -60,10 +73,12 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
               </Button>
             </>
           )}
-          <Button onClick={() => setNewOpen(true)} disabled={!!viewAsUser}>
-            <UserPlus className="mr-2 h-4 w-4" />
-            New hire
-          </Button>
+          {canOpen && (
+            <Button onClick={() => setNewOpen(true)} disabled={!!viewAsUser}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              New hire
+            </Button>
+          )}
         </div>
       </div>
 
@@ -90,7 +105,7 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
               {isAdmin && <TableHead>Requested by</TableHead>}
               <TableHead>Checklist</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">{tab === "open" ? "Closes in" : "Closed"}</TableHead>
+              <TableHead className="text-right">{tab === "open" ? "Login closes" : "Closed"}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -113,7 +128,11 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {r.closed ? fmtDay(new Date(r.expires_at).toLocaleDateString("en-CA", { timeZone: "America/New_York" })) : left === 1 ? "1 day" : `${left} days`}
+                    {r.closed
+                      ? fmtDay(new Date(r.expires_at).toLocaleDateString("en-CA", { timeZone: "America/New_York" }))
+                      : left === 1
+                        ? "1 day"
+                        : `${left} days`}
                   </TableCell>
                 </TableRow>
               );
@@ -122,7 +141,7 @@ export function OnboardingListShell({ initial, isAdmin }: { initial: OnboardingR
         </Table>
       )}
 
-      <NewHireDialog open={newOpen} onOpenChange={setNewOpen} />
+      {canOpen && <NewHireDialog open={newOpen} onOpenChange={setNewOpen} />}
       {isAdmin && <ChecklistDialog open={checklistOpen} onOpenChange={setChecklistOpen} />}
       {isAdmin && <TaggingDialog open={taggingOpen} onOpenChange={setTaggingOpen} />}
     </div>

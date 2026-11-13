@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Copy, Download, Eye, EyeOff, Paperclip, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ArrowLeft, BellRing, Copy, Download, Eye, EyeOff, Paperclip, Trash2, UserPlus } from "lucide-react";
+import { PeoplePicker } from "@/components/features/admin/people-picker";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { fmtDay, fmtWhen } from "@/components/shared/format";
-import { daysLeft, onboardingStatus, type OnboardingDetail } from "@/lib/onboarding/types";
+import { daysLeft, isFinished, onboardingStatus, type OnboardingDetail, type OnboardingTask } from "@/lib/onboarding/types";
 import { ACCEPT_DOCS, uploadDocuments } from "./upload";
 
 async function readError(res: Response, fallback: string) {
@@ -19,15 +21,7 @@ async function readError(res: Response, fallback: string) {
   return typeof body.error === "string" ? body.error : fallback;
 }
 
-export function OnboardingDetailShell({
-  initial,
-  isAdmin,
-  isRequester,
-}: {
-  initial: OnboardingDetail;
-  isAdmin: boolean;
-  isRequester: boolean;
-}) {
+export function OnboardingDetailShell({ initial, me }: { initial: OnboardingDetail; me: string }) {
   const router = useRouter();
   const search = useSearchParams();
   const { viewAsUser } = useRolePreview();
@@ -36,6 +30,13 @@ export function OnboardingDetailShell({
   // Closed requests are kept for reference but can't be changed.
   const locked = readOnly || initial.closed;
   const [r, setR] = useState(initial);
+  const isAdmin = r.role === "admin";
+  // An admin can be the one who asked too (and then reveals the login).
+  const isRequester = r.role !== "assignee" && r.created_by === me;
+  // Admins and the manager who asked put people on items and notify them.
+  const canAssign = isAdmin || isRequester;
+  const [notice, setNotice] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState<OnboardingTask | null>(null);
   const [error, setError] = useState<string | null>(
     search.get("uploadFailed") ? "Some documents didn't upload. Add them again below." : null,
   );
@@ -62,6 +63,27 @@ export function OnboardingDetailShell({
   };
 
   const toggleTask = (taskId: string, done: boolean) => patch({ task_id: taskId, done });
+
+  // Who may tick an item (the server checks the same).
+  const canTick = (t: OnboardingTask) =>
+    isAdmin || t.assignees.some((a) => a.id === me) || (isRequester && t.assignees.length > 0);
+
+  const notify = async (t: OnboardingTask) => {
+    const names = t.assignees.map((a) => a.name).join(", ");
+    if (!confirm(`Tag ${names} in Slack to do "${t.title}" now?`)) return;
+    setError(null);
+    setNotice(null);
+    const res = await fetch(`/api/onboarding/${r.id}/notify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: t.id }),
+    });
+    if (!res.ok) return setError(await readError(res, "Couldn't notify"));
+    const body = await res.json();
+    if (body.detail) setR(body.detail);
+    if (body.slack_error) setError(`The bell went out, but Slack didn't: ${body.slack_error}`);
+    else setNotice(`Tagged ${names} in Slack.`);
+  };
 
   const remove = async () => {
     if (!confirm(`Delete the onboarding request for ${r.first_name} ${r.last_name} and its documents now?`)) return;
@@ -96,18 +118,23 @@ export function OnboardingDetailShell({
             {r.closed ? `closed ${fmtWhen(r.expires_at)}` : `closes in ${left === 1 ? "1 day" : `${left} days`}`}
           </p>
         </div>
-        <Button variant="outline" onClick={remove} disabled={busy || readOnly}>
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete now
-        </Button>
+        {canAssign && (
+          <Button variant="outline" onClick={remove} disabled={busy || readOnly}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete now
+          </Button>
+        )}
       </div>
 
-      {r.closed && (
+      {r.closed && canAssign && (
         <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-          This request closed 7 days after it was opened. It&apos;s kept here for reference and can&apos;t be changed.
+          {isFinished(r)
+            ? "This request closed 7 days after it was opened and every item is done. It's kept here for reference."
+            : "The login and documents closed 7 days after this was opened. The checklist stays open until every item is done."}
         </p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
 
       <Card>
         <CardHeader>
@@ -118,7 +145,7 @@ export function OnboardingDetailShell({
             <Field label="First name" value={r.first_name} />
             <Field label="Last name" value={r.last_name} />
             <Field label="Date of hire" value={fmtDay(r.hire_date)} />
-            <Field label="Date of birth" value={fmtDay(r.dob)} />
+            {r.dob && <Field label="Date of birth" value={fmtDay(r.dob)} />}
           </dl>
         </CardContent>
       </Card>
@@ -126,50 +153,163 @@ export function OnboardingDetailShell({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Checklist</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {r.tasks.length === 0 && <p className="text-sm text-muted-foreground">No tasks.</p>}
-          {r.tasks.map((t) => {
-            const doneAt = t.done_at;
-            return (
-              <label key={t.id} className="flex items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={!!doneAt}
-                  disabled={!isAdmin || locked}
-                  onChange={(e) => toggleTask(t.id, e.target.checked)}
-                />
-                <span className={doneAt ? "text-muted-foreground line-through" : ""}>{t.title}</span>
-                {doneAt && <span className="text-xs text-muted-foreground">{fmtWhen(doneAt)}</span>}
-              </label>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      <Documents r={r} readOnly={locked} onChange={refresh} onError={setError} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Login</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {r.closed ? (
-            <ClosedLogin r={r} />
-          ) : (
-            <>
-              {isAdmin && <SetLoginForm r={r} readOnly={readOnly} onSave={patch} />}
-              {isRequester ? (
-                <RevealLogin r={r} readOnly={readOnly} onRevealed={refresh} onError={setError} />
-              ) : (
-                !isAdmin && <p className="text-sm text-muted-foreground">Only the manager who asked can view the login.</p>
-              )}
-            </>
+          {canAssign && (
+            <p className="text-sm text-muted-foreground">
+              Items with nobody on them are the account setup. For later steps, put people on the item and press
+              Notify on Slack when it&apos;s their turn.
+            </p>
           )}
+        </CardHeader>
+        <CardContent className="divide-y">
+          {r.tasks.length === 0 && <p className="text-sm text-muted-foreground">No tasks.</p>}
+          {r.tasks.map((t) => (
+            <TaskRow
+              key={t.id}
+              t={t}
+              canTick={canTick(t) && !readOnly}
+              canAssign={canAssign && !readOnly}
+              onToggle={(done) => toggleTask(t.id, done)}
+              onAssign={() => setAssigning(t)}
+              onNotify={() => notify(t)}
+            />
+          ))}
         </CardContent>
       </Card>
+
+      {assigning && (
+        <AssignDialog
+          task={assigning}
+          onClose={() => setAssigning(null)}
+          onSave={async (ids) => {
+            if (await patch({ task_id: assigning.id, assignee_ids: ids })) setAssigning(null);
+          }}
+        />
+      )}
+
+      {canAssign && <Documents r={r} readOnly={locked} onChange={refresh} onError={setError} />}
+
+      {canAssign && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Login</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {r.closed ? (
+              <ClosedLogin r={r} />
+            ) : (
+              <>
+                {isAdmin && <SetLoginForm r={r} readOnly={readOnly} onSave={patch} />}
+                {isRequester && <RevealLogin r={r} readOnly={readOnly} onRevealed={refresh} onError={setError} />}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
+  );
+}
+
+// One checklist item: tick it, who's on it, and (for admins and the manager
+// who asked) put people on it and tag them in Slack.
+function TaskRow({
+  t,
+  canTick,
+  canAssign,
+  onToggle,
+  onAssign,
+  onNotify,
+}: {
+  t: OnboardingTask;
+  canTick: boolean;
+  canAssign: boolean;
+  onToggle: (done: boolean) => void;
+  onAssign: () => void;
+  onNotify: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+      <label className="flex min-w-0 flex-1 items-center gap-3">
+        <input
+          type="checkbox"
+          className="h-4 w-4 shrink-0"
+          checked={!!t.done_at}
+          disabled={!canTick}
+          onChange={(e) => onToggle(e.target.checked)}
+        />
+        <span className={t.done_at ? "text-muted-foreground line-through" : ""}>{t.title}</span>
+        {t.done_at && <span className="text-xs text-muted-foreground">{fmtWhen(t.done_at)}</span>}
+      </label>
+      <div className="flex flex-wrap items-center gap-1">
+        {t.assignees.map((a) => (
+          <Badge key={a.id} variant="secondary">
+            {a.name}
+          </Badge>
+        ))}
+        {t.notified_at && (
+          <span
+            className="text-xs text-muted-foreground"
+            title={t.notified_by_name ? `by ${t.notified_by_name}` : undefined}
+          >
+            notified {fmtWhen(t.notified_at)}
+          </span>
+        )}
+        {canAssign && (
+          <>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onAssign}>
+              <UserPlus className="mr-1 h-3.5 w-3.5" />
+              {t.assignees.length ? "Change" : "Assign"}
+            </Button>
+            {t.assignees.length > 0 && !t.done_at && (
+              <Button variant="outline" size="sm" className="h-7 px-2" onClick={onNotify}>
+                <BellRing className="mr-1 h-3.5 w-3.5" />
+                {t.notified_at ? "Notify again" : "Notify on Slack"}
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AssignDialog({
+  task,
+  onClose,
+  onSave,
+}: {
+  task: OnboardingTask;
+  onClose: () => void;
+  onSave: (ids: string[]) => Promise<void>;
+}) {
+  const [ids, setIds] = useState(task.assignees.map((a) => a.id));
+  const [saving, setSaving] = useState(false);
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{task.title}</DialogTitle>
+          <DialogDescription>
+            Who does this? Saving doesn&apos;t tell them. Press Notify on Slack when it&apos;s their turn.
+          </DialogDescription>
+        </DialogHeader>
+        <PeoplePicker value={ids} onChange={setIds} />
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              await onSave(ids);
+              setSaving(false);
+            }}
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (session instanceof NextResponse) return session;
   const { id } = await params;
   const current = await getRequest(session, id);
-  if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!current || current.role === "assignee") return NextResponse.json({ error: "Not found" }, { status: 404 });
   const closed = closedError(current);
   if (closed) return closed;
 

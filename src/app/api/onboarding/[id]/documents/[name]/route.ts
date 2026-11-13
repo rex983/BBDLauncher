@@ -13,7 +13,7 @@ async function resolve(params: Params["params"]) {
   const { id, name } = await params;
   if (!SAFE.test(name)) return NextResponse.json({ error: "Invalid file" }, { status: 400 });
   const request = await getRequest(session, id);
-  if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!request || request.role === "assignee") return NextResponse.json({ error: "Not found" }, { status: 404 });
   return { path: `${id}/${name}`, filename: name.slice(37), request };
 }
 

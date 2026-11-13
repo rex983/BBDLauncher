@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,6 +20,8 @@ export function ChecklistDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The item whose default people are being picked.
+  const [picking, setPicking] = useState<TemplateTask | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -54,7 +56,11 @@ export function ChecklistDialog({ open, onOpenChange }: { open: boolean; onOpenC
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Default checklist</DialogTitle>
-          <DialogDescription>Every new hire gets these tasks, including requests already open. Removing a task keeps it on requests where it&apos;s already ticked.</DialogDescription>
+          <DialogDescription>
+            Every new hire gets these tasks, including requests already open. Removing a task keeps it on requests
+            where it&apos;s already ticked. People on a task are who new requests start with on it; they&apos;re only
+            told when someone presses Notify on Slack.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={add} className="flex gap-2">
@@ -79,7 +85,24 @@ export function ChecklistDialog({ open, onOpenChange }: { open: boolean; onOpenC
           <ul className="divide-y rounded-md border text-sm">
             {tasks.map((t, i) => (
               <li key={t.id} className="flex items-center gap-1 py-1 pl-3 pr-1">
-                <span className="flex-1 truncate">{t.title}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{t.title}</span>
+                  {t.assignee_ids.length > 0 && (
+                    <span className="block text-xs text-muted-foreground">
+                      {t.assignee_ids.length === 1 ? "1 person" : `${t.assignee_ids.length} people`}
+                    </span>
+                  )}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  disabled={busy}
+                  onClick={() => setPicking(t)}
+                  aria-label={`People on ${t.title}`}
+                >
+                  <UserPlus className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -113,6 +136,30 @@ export function ChecklistDialog({ open, onOpenChange }: { open: boolean; onOpenC
               </li>
             ))}
           </ul>
+        )}
+        {picking && (
+          <div className="space-y-2 rounded-md border p-3">
+            <p className="text-sm font-medium">People on &ldquo;{picking.title}&rdquo;</p>
+            <PeoplePicker value={picking.assignee_ids} onChange={(ids) => setPicking({ ...picking, assignee_ids: ids })} />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPicking(null)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={async () => {
+                  const ok = await send(`/api/onboarding/template/${picking.id}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ assignee_ids: picking.assignee_ids }),
+                  });
+                  if (ok) setPicking(null);
+                }}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
         )}
         {error && <p className="text-sm text-destructive">{error}</p>}
       </DialogContent>
@@ -155,7 +202,8 @@ export function TaggingDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         <DialogHeader>
           <DialogTitle>Who gets tagged</DialogTitle>
           <DialogDescription>
-            When a manager submits a new hire, these people are tagged in Slack and get a bell notification.
+            When a manager submits a new hire, these people are tagged in Slack and get a bell notification
+            to create the profiles. Later steps are tagged from each checklist item instead.
             Nobody picked: every admin gets the bell and Slack is skipped.
           </DialogDescription>
         </DialogHeader>
