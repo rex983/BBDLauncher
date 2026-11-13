@@ -22,6 +22,7 @@ export interface TemplateTask {
   id: string;
   title: string;
   assignee_ids: string[];
+  assignees: Person[];
 }
 
 // How the viewer relates to a request: admins and the manager who opened it

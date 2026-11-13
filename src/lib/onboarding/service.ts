@@ -201,7 +201,13 @@ export async function getTemplate(): Promise<TemplateTask[]> {
     .order("position")
     .order("created_at");
   if (error) throw new Error(error.message);
-  return (data || []) as TemplateTask[];
+  const rows = (data || []) as { id: string; title: string; assignee_ids: string[] }[];
+  const ids = [...new Set(rows.flatMap((t) => t.assignee_ids))];
+  const { data: people } = ids.length
+    ? await createAdminClient().from("profiles").select("id, email, full_name").in("id", ids)
+    : { data: [] };
+  const names = new Map((people || []).map((p) => [p.id as string, (p.full_name as string) || (p.email as string)]));
+  return rows.map((t) => ({ ...t, assignees: t.assignee_ids.map((id) => ({ id, name: names.get(id) ?? "Unknown user" })) }));
 }
 
 // A new request gets its own copy, so later edits never change it.
@@ -214,19 +220,20 @@ export async function copyTemplateTo(requestId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-// After any change to the default checklist, every open request follows it:
+// After any change to the default checklist, every request that isn't
+// finished (past 7 days with every item ticked) follows it:
 // missing tasks are added, order matches, and tasks taken off the list are
 // removed unless they were already ticked (those stay, at the end).
-// Tasks match by title. An item nobody was put on and nobody was notified
-// about picks up the default checklist's people.
+// Tasks match by title. Who's on an item comes from the default checklist:
+// items not yet done follow it.
 export async function syncOpenRequests(): Promise<void> {
   const supabase = createAdminClient();
   const template = await getTemplate();
   const { data: open, error } = await supabase
     .from("onboarding_requests")
-    .select("id, tasks:onboarding_tasks(id, title, position, done_at, assignee_ids, notified_at)")
-    .gt("expires_at", new Date().toISOString());
+    .select("id, expires_at, tasks:onboarding_tasks(id, title, position, done_at, assignee_ids, notified_at)");
   if (error) throw new Error(error.message);
+  const now = Date.now();
 
   const key = (title: string) => title.trim().toLowerCase();
   const inserts: { request_id: string; title: string; position: number; assignee_ids: string[] }[] = [];
@@ -236,15 +243,16 @@ export async function syncOpenRequests(): Promise<void> {
 
   for (const req of open || []) {
     const tasks = [...((req.tasks as TaskRow[] | null) ?? [])].sort((a, b) => a.position - b.position);
+    if (new Date(req.expires_at).getTime() <= now && tasks.every((x) => x.done_at)) continue;
     const used = new Set<string>();
     template.forEach((t, position) => {
       const match = tasks.find((x) => !used.has(x.id) && key(x.title) === key(t.title));
       if (!match) return inserts.push({ request_id: req.id, title: t.title, position, assignee_ids: t.assignee_ids });
       used.add(match.id);
       if (match.position !== position) moves.push({ id: match.id, position });
-      if (!match.done_at && !match.notified_at && !match.assignee_ids?.length && t.assignee_ids.length) {
-        assigns.push({ id: match.id, assignee_ids: t.assignee_ids });
-      }
+      const had = match.assignee_ids ?? [];
+      const same = had.length === t.assignee_ids.length && had.every((id) => t.assignee_ids.includes(id));
+      if (!match.done_at && !same) assigns.push({ id: match.id, assignee_ids: t.assignee_ids });
     });
     let extra = template.length;
     for (const x of tasks) {

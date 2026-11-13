@@ -8,9 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, BellRing, Copy, Download, Eye, EyeOff, Paperclip, Trash2, UserPlus } from "lucide-react";
-import { PeoplePicker } from "@/components/features/admin/people-picker";
+import { ArrowLeft, BellRing, Copy, Download, Eye, EyeOff, Paperclip, Trash2 } from "lucide-react";
 import { useRolePreview } from "@/components/features/launcher/role-preview-context";
 import { fmtDay, fmtWhen } from "@/components/shared/format";
 import { daysLeft, isFinished, onboardingStatus, type OnboardingDetail, type OnboardingTask } from "@/lib/onboarding/types";
@@ -33,10 +31,10 @@ export function OnboardingDetailShell({ initial, me }: { initial: OnboardingDeta
   const isAdmin = r.role === "admin";
   // An admin can be the one who asked too (and then reveals the login).
   const isRequester = r.role !== "assignee" && r.created_by === me;
-  // Admins and the manager who asked put people on items and notify them.
+  // Admins and the manager who asked notify the people on items (who's on
+  // an item is set on the default checklist).
   const canAssign = isAdmin || isRequester;
   const [notice, setNotice] = useState<string | null>(null);
-  const [assigning, setAssigning] = useState<OnboardingTask | null>(null);
   const [error, setError] = useState<string | null>(
     search.get("uploadFailed") ? "Some documents didn't upload. Add them again below." : null,
   );
@@ -155,8 +153,8 @@ export function OnboardingDetailShell({ initial, me }: { initial: OnboardingDeta
           <CardTitle className="text-base">Checklist</CardTitle>
           {canAssign && (
             <p className="text-sm text-muted-foreground">
-              Items with nobody on them are the account setup. For later steps, put people on the item and press
-              Notify on Slack when it&apos;s their turn.
+              Items with nobody on them are the account setup. When it&apos;s time for a later step, press Notify on
+              Slack to tag the people on it. Who&apos;s on each item is set in Default checklist.
             </p>
           )}
         </CardHeader>
@@ -167,24 +165,13 @@ export function OnboardingDetailShell({ initial, me }: { initial: OnboardingDeta
               key={t.id}
               t={t}
               canTick={canTick(t) && !readOnly}
-              canAssign={canAssign && !readOnly}
+              canNotify={canAssign && !readOnly}
               onToggle={(done) => toggleTask(t.id, done)}
-              onAssign={() => setAssigning(t)}
               onNotify={() => notify(t)}
             />
           ))}
         </CardContent>
       </Card>
-
-      {assigning && (
-        <AssignDialog
-          task={assigning}
-          onClose={() => setAssigning(null)}
-          onSave={async (ids) => {
-            if (await patch({ task_id: assigning.id, assignee_ids: ids })) setAssigning(null);
-          }}
-        />
-      )}
 
       {canAssign && <Documents r={r} readOnly={locked} onChange={refresh} onError={setError} />}
 
@@ -210,20 +197,18 @@ export function OnboardingDetailShell({ initial, me }: { initial: OnboardingDeta
 }
 
 // One checklist item: tick it, who's on it, and (for admins and the manager
-// who asked) put people on it and tag them in Slack.
+// who asked) tag them in Slack.
 function TaskRow({
   t,
   canTick,
-  canAssign,
+  canNotify,
   onToggle,
-  onAssign,
   onNotify,
 }: {
   t: OnboardingTask;
   canTick: boolean;
-  canAssign: boolean;
+  canNotify: boolean;
   onToggle: (done: boolean) => void;
-  onAssign: () => void;
   onNotify: () => void;
 }) {
   return (
@@ -253,63 +238,14 @@ function TaskRow({
             notified {fmtWhen(t.notified_at)}
           </span>
         )}
-        {canAssign && (
-          <>
-            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onAssign}>
-              <UserPlus className="mr-1 h-3.5 w-3.5" />
-              {t.assignees.length ? "Change" : "Assign"}
-            </Button>
-            {t.assignees.length > 0 && !t.done_at && (
-              <Button variant="outline" size="sm" className="h-7 px-2" onClick={onNotify}>
-                <BellRing className="mr-1 h-3.5 w-3.5" />
-                {t.notified_at ? "Notify again" : "Notify on Slack"}
-              </Button>
-            )}
-          </>
+        {canNotify && t.assignees.length > 0 && !t.done_at && (
+          <Button variant="outline" size="sm" className="h-7 px-2" onClick={onNotify}>
+            <BellRing className="mr-1 h-3.5 w-3.5" />
+            {t.notified_at ? "Notify again" : "Notify on Slack"}
+          </Button>
         )}
       </div>
     </div>
-  );
-}
-
-function AssignDialog({
-  task,
-  onClose,
-  onSave,
-}: {
-  task: OnboardingTask;
-  onClose: () => void;
-  onSave: (ids: string[]) => Promise<void>;
-}) {
-  const [ids, setIds] = useState(task.assignees.map((a) => a.id));
-  const [saving, setSaving] = useState(false);
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{task.title}</DialogTitle>
-          <DialogDescription>
-            Who does this? Saving doesn&apos;t tell them. Press Notify on Slack when it&apos;s their turn.
-          </DialogDescription>
-        </DialogHeader>
-        <PeoplePicker value={ids} onChange={setIds} />
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            disabled={saving}
-            onClick={async () => {
-              setSaving(true);
-              await onSave(ids);
-              setSaving(false);
-            }}
-          >
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }
 

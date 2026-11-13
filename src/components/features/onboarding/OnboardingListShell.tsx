@@ -55,7 +55,7 @@ export function OnboardingListShell({
               ? "New hires with a checklist item you're on. Tick it when it's done."
               : isAdmin
                 ? "New hires managers have asked for. Set up their accounts, then enter their login."
-                : "Add a new hire and their accounts get set up. You'll get their login here, then put people on the training steps and notify them."}{" "}
+                : "Add a new hire and their accounts get set up. You'll get their login here, then notify people on the training steps when it's their turn."}{" "}
             {canOpen &&
               `The login and documents close after ${ONBOARDING_OPEN_DAYS} days; a request moves to Closed once every item is done.`}
           </p>
@@ -69,7 +69,7 @@ export function OnboardingListShell({
               </Button>
               <Button variant="outline" onClick={() => setChecklistOpen(true)} disabled={!!viewAsUser}>
                 <ListPlus className="mr-2 h-4 w-4" />
-                Add task
+                Default checklist
               </Button>
             </>
           )}

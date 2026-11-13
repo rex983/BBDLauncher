@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PeoplePicker } from "@/components/features/admin/people-picker";
@@ -53,13 +54,13 @@ export function ChecklistDialog({ open, onOpenChange }: { open: boolean; onOpenC
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Default checklist</DialogTitle>
           <DialogDescription>
             Every new hire gets these tasks, including requests already open. Removing a task keeps it on requests
-            where it&apos;s already ticked. People on a task are who new requests start with on it; they&apos;re only
-            told when someone presses Notify on Slack.
+            where it&apos;s already ticked. Assign who does each task: it applies to every new hire whose task
+            isn&apos;t done yet. They&apos;re told when the manager presses Notify on Slack on the new hire.
           </DialogDescription>
         </DialogHeader>
 
@@ -84,82 +85,88 @@ export function ChecklistDialog({ open, onOpenChange }: { open: boolean; onOpenC
         ) : (
           <ul className="divide-y rounded-md border text-sm">
             {tasks.map((t, i) => (
-              <li key={t.id} className="flex items-center gap-1 py-1 pl-3 pr-1">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{t.title}</span>
-                  {t.assignee_ids.length > 0 && (
-                    <span className="block text-xs text-muted-foreground">
-                      {t.assignee_ids.length === 1 ? "1 person" : `${t.assignee_ids.length} people`}
-                    </span>
-                  )}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  disabled={busy}
-                  onClick={() => setPicking(t)}
-                  aria-label={`People on ${t.title}`}
-                >
-                  <UserPlus className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  disabled={busy || i === 0}
-                  onClick={() => send(`/api/onboarding/template/${t.id}`, { method: "PATCH", body: JSON.stringify({ move: "up" }) })}
-                  aria-label={`Move ${t.title} up`}
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  disabled={busy || i === tasks.length - 1}
-                  onClick={() => send(`/api/onboarding/template/${t.id}`, { method: "PATCH", body: JSON.stringify({ move: "down" }) })}
-                  aria-label={`Move ${t.title} down`}
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  disabled={busy}
-                  onClick={() => send(`/api/onboarding/template/${t.id}`, { method: "DELETE" })}
-                  aria-label={`Remove ${t.title}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+              <li key={t.id} className="py-1 pl-3 pr-1">
+                <div className="flex items-center gap-1">
+                  <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    disabled={busy}
+                    onClick={() => setPicking(picking?.id === t.id ? null : t)}
+                  >
+                    <UserPlus className="mr-1 h-3.5 w-3.5" />
+                    {t.assignees.length ? "Change" : "Assign"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    disabled={busy || i === 0}
+                    onClick={() => send(`/api/onboarding/template/${t.id}`, { method: "PATCH", body: JSON.stringify({ move: "up" }) })}
+                    aria-label={`Move ${t.title} up`}
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    disabled={busy || i === tasks.length - 1}
+                    onClick={() => send(`/api/onboarding/template/${t.id}`, { method: "PATCH", body: JSON.stringify({ move: "down" }) })}
+                    aria-label={`Move ${t.title} down`}
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    disabled={busy}
+                    onClick={() => send(`/api/onboarding/template/${t.id}`, { method: "DELETE" })}
+                    aria-label={`Remove ${t.title}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+                {t.assignees.length > 0 && picking?.id !== t.id && (
+                  <div className="flex flex-wrap gap-1 pb-1">
+                    {t.assignees.map((a) => (
+                      <Badge key={a.id} variant="secondary">
+                        {a.name}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {picking?.id === t.id && (
+                  <div className="space-y-2 py-2 pr-2">
+                    <PeoplePicker
+                      value={picking.assignee_ids}
+                      onChange={(ids) => setPicking({ ...picking, assignee_ids: ids })}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setPicking(null)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={busy}
+                        onClick={async () => {
+                          const ok = await send(`/api/onboarding/template/${picking.id}`, {
+                            method: "PATCH",
+                            body: JSON.stringify({ assignee_ids: picking.assignee_ids }),
+                          });
+                          if (ok) setPicking(null);
+                        }}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
-        )}
-        {picking && (
-          <div className="space-y-2 rounded-md border p-3">
-            <p className="text-sm font-medium">People on &ldquo;{picking.title}&rdquo;</p>
-            <PeoplePicker value={picking.assignee_ids} onChange={(ids) => setPicking({ ...picking, assignee_ids: ids })} />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setPicking(null)}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                disabled={busy}
-                onClick={async () => {
-                  const ok = await send(`/api/onboarding/template/${picking.id}`, {
-                    method: "PATCH",
-                    body: JSON.stringify({ assignee_ids: picking.assignee_ids }),
-                  });
-                  if (ok) setPicking(null);
-                }}
-              >
-                Save
-              </Button>
-            </div>
-          </div>
         )}
         {error && <p className="text-sm text-destructive">{error}</p>}
       </DialogContent>

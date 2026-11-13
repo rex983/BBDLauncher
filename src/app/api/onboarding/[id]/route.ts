@@ -24,15 +24,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 // Tick a checklist item: admins any; the manager who opened it, items with
-// people on them; people on an item, their own. Put people on an item:
-// admins and the manager who opened it. Hand back the login: admins, while
+// people on them; people on an item, their own (who's on an item is set on
+// the default checklist). Hand back the login: admins, while
 // the request is open (a new password replaces any earlier one and re-arms
 // the one-time view). The checklist stays open after the 7 days; training
 // steps come later.
 const uuid = z.string().uuid();
 const patchSchema = z.union([
   z.object({ task_id: uuid, done: z.boolean() }),
-  z.object({ task_id: uuid, assignee_ids: z.array(uuid).max(20) }),
   z.object({
     account_email: z.string().trim().email().max(200),
     password: z.string().min(1, "required").max(200),
@@ -56,14 +55,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const task = current.tasks.find((t) => t.id === body.task_id);
     if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const me = session.user.profileId;
-    if ("done" in body) {
-      const mine = task.assignees.some((a) => a.id === me);
-      const ok =
-        current.role === "admin" || mine || (current.role === "requester" && task.assignees.length > 0);
-      if (!ok) return forbidden("Only the people on this item (or an admin) can tick it");
-    } else if (current.role === "assignee") {
-      return forbidden("Only admins and the manager who asked can put people on items");
-    }
+    const mine = task.assignees.some((a) => a.id === me);
+    const ok = current.role === "admin" || mine || (current.role === "requester" && task.assignees.length > 0);
+    if (!ok) return forbidden("Only the people on this item (or an admin) can tick it");
   } else {
     if (current.role !== "admin") return forbidden("Only admins enter the login");
     const closed = closedError(current);
@@ -76,7 +70,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     "task_id" in body
       ? await supabase
           .from("onboarding_tasks")
-          .update("done" in body ? { done_at: body.done ? now : null } : { assignee_ids: [...new Set(body.assignee_ids)] })
+          .update({ done_at: body.done ? now : null })
           .eq("id", body.task_id)
           .eq("request_id", id)
       : await supabase
