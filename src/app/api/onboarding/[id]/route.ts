@@ -4,7 +4,6 @@ import { validationError } from "@/app/api/_lib/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptPassword } from "@/lib/onboarding/crypto";
 import {
-  closedError,
   getDetail,
   getRequest,
   notifyLoginReady,
@@ -25,10 +24,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // Tick a checklist item: admins any; the manager who opened it, items with
 // people on them; people on an item, their own (who's on an item is set on
-// the default checklist). Hand back the login: admins, while
-// the request is open (a new password replaces any earlier one and re-arms
-// the one-time view). The checklist stays open after the 30 days; training
-// steps come later.
+// the default checklist). The checklist stays open after the 30 days;
+// training steps come later. Hand back the login: admins, any time (a new
+// password replaces the saved one).
 const uuid = z.string().uuid();
 const patchSchema = z.union([
   z.object({ task_id: uuid, done: z.boolean() }),
@@ -60,8 +58,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (!ok) return forbidden("Only the people on this item (or an admin) can tick it");
   } else {
     if (current.role !== "admin") return forbidden("Only admins enter the login");
-    const closed = closedError(current);
-    if (closed) return closed;
   }
 
   const now = new Date().toISOString();

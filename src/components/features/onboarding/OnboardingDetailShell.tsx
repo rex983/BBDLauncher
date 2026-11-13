@@ -181,14 +181,7 @@ export function OnboardingDetailShell({ initial, me }: { initial: OnboardingDeta
             <CardTitle className="text-base">Login</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {r.closed ? (
-              <ClosedLogin r={r} />
-            ) : (
-              <>
-                {isAdmin && <SetLoginForm r={r} readOnly={readOnly} onSave={patch} />}
-                {isRequester && <RevealLogin r={r} readOnly={readOnly} onRevealed={refresh} onError={setError} />}
-              </>
-            )}
+            <LoginSection r={r} isAdmin={isAdmin} readOnly={readOnly} onSave={patch} onViewed={refresh} onError={setError} />
           </CardContent>
         </Card>
       )}
@@ -349,54 +342,82 @@ function Documents({
   );
 }
 
-// Closed: what happened to the login. A password nobody viewed was wiped
-// when the request closed (the reveal is refused from then on).
-function ClosedLogin({ r }: { r: OnboardingDetail }) {
-  if (r.password_status === "none") return <p className="text-sm text-muted-foreground">No login was entered.</p>;
+// The saved login: the email, and the password on demand for the manager
+// who asked and admins, any time. Admins enter it and can replace it.
+function LoginSection({
+  r,
+  isAdmin,
+  readOnly,
+  onSave,
+  onViewed,
+  onError,
+}: {
+  r: OnboardingDetail;
+  isAdmin: boolean;
+  readOnly: boolean;
+  onSave: (body: object) => Promise<boolean>;
+  onViewed: () => Promise<void>;
+  onError: (e: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  if (isAdmin && (editing || r.password_status === "none")) {
+    return (
+      <SetLoginForm
+        r={r}
+        readOnly={readOnly}
+        canCancel={r.password_status !== "none"}
+        onDone={() => setEditing(false)}
+        onSave={onSave}
+      />
+    );
+  }
+  if (r.password_status === "none") {
+    return <p className="text-sm text-muted-foreground">The login hasn&apos;t been entered yet. You&apos;ll get a notification when it is.</p>;
+  }
   return (
-    <p className="text-sm text-muted-foreground">
-      Email: <span className="font-medium text-foreground">{r.account_email}</span> ·{" "}
-      {r.password_status === "viewed"
-        ? `Password viewed${r.password_viewed_at ? ` ${fmtWhen(r.password_viewed_at)}` : ""}, then deleted.`
-        : "The password was never viewed, so it was deleted when this request closed."}
-    </p>
+    <div className="space-y-3 text-sm">
+      {r.password_status === "saved" ? (
+        <SavedLogin key={r.password_set_at ?? ""} r={r} readOnly={readOnly} onViewed={onViewed} onError={onError} />
+      ) : (
+        <div className="space-y-1">
+          <p>
+            <span className="text-muted-foreground">Email:</span> <span className="font-medium">{r.account_email}</span>
+          </p>
+          <p className="text-muted-foreground">
+            This password was deleted after it was viewed (the old one-time rule).
+            {isAdmin ? " Enter it again to keep it here." : " Ask an admin to enter it again."}
+          </p>
+        </div>
+      )}
+      {isAdmin && (
+        <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={readOnly}>
+          Enter a new password
+        </Button>
+      )}
+    </div>
   );
 }
 
-// Admin: enter the new hire's email + password. The password field has a
-// show/hide toggle; once saved it's never shown back to the admin.
+// Admin: enter the new hire's email + password (show/hide and copy in the
+// field). Saved encrypted.
 function SetLoginForm({
   r,
   readOnly,
+  canCancel,
+  onDone,
   onSave,
 }: {
   r: OnboardingDetail;
   readOnly: boolean;
+  canCancel: boolean;
+  onDone: () => void;
   onSave: (body: object) => Promise<boolean>;
 }) {
   const [email, setEmail] = useState(r.account_email ?? "");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(r.password_status === "none");
-
-  if (!editing) {
-    return (
-      <div className="space-y-2 text-sm">
-        <p>
-          <span className="text-muted-foreground">Email:</span> <span className="font-medium">{r.account_email}</span>
-        </p>
-        <p className="text-muted-foreground">
-          {r.password_status === "waiting"
-            ? `Password saved ${r.password_set_at ? fmtWhen(r.password_set_at) : ""} — waiting for ${r.created_by_name || "the manager"} to view it.`
-            : `Viewed ${r.password_viewed_at ? fmtWhen(r.password_viewed_at) : ""} — the password has been deleted.`}
-        </p>
-        <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={readOnly}>
-          Enter a new password
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <form
@@ -406,11 +427,7 @@ function SetLoginForm({
         setSaving(true);
         const ok = await onSave({ account_email: email, password });
         setSaving(false);
-        if (ok) {
-          setPassword("");
-          setShow(false);
-          setEditing(false);
-        }
+        if (ok) onDone();
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -454,14 +471,14 @@ function SetLoginForm({
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Stored encrypted until {r.created_by_name || "the manager"} views it once, then deleted.
+        Saved encrypted. {r.created_by_name || "The manager"} and admins can view it here any time.
       </p>
       <div className="flex gap-2">
         <Button type="submit" disabled={saving || readOnly}>
           {saving ? "Saving…" : "Save login"}
         </Button>
-        {r.password_status !== "none" && (
-          <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
+        {canCancel && (
+          <Button type="button" variant="ghost" onClick={onDone}>
             Cancel
           </Button>
         )}
@@ -470,89 +487,62 @@ function SetLoginForm({
   );
 }
 
-// Requesting manager: one-time view. The password lives only in this
-// component's state after the server deletes it.
-function RevealLogin({
+// The saved password, fetched when someone presses Show password. It stays
+// saved; Hide just takes it off the screen.
+function SavedLogin({
   r,
   readOnly,
-  onRevealed,
+  onViewed,
   onError,
 }: {
   r: OnboardingDetail;
   readOnly: boolean;
-  onRevealed: () => Promise<void>;
+  onViewed: () => Promise<void>;
   onError: (e: string | null) => void;
 }) {
-  const [login, setLogin] = useState<{ account_email: string | null; password: string } | null>(null);
-  const [show, setShow] = useState(true);
+  const [password, setPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const reveal = async () => {
-    if (!confirm("You can see the password once. After this it's deleted for good. Show it now?")) return;
+  const show = async () => {
     setLoading(true);
     onError(null);
     const res = await fetch(`/api/onboarding/${r.id}/reveal`, { method: "POST", cache: "no-store" });
     setLoading(false);
-    if (!res.ok) {
-      onError(await readError(res, "Couldn't show the password"));
-      await onRevealed();
-      return;
-    }
-    setLogin(await res.json());
-    await onRevealed();
+    if (!res.ok) return onError(await readError(res, "Couldn't show the password"));
+    setPassword((await res.json()).password);
+    if (!r.password_viewed_at) await onViewed();
   };
 
-  if (login) {
-    return (
-      <div className="space-y-2 rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm">
-        <p>
-          <span className="text-muted-foreground">Email:</span> <span className="font-medium">{login.account_email}</span>
-        </p>
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground">Password:</span>
-          <code className="rounded bg-muted px-2 py-0.5 font-mono">{show ? login.password : "••••••••••"}</code>
-          <Button variant="ghost" size="icon" onClick={() => setShow((s) => !s)} aria-label={show ? "Hide password" : "Show password"}>
-            {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </Button>
-          <CopyButton text={login.password} label="Copy password" />
-        </div>
-        <CopyButton
-          text={`Email: ${login.account_email ?? ""}\nPassword: ${login.password}`}
-          label="Copy email and password"
-          variant="outline"
-        />
-        <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
-          This password has been deleted. Copy it now — it won&apos;t be shown again once you leave this page.
-        </p>
-      </div>
-    );
-  }
-
-  if (r.password_status === "waiting") {
-    return (
-      <div className="space-y-2 text-sm">
-        <p>
-          <span className="text-muted-foreground">Email:</span> <span className="font-medium">{r.account_email}</span>
-        </p>
-        <p className="text-muted-foreground">The password can be viewed once. After that it&apos;s deleted.</p>
-        <Button onClick={reveal} disabled={loading || readOnly}>
-          <Eye className="mr-2 h-4 w-4" />
-          {loading ? "Loading…" : "Reveal password"}
-        </Button>
-      </div>
-    );
-  }
-
-  if (r.password_status === "viewed") {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Email: <span className="font-medium text-foreground">{r.account_email}</span> · You viewed the password
-        {r.password_viewed_at ? ` ${fmtWhen(r.password_viewed_at)}` : ""}. It has been deleted.
+  return (
+    <div className="space-y-2">
+      <p>
+        <span className="text-muted-foreground">Email:</span> <span className="font-medium">{r.account_email}</span>
       </p>
-    );
-  }
-
-  return <p className="text-sm text-muted-foreground">The login hasn&apos;t been entered yet. You&apos;ll get a notification when it is.</p>;
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground">Password:</span>
+        {password === null ? (
+          <Button size="sm" onClick={show} disabled={loading || readOnly}>
+            <Eye className="mr-1.5 h-4 w-4" />
+            {loading ? "Loading…" : "Show password"}
+          </Button>
+        ) : (
+          <>
+            <code className="rounded bg-muted px-2 py-0.5 font-mono">{password}</code>
+            <Button variant="ghost" size="sm" onClick={() => setPassword(null)}>
+              <EyeOff className="mr-1.5 h-4 w-4" />
+              Hide
+            </Button>
+            <CopyButton text={password} label="Copy password" />
+            <CopyButton text={`Email: ${r.account_email ?? ""}\nPassword: ${password}`} label="Copy email and password" variant="outline" />
+          </>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Saved{r.password_set_at ? ` ${fmtWhen(r.password_set_at)}` : ""}
+        {r.password_viewed_at ? ` · ${r.created_by_name || "the manager"} last viewed it ${fmtWhen(r.password_viewed_at)}` : ` · ${r.created_by_name || "the manager"} hasn't viewed it yet`}
+      </p>
+    </div>
+  );
 }
 
 // Copies text and says so for a moment.

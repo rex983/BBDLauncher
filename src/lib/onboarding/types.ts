@@ -40,10 +40,9 @@ export interface OnboardingDoc {
   size: number;
 }
 
-// "none": no password entered yet; "waiting": entered, the manager hasn't
-// looked; "viewed": the manager revealed it and it was wiped; "expired":
-// never viewed, wiped when the request closed.
-export type PasswordStatus = "none" | "waiting" | "viewed" | "expired";
+// "none": no password entered yet; "saved": stored (encrypted) and viewable
+// any time; "gone": deleted under the old one-time-view rule.
+export type PasswordStatus = "none" | "saved" | "gone";
 
 export interface OnboardingRequest {
   id: string;
@@ -84,8 +83,8 @@ export function onboardingStatus(r: OnboardingRequest): { label: string; variant
     const left = r.tasks.length - tasksDone(r);
     return { label: left === 1 ? "1 item left" : `${left} items left`, variant: "secondary" };
   }
-  if (r.password_status === "viewed") return { label: "Login viewed", variant: "outline" };
-  if (r.password_status === "waiting") return { label: "Login ready", variant: "default" };
+  if (r.password_status === "saved" && !r.password_viewed_at) return { label: "Login ready", variant: "default" };
+  if (r.password_status !== "none") return { label: "Login viewed", variant: "outline" };
   return tasksDone(r) === 0
     ? { label: "Not started", variant: "secondary" }
     : { label: "In progress", variant: "secondary" };

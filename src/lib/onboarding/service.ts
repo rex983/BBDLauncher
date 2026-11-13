@@ -55,15 +55,7 @@ function toRequest(row: Row, role: OnboardingRole, names: Map<string, string>): 
     tasks,
     account_email: full ? ((row.account_email as string) ?? null) : null,
     closed: new Date(row.expires_at as string).getTime() <= Date.now(),
-    password_status: !full
-      ? "none"
-      : row.password_cipher
-        ? "waiting"
-        : row.password_viewed_at
-          ? "viewed"
-          : row.password_set_at
-            ? "expired"
-            : "none",
+    password_status: !full ? "none" : row.password_cipher ? "saved" : row.password_set_at ? "gone" : "none",
     password_set_at: full ? ((row.password_set_at as string) ?? null) : null,
     password_viewed_at: full ? ((row.password_viewed_at as string) ?? null) : null,
     role,
@@ -171,20 +163,6 @@ export async function purgeRequest(id: string): Promise<void> {
   await supabase.from("notifications").delete().eq("reference_type", REFERENCE_TYPE).eq("reference_id", id);
   const { error } = await supabase.from("onboarding_requests").delete().eq("id", id);
   if (error) throw new Error(error.message);
-}
-
-// Requests close on their own 30 days after they were opened (reads compare
-// expires_at, so this needs no status flip). The one thing not kept is a
-// password nobody viewed: the hourly cron wipes it once the request closes.
-export async function wipeClosedPasswords(): Promise<number> {
-  const { data, error } = await createAdminClient()
-    .from("onboarding_requests")
-    .update({ password_cipher: null })
-    .lte("expires_at", new Date().toISOString())
-    .not("password_cipher", "is", null)
-    .select("id");
-  if (error) throw new Error(error.message);
-  return data?.length ?? 0;
 }
 
 // Closed requests are read-only. Returns a 409 to send back, or null.
