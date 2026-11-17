@@ -47,6 +47,7 @@ import {
   Building2,
   Network,
   UsersRound,
+  Dices,
   type LucideIcon,
 } from "lucide-react";
 import { writeSidebarState, type SidebarState } from "./sidebar-state";
@@ -60,7 +61,11 @@ interface NavItem {
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "Applications", icon: LayoutGrid },
   { href: "/memos", label: "My Memos", icon: Megaphone },
+  { href: "/password-generator", label: "Password Generator", icon: Dices },
 ];
+
+// What an "apps only" role still sees in the top group.
+const APPS_ONLY_HREFS = new Set(["/dashboard", "/password-generator"]);
 
 const managementItems: NavItem[] = [
   { href: "/management/timesheets", label: "Timesheets", icon: Clock },
@@ -199,7 +204,7 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
   const isPreviewing = !!viewAsUser;
   // Permission roles (acts_as ?? role) decide which nav shows.
   const effectiveRole = (isPreviewing ? viewAsUser!.perm_role : actualRole) as UserRole | undefined;
-  // "Apps only" roles (migration 062) get Applications and nothing else.
+  // "Apps only" roles (migration 062) get Applications and the password generator only.
   const appsOnly = isPreviewing ? viewAsUser!.apps_only : !!session?.user?.appsOnly;
   const showManagementNav = !appsOnly && canViewTimeData(effectiveRole);
   const showOffboarding =
@@ -284,7 +289,7 @@ export function Sidebar({ initialState }: { initialState: SidebarState }) {
           {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </button>
 
-        {(appsOnly ? navItems.filter((i) => i.href === "/dashboard") : navItems).map((item) => (
+        {(appsOnly ? navItems.filter((i) => APPS_ONLY_HREFS.has(i.href)) : navItems).map((item) => (
           <NavLink
             key={item.href}
             item={item}
