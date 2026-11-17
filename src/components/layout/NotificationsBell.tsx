@@ -64,8 +64,13 @@ export function NotificationsBell() {
   // it's visible.
   useEffect(() => {
     if (sessionStatus !== "authenticated" || !session?.user?.profileId) return;
+    // Coming back to the tab fires both "visibilitychange" and "focus";
+    // without this the count was fetched twice each time.
+    let lastAt = 0;
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastAt < 2000) return;
+      lastAt = Date.now();
       fetchCount().catch(() => {});
       if (openRef.current) fetchList().catch(() => {});
     };

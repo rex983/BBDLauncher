@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { getCachedLinks } from "@/lib/launcher/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -15,11 +16,9 @@ export async function GET(
     const { id } = await params;
     const supabase = createAdminClient();
 
-    const { data: link } = await supabase
-      .from("launcher_links")
-      .select("id, name, url")
-      .eq("id", id)
-      .single();
+    // The links list is cached and busted on every link edit, so this is
+    // normally no database read at all.
+    const link = (await getCachedLinks()).find((l) => l.id === id);
 
     if (!link) {
       return NextResponse.json({ error: "Link not found" }, { status: 404 });

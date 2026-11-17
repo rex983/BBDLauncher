@@ -34,15 +34,3 @@ export async function setUserIds(target: Target, id: string, profileIds: string[
     .insert(unique.map((profile_id) => ({ profile_id, [target]: id })));
   return error?.message ?? null;
 }
-
-/** Does this person have a personal grant on the app? */
-export async function hasPersonalAppGrant(profileId: string, appId: string): Promise<boolean> {
-  const supabase = createAdminClient();
-  const { data } = await supabase
-    .from("launcher_user_access")
-    .select("id")
-    .eq("profile_id", profileId)
-    .eq("app_id", appId)
-    .maybeSingle();
-  return !!data;
-}

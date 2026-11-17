@@ -61,10 +61,6 @@ const CONFIG: Record<
   },
 };
 
-export function orgKindHint(kind: OrgKind): string {
-  return CONFIG[kind].hint;
-}
-
 /** Everything still using a name: { total, summary } or an error if a check failed. */
 export async function orgUsage(
   kind: OrgKind,

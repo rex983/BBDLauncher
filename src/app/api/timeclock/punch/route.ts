@@ -1,11 +1,11 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyStateToday, lateClockIn } from "@/lib/timesheets/server";
-import type { LiveStatus, PunchEventType } from "@/lib/timesheets/state";
+import type { LiveStatus, PunchEventType, TimePunch } from "@/lib/timesheets/state";
 import { NextRequest, NextResponse } from "next/server";
 import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
-import { PUNCH_EVENT_TYPES } from "@/lib/timesheets/state";
+import { PUNCH_EVENT_TYPES, computeState } from "@/lib/timesheets/state";
 
 const schema = z.object({
   event_type: z.enum(PUNCH_EVENT_TYPES),
@@ -32,7 +32,14 @@ export async function POST(req: NextRequest) {
     return validationError(parsed.error);
   }
 
-  const { state, punches: todays } = await getMyStateToday(session.user.profileId);
+  // The lateness check only matters for a clock-in, but it doesn't depend on
+  // today's punches, so it runs alongside them instead of after.
+  const [{ state, punches: todays }, late] = await Promise.all([
+    getMyStateToday(session.user.profileId),
+    parsed.data.event_type === "clock_in"
+      ? lateClockIn(session.user.profileId)
+      : Promise.resolve(null),
+  ]);
   const allowed = LEGAL_TRANSITIONS[state.status];
   if (!allowed.includes(parsed.data.event_type)) {
     return NextResponse.json(
@@ -52,7 +59,6 @@ export async function POST(req: NextRequest) {
     parsed.data.event_type === "clock_in" &&
     !todays.some((p) => p.event_type === "clock_in")
   ) {
-    const late = await lateClockIn(session.user.profileId);
     if (late) {
       const reason = parsed.data.late_reason ?? "";
       if (reason.length < 3) {
@@ -85,7 +91,9 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Return the freshly-computed state so the client updates without a refetch.
-  const { state: newState, punches } = await getMyStateToday(session.user.profileId);
-  return NextResponse.json({ punch: data, state: newState, punches }, { status: 201 });
+  // Return the new state so the client updates without a refetch. It's folded
+  // from the punches read above plus the row just inserted (always the
+  // latest), which saves re-reading the day.
+  const punches = [...todays, data as TimePunch];
+  return NextResponse.json({ punch: data, state: computeState(punches), punches }, { status: 201 });
 }

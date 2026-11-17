@@ -94,11 +94,14 @@ export default function SchedulesShell({
 
   const save = async () => {
     if (!editing) return;
+    // Each weekday is its own row, so the seven requests don't depend on
+    // each other and go out together.
+    const requests: Promise<Response>[] = [];
     for (let w = 0; w < 7; w++) {
       const row = form[w];
       const existing = scheduleFor(editing.profile.id, w);
       if (row.enabled) {
-        await fetch("/api/management/schedules", {
+        requests.push(fetch("/api/management/schedules", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -107,15 +110,16 @@ export default function SchedulesShell({
             start_time: row.start,
             end_time: row.end,
           }),
-        });
+        }));
       } else if (existing) {
-        await fetch("/api/management/schedules", {
+        requests.push(fetch("/api/management/schedules", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ profile_id: editing.profile.id, weekday: w }),
-        });
+        }));
       }
     }
+    await Promise.allSettled(requests);
     setEditing(null);
     load();
   };
