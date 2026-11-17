@@ -40,6 +40,7 @@ import {
   UserCheck,
   MailWarning,
   History,
+  RefreshCw,
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
@@ -93,6 +94,7 @@ const adminItems: NavItem[] = [
   { href: "/admin/sso", label: "SSO Overview", icon: KeyRound },
   { href: "/admin/email-monitor", label: "Email Monitor", icon: MailWarning },
   { href: "/admin/audit", label: "Audit Log", icon: History },
+  { href: "/admin/cache", label: "Clear Cache", icon: RefreshCw },
 ];
 
 interface NavSection {

@@ -82,3 +82,21 @@ export async function generateSsoToken(params: SsoTokenParams): Promise<string> 
     .setJti(randomUUID())
     .sign(privateKey);
 }
+
+/**
+ * A short-lived token telling one app to clear its caches (Admin → Clear
+ * Cache). Carries no person and `purpose: "cache-clear"`, so an app's
+ * sign-in check rejects it and its cache endpoint rejects sign-in tokens.
+ */
+export async function generateCacheClearToken(audience: string): Promise<string> {
+  const privateKey = await getPrivateKey();
+  return new SignJWT({ purpose: "cache-clear" })
+    .setProtectedHeader({ alg: ALG, kid: "bbd-sso-1" })
+    .setIssuer("bbd-launcher")
+    .setSubject("cache-clear")
+    .setAudience(audience)
+    .setExpirationTime("60s")
+    .setIssuedAt()
+    .setJti(randomUUID())
+    .sign(privateKey);
+}
