@@ -18,6 +18,7 @@ users and roles in sync with it. It is copied, unchanged, into each app's
 | `usage-beacon.tsx` | `UsageBeacon`: mount once in the signed-in layout. Pings `/api/launcher-usage` once a minute while the tab is visible and in use (idle after 5 min) |
 | `presence.ts` | `POST` for each app's `/api/launcher-presence`: records this tab (`launcher_presence_ping`, launcher migration 058) and returns who else is in the app and whether they're on the same page; skips View as |
 | `presence-avatars.tsx` | `PresenceAvatars`: "currently viewing" avatars (Google Sheets style) for the header; `variant="floating"` for apps without one. Pings every 15s while visible, leaves when hidden |
+| `cache-clear.ts` | `cacheClearRoute`: `POST` for each app's `/api/launcher-cache` (public in the proxy). The launcher's Admin → Clear Cache calls it with a signed `purpose: "cache-clear"` token; it expires every cached read in the app, the 60s recheck memo and any in-memory caches the app passes in |
 | `urls.ts` | Launcher URLs (`NEXT_PUBLIC_LAUNCHER_URL` overrides), `launcherSignInUrl`, `safeNext` |
 | `config.example.ts` | Template for the one per-app file, `config.ts` (audience, name, DB client) |
 

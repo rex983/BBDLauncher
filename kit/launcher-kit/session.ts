@@ -216,6 +216,11 @@ export function recheckLauncherSession(input: RecheckInput): Promise<RecheckResu
 
 const recentChecks = new Map<string, { at: number; result: Promise<RecheckResult> }>();
 
+/** Drop the memo so every session is rechecked on its next request (launcher "Clear cache"). */
+export function forgetRecentChecks(): void {
+  recentChecks.clear();
+}
+
 async function runRecheck(input: RecheckInput, now: number): Promise<RecheckResult> {
 
   const [profile, access, actor, allowedViewer] = await Promise.all([

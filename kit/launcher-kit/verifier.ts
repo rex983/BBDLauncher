@@ -77,6 +77,23 @@ export async function verifyLauncherToken(token: string): Promise<LauncherClaims
   };
 }
 
+/**
+ * Verifies the launcher's "clear cache" token: same key, issuer and audience
+ * as a sign-in token, but marked `purpose: "cache-clear"` and carrying no
+ * person, so neither kind can stand in for the other. Not single use:
+ * clearing twice does no harm.
+ */
+export async function verifyLauncherCacheClear(token: string): Promise<void> {
+  const { payload } = await jwtVerify(token, JWKS, {
+    algorithms: ["ES256"],
+    issuer: "bbd-launcher",
+    audience: APP_AUDIENCE,
+    maxTokenAge: "120s",
+    clockTolerance: "10s",
+  });
+  if (payload.purpose !== "cache-clear") throw new Error("Not a cache-clear token");
+}
+
 // Replay protection: each token (jti) can be redeemed once. The table is the
 // launcher's (migration 045). If it's missing, refuse the sign-in: it went
 // missing once (found 2026-11-03) and allowing silently left every app
