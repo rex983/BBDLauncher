@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { RefreshCw, Quote as QuoteIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -16,40 +16,9 @@ export function QuoteBanner({ initial, canRefresh }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Subscribe to realtime INSERTs on the quotes table so every dashboard
-  // updates the moment an admin refreshes or the weekly cron fires — no
-  // reload required.
-  useEffect(() => {
-    // Loaded after the page is up, not in the dashboard's first download.
-    let cleanup: (() => void) | undefined;
-    let cancelled = false;
-    import("@/lib/supabase/browser").then(({ getBrowserClient }) => {
-      if (cancelled) return;
-      const supabase = getBrowserClient();
-      const channel = supabase
-        .channel("launcher-motivational-quotes")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "launcher_motivational_quotes",
-            filter: "is_active=eq.true",
-          },
-          (payload) => {
-            setQuote(payload.new as MotivationalQuote);
-          }
-        )
-        .subscribe();
-      cleanup = () => supabase.removeChannel(channel);
-    });
-
-    return () => {
-      cancelled = true;
-      cleanup?.();
-    };
-  }, []);
-
+  // No live subscription: the browser has no read access to the quotes table
+  // (migration 054), so one could never fire. A new quote shows on the next
+  // page load, and at once for the admin who pressed refresh.
   async function handleRefresh() {
     if (refreshing) return;
     setRefreshing(true);
