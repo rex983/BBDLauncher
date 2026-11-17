@@ -172,11 +172,51 @@ export function recheckDue(checkedAt: number | null | undefined, now = Date.now(
  * still active, still allowed into this app, and what are their current
  * role/office/department/permission role?
  */
-export async function recheckLauncherSession(input: RecheckInput): Promise<RecheckResult> {
+export function recheckLauncherSession(input: RecheckInput): Promise<RecheckResult> {
   const now = Date.now();
   if (viewAsExpired(input.viewAs, now)) {
-    return { status: "end", reason: "view_as_expired" };
+    return Promise.resolve({ status: "end", reason: "view_as_expired" });
   }
+
+  // NextAuth's auth() in server components, actions and route handlers can't
+  // save the refreshed token, so the cookie's "last checked" time only moves
+  // when the browser calls /api/auth/session (page load, tab focus). Without
+  // this, once a tab has been open a minute every request reran the whole
+  // check. A passed check is reused for the same session until it is
+  // RECHECK_INTERVAL_MS old, which is the interval the token would have
+  // waited anyway; its `now` is the time of the real check. Refusals and
+  // launcher outages are never reused.
+  const key = [
+    input.profileId,
+    input.signedInAt,
+    input.accessOkAt ?? "",
+    input.sessionVersion ?? "",
+    input.viewAs?.actorProfileId ?? "",
+    input.viewAs?.startedAt ?? "",
+  ].join("|");
+  const hit = recentChecks.get(key);
+  if (hit && now - hit.at < RECHECK_INTERVAL_MS) return hit.result;
+
+  const result = runRecheck(input, now);
+  const entry = { at: now, result };
+  recentChecks.set(key, entry);
+  const forget = () => {
+    if (recentChecks.get(key) === entry) recentChecks.delete(key);
+  };
+  result.then((r) => {
+    if (r.status !== "ok") forget();
+  }, forget);
+  if (recentChecks.size > 500) {
+    for (const [k, v] of recentChecks) {
+      if (now - v.at >= RECHECK_INTERVAL_MS) recentChecks.delete(k);
+    }
+  }
+  return result;
+}
+
+const recentChecks = new Map<string, { at: number; result: Promise<RecheckResult> }>();
+
+async function runRecheck(input: RecheckInput, now: number): Promise<RecheckResult> {
 
   const [profile, access, actor, allowedViewer] = await Promise.all([
     readLauncherProfile({ id: input.profileId }),
