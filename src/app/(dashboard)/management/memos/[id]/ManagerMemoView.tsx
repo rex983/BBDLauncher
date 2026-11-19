@@ -28,6 +28,7 @@ import {
 } from "@/lib/memos/types";
 import { Archive, CheckCircle2, Eye, Pencil, Save, Send, Trash2, X } from "lucide-react";
 import type { ManagerMemoPageData } from "./page";
+import { PersonLink } from "@/components/features/people/person-peek";
 
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -170,7 +171,11 @@ export function ManagerMemoView({
             <div>
               <p className="text-xs uppercase tracking-wider text-muted-foreground">Author</p>
               <p className="font-medium">
-                {memo.author?.name || memo.author?.email || "—"}
+                {memo.author ? (
+                  <PersonLink id={memo.author.id} name={memo.author.name} email={memo.author.email} />
+                ) : (
+                  "—"
+                )}
               </p>
             </div>
             <div>
@@ -347,7 +352,7 @@ export function ManagerMemoView({
                 {memo.recipients.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="font-medium">
-                      {r.name || r.profile_id}
+                      <PersonLink id={r.profile_id} name={r.name || r.profile_id} />
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {fmtDate(r.delivered_at)}

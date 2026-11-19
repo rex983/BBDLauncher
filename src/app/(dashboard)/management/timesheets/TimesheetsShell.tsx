@@ -29,6 +29,7 @@ import { canEditTimeData } from "@/lib/auth/permissions";
 import { MarkDayOffDialog } from "@/components/features/timeoff/MarkDayOffDialog";
 import type { Department, Office } from "@/types/auth";
 import { orgLabel, type OrgItem } from "@/lib/org/constants";
+import { PersonLink } from "@/components/features/people/person-peek";
 
 interface Row {
   profile: {
@@ -222,8 +223,8 @@ export default function TimesheetsShell({
           {!loading && displayRows.map(({ row, worked, lunch, brk }) => (
             <TableRow key={row.profile.id}>
               <TableCell className="font-medium">
-                {row.profile.name || row.profile.email}
-                <div className="text-xs text-muted-foreground">{row.profile.email}</div>
+                <PersonLink id={row.profile.id} name={row.profile.name} email={row.profile.email} avatar size={28} />
+                <div className="pl-9 text-xs font-normal text-muted-foreground">{row.profile.email}</div>
               </TableCell>
               <TableCell>
                 {row.profile.office

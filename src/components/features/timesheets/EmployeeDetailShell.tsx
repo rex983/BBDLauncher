@@ -46,6 +46,7 @@ import { ExportMenu } from "@/components/ui/export-menu";
 import type { ExportColumn } from "@/lib/export/csv";
 import { FileIncidentDialog } from "@/components/features/incidents/FileIncidentDialog";
 import { fmtDay as fmtDateShort, toLocalInputValue } from "@/components/shared/format";
+import { PersonLink } from "@/components/features/people/person-peek";
 
 // Convert a UTC ISO to a value acceptable by <input type="datetime-local">.
 const isoToLocalInput = (iso: string) => toLocalInputValue(new Date(iso));
@@ -300,7 +301,11 @@ export default function EmployeeDetailShell({
             </Link>
           </div>
           <h1 className="text-2xl font-bold">
-            {profile?.name || profile?.email || "…"}
+            {profile ? (
+              <PersonLink id={profileId} name={profile.name} email={profile.email} avatar size={40} className="gap-3" />
+            ) : (
+              "…"
+            )}
           </h1>
           <div className="text-muted-foreground text-sm">
             {profile?.email}

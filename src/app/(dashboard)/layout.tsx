@@ -6,6 +6,7 @@ import { PreviewBanner } from "@/components/features/launcher/preview-banner";
 import { ClockGate } from "@/components/features/timeclock/ClockGate";
 import { ShiftEndPrompt } from "@/components/features/timeclock/ShiftEndPrompt";
 import { CheckInPrompt } from "@/components/features/goals/CheckInPrompt";
+import { PersonPeekProvider } from "@/components/features/people/person-peek";
 import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -52,6 +53,7 @@ export default async function DashboardLayout({
     <SessionProvider session={session} refetchOnWindowFocus={false}>
       <Suspense>
         <RolePreviewProvider>
+          <PersonPeekProvider>
           <ClockGate initialState={clock?.state ?? null} initialSchedule={schedule}>
             <div className="min-h-screen bg-background">
               <Header />
@@ -68,6 +70,7 @@ export default async function DashboardLayout({
             <ShiftEndPrompt />
             <CheckInPrompt />
           </ClockGate>
+          </PersonPeekProvider>
         </RolePreviewProvider>
       </Suspense>
     </SessionProvider>
