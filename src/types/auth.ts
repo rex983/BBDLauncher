@@ -23,6 +23,10 @@ export interface UserProfile {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  /** From the Users list (GET /api/users) only. */
+  has_photo?: boolean;
+  /** From the Users list only: this viewer may edit / deactivate / remove them. */
+  can_manage?: boolean;
 }
 
 declare module "next-auth" {

@@ -30,6 +30,7 @@ import {
 } from "@/lib/timeoff/types";
 import type { Department, Office } from "@/types/auth";
 import { orgLabel, type OrgItem } from "@/lib/org/constants";
+import { PersonLink } from "@/components/features/people/person-peek";
 
 interface WeekTotal {
   week_start: string;
@@ -452,7 +453,9 @@ export function TimeAnalytics({
                     }`}
                   >
                     <TableCell className="font-medium">
-                      <div>{row.profile.name || row.profile.email}</div>
+                      <div>
+                        <PersonLink id={row.profile.id} name={row.profile.name} email={row.profile.email} />
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {row.profile.email}
                         {row.profile.is_active === false && (

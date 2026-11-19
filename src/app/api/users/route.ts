@@ -8,6 +8,10 @@ import { z } from "zod";
 import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
 import { USER_COLUMNS } from "@/app/api/_lib/users";
 import { permRoleResolver } from "@/lib/auth/perm-role";
+import { getCachedRoles } from "@/lib/launcher/cache";
+import { canManagePerson } from "@/lib/people/summary";
+
+type UserRow = { role: string; office: string | null; avatar_url: string | null } & Record<string, unknown>;
 
 const createSchema = z.object({
   email: z.string().email().transform((e) => e.toLowerCase()),
@@ -33,14 +37,22 @@ export async function GET(req: NextRequest) {
   const supabase = createAdminClient();
   let query = supabase
     .from("profiles")
-    .select(USER_COLUMNS)
+    .select(`${USER_COLUMNS}, avatar_url`)
     .order("email");
   if (!includeInactive) {
     query = query.eq("is_active", true);
   }
 
-  const { data: users } = await query;
-  return NextResponse.json(users || []);
+  const [{ data: users }, roles] = await Promise.all([query, getCachedRoles().catch(() => [])]);
+  // has_photo lets the list draw initials without a request per row;
+  // can_manage is whether this viewer may edit / deactivate / remove them.
+  return NextResponse.json(
+    ((users || []) as unknown as Array<UserRow>).map(({ avatar_url, ...u }) => ({
+      ...u,
+      has_photo: !!avatar_url,
+      can_manage: canManagePerson(session.user, u, roles),
+    })),
+  );
 }
 
 export async function POST(req: NextRequest) {

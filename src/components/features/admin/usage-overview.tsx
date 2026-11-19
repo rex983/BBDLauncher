@@ -115,7 +115,7 @@ export function UsageOverview({
                 rows={usage.users.slice(0, 25).map((u) => ({
                   key: u.profile_id,
                   label: u.name || u.email,
-                  href: `/admin/analytics/users/${u.profile_id}?range=${range}`,
+                  href: `/admin/users/${u.profile_id}?range=${range}`,
                   n: u.minutes,
                   sub: [u.top_app, u.visits ? `${u.visits} visits` : null].filter(Boolean).join(" · "),
                 }))}

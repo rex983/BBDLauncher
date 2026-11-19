@@ -28,6 +28,7 @@ import {
   type TimeOffType,
 } from "@/lib/timeoff/types";
 import { Check, ChevronDown, ChevronRight, Paperclip, X } from "lucide-react";
+import { PersonLink } from "@/components/features/people/person-peek";
 
 interface Row {
   id: string;
@@ -392,7 +393,9 @@ function RowTable({
             onClick={() => onRowClick(r)}
           >
             <TableCell>
-              <div className="font-medium">{r.profile?.name || r.profile?.email}</div>
+              <div className="font-medium">
+                <PersonLink id={r.profile_id} name={r.profile?.name} email={r.profile?.email} />
+              </div>
               <div className="text-xs text-muted-foreground">{r.profile?.email}</div>
             </TableCell>
             <TableCell>

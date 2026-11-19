@@ -33,6 +33,7 @@ import { fmtDateTimeUS as formatDateTime, fmtRelative } from "@/components/share
 import { KindBadge } from "./kind-badge";
 import { UsageOverview } from "./usage-overview";
 import { fmtMinutes } from "./usage-charts";
+import { PersonLink } from "@/components/features/people/person-peek";
 
 // Lazy-load the three heavy tabs so the initial /admin/analytics bundle
 // doesn't ship the calendar grid, aggregation table, or dialog with the
@@ -482,7 +483,7 @@ export default function AnalyticsShell({
             </TableHeader>
             <TableBody>
               {userSort.sorted.map((u) => {
-                const href = `/admin/analytics/users/${u.user_id}?range=${range}`;
+                const href = `/admin/users/${u.user_id}?range=${range}`;
                 return (
                 <TableRow
                   key={u.user_id}
@@ -605,7 +606,9 @@ export default function AnalyticsShell({
                     {formatRelative(e.created_at)}
                   </TableCell>
                   <TableCell>
-                    <div className="font-medium">{e.name || e.email}</div>
+                    <div className="font-medium">
+                      <PersonLink id={e.user_id} name={e.name} email={e.email} />
+                    </div>
                     {e.name && (
                       <div className="text-xs text-muted-foreground">{e.email}</div>
                     )}

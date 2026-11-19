@@ -283,7 +283,7 @@ export default function DestinationAnalyticsPage({
             <TableBody>
               {filteredUsers.map((u) => {
                 const unresolved = u.email === "(unknown user)";
-                const href = unresolved ? null : `/admin/analytics/users/${u.user_id}?range=${range}`;
+                const href = unresolved ? null : `/admin/users/${u.user_id}?range=${range}`;
                 return (
                 <TableRow
                   key={u.user_id}

@@ -23,6 +23,7 @@ import {
   type TimeOffType,
   todayISO,
 } from "@/lib/timeoff/types";
+import { PersonLink } from "@/components/features/people/person-peek";
 
 interface Profile {
   id: string;
@@ -326,8 +327,8 @@ export function TimeOffSummary({
                 onClick={() => setLedgerProfile(r.profile)}
               >
                 <TableCell>
-                  <div className="font-medium hover:underline">
-                    {r.profile.name || r.profile.email}
+                  <div className="font-medium">
+                    <PersonLink id={r.profile.id} name={r.profile.name} email={r.profile.email} />
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {r.profile.office}{r.profile.department ? ` · ${r.profile.department}` : ""}

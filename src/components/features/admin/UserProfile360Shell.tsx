@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ANALYTICS_RANGE_OPTIONS } from "@/lib/analytics/ranges";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { ArrowLeft, Clock, Eye, Pencil, UserCheck, UserX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,18 +61,14 @@ import {
   TimeOffTab,
 } from "./profile360-parts";
 import { StatCard } from "@/components/ui/stat-card";
-
-interface Profile {
-  id: string;
-  email: string;
-  name: string | null;
-  role: string;
-  office: string | null;
-  department: string | null;
-  is_it: boolean | null;
-  is_active: boolean | null;
-  created_at: string;
-}
+import { cn } from "@/lib/utils";
+import type { OrgItem } from "@/lib/org/constants";
+import type { PersonSummary } from "@/lib/people/summary";
+import { PersonAvatar } from "@/components/features/people/person-avatar";
+import { PersonLink } from "@/components/features/people/person-peek";
+import { useRolePreview } from "@/components/features/launcher/role-preview-context";
+import { UserFormDialog, type LauncherRole } from "./user-form-dialog";
+import { useUserActions } from "./user-actions";
 
 interface WorkScheduleRow {
   weekday: number;
@@ -83,7 +80,10 @@ interface WorkScheduleRow {
 export function UserProfile360Shell({
   userId,
   initialRange,
-  profile,
+  person,
+  roles,
+  offices,
+  departments,
   initialDays,
   timeData,
   timeDataError,
@@ -92,7 +92,11 @@ export function UserProfile360Shell({
 }: {
   userId: string;
   initialRange: string;
-  profile: Profile | null;
+  /** Who they are, and what this viewer may see and do (src/lib/people/summary.ts). */
+  person: PersonSummary;
+  roles: LauncherRole[];
+  offices: OrgItem[];
+  departments: OrgItem[];
   initialDays: number;
   timeData: EmployeeDetailData | null;
   timeDataError: string | null;
@@ -101,11 +105,18 @@ export function UserProfile360Shell({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { setViewAsUser } = useRolePreview();
+  const { data: session } = useSession();
+  const viewerIsAdmin = session?.user?.permRole === "admin";
+  const isSelf = session?.user?.profileId === userId;
+  const analyticsAllowed = person.can.activity;
+  const [editOpen, setEditOpen] = useState(false);
+  const actions = useUserActions(() => router.refresh());
 
   const [range, setRange] = useState(initialRange);
   const [tab, setTab] = useState("overview");
   const [analytics, setAnalytics] = useState<AnalyticsPayload | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsLoading, setAnalyticsLoading] = useState(person.can.activity);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
 
   const [days, setDays] = useState(initialDays);
@@ -122,6 +133,7 @@ export function UserProfile360Shell({
   // live queue.
 
   useEffect(() => {
+    if (!analyticsAllowed) return;
     let cancelled = false;
     setAnalyticsLoading(true);
     setAnalyticsError(null);
@@ -142,7 +154,7 @@ export function UserProfile360Shell({
     return () => {
       cancelled = true;
     };
-  }, [range, userId]);
+  }, [range, userId, analyticsAllowed]);
 
   // Latest request wins, so a slow 30-day load can't overwrite a newer 7-day one.
   const loadSeq = useRef(0);
@@ -193,7 +205,14 @@ export function UserProfile360Shell({
     }
   }, [range, router, searchParams]);
 
-  const displayName = profile?.name ?? profile?.email ?? "Unknown user";
+  const displayName = person.name || person.email;
+  const canEdit = person.can.manage || isSelf;
+  const canRetire = person.can.manage && !isSelf;
+  const startViewAs = () => {
+    if (!person.view_as) return;
+    setViewAsUser(person.view_as);
+    router.push(`/dashboard?viewAsUser=${person.id}`);
+  };
   const liveState = useMemo(() => computeState(punches), [punches]);
   const aggregate = useMemo(() => aggregatePunches(punches), [punches]);
 
@@ -207,79 +226,146 @@ export function UserProfile360Shell({
     <div className="space-y-6">
       <div>
         <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2">
-          <Link href={`/admin/analytics?range=${range}`}>
+          <Link href="/admin/users">
             <ArrowLeft className="h-4 w-4" />
-            Back to analytics
+            Users
           </Link>
         </Button>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">{displayName}</h1>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              {profile?.email && <span>{profile.email}</span>}
-              {profile?.role && (
-                <>
-                  <span>·</span>
-                  <Badge variant="secondary">{profile.role}</Badge>
-                </>
-              )}
-              {profile?.office && (
-                <>
-                  <span>·</span>
-                  <Badge variant="outline">{profile.office}</Badge>
-                </>
-              )}
-              {profile?.department && (
-                <>
-                  <span>·</span>
-                  <Badge variant="outline">{profile.department}</Badge>
-                </>
-              )}
-              {profile?.is_it && (
-                <>
-                  <span>·</span>
-                  <Badge>IT</Badge>
-                </>
-              )}
-              {profile?.is_active === false && (
-                <>
-                  <span>·</span>
-                  <Badge variant="destructive">Inactive</Badge>
-                </>
-              )}
-            </div>
-            {profile?.created_at && (
-              <p className="text-xs text-muted-foreground mt-2">
-                Joined {fmtDate(profile.created_at)}
+          <div className="flex min-w-0 items-center gap-5">
+            <PersonAvatar
+              profileId={person.id}
+              name={displayName}
+              size={96}
+              hasPhoto={person.has_photo}
+              className="ring-2 ring-border"
+            />
+            <div className="min-w-0">
+              <h1 className="truncate text-2xl font-bold">{displayName}</h1>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <a href={`mailto:${person.email}`} className="hover:underline">
+                  {person.email}
+                </a>
+                {!timeDataError && person.is_active && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>·</span>
+                    <span
+                      className={cn(
+                        "h-2 w-2 rounded-full",
+                        liveState.status === "working"
+                          ? "bg-emerald-500"
+                          : liveState.status === "clocked_out"
+                            ? "bg-muted-foreground/40"
+                            : "bg-amber-500",
+                      )}
+                    />
+                    {STATUS_LABEL[liveState.status]}
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <Badge variant="secondary">{person.role_label}</Badge>
+                {person.office_label && <Badge variant="outline">{person.office_label}</Badge>}
+                {person.department_label && person.department_label !== person.office_label && (
+                  <Badge variant="outline">{person.department_label}</Badge>
+                )}
+                {person.is_it && <Badge>IT</Badge>}
+                {person.can_offboard && <Badge variant="outline">Offboarding</Badge>}
+                {!person.is_active && <Badge variant="destructive">Inactive</Badge>}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {person.team && (
+                  <>
+                    {person.team.name}
+                    {person.team.leader_id && person.team.leader_id !== person.id && person.team.leader_name && (
+                      <>
+                        {" · led by "}
+                        <PersonLink id={person.team.leader_id} name={person.team.leader_name} />
+                      </>
+                    )}
+                    {" · "}
+                  </>
+                )}
+                {person.leads.length > 0 && <>Leads {person.leads.join(", ")} · </>}
+                Added {fmtDate(person.created_at)}
               </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {canEdit && (
+              <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Button>
+            )}
+            {person.can.time && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/management/timesheets/${person.id}`}>
+                  <Clock className="h-4 w-4" />
+                  Timesheet
+                </Link>
+              </Button>
+            )}
+            {person.view_as && (
+              <Button variant="outline" size="sm" onClick={startViewAs}>
+                <Eye className="h-4 w-4" />
+                View as
+              </Button>
+            )}
+            {canRetire && (
+              <Button variant="outline" size="sm" onClick={() => actions.askToggleActive(person)}>
+                {person.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                {person.is_active ? "Deactivate" : "Reactivate"}
+              </Button>
+            )}
+            {(analyticsAllowed || !timeDataError) && (
+              <Select value={range} onValueChange={changeRange}>
+                <SelectTrigger className="h-8 w-[150px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ANALYTICS_RANGE_OPTIONS.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
-          <Select value={range} onValueChange={changeRange}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ANALYTICS_RANGE_OPTIONS.map((r) => (
-                <SelectItem key={r.value} value={r.value}>
-                  {r.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       </div>
+
+      <UserFormDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        editing={editOpen ? person : null}
+        roles={roles}
+        offices={offices}
+        departments={departments}
+        viewerIsAdmin={viewerIsAdmin}
+        viewerOffice={session?.user?.office ?? null}
+        onSaved={() => router.refresh()}
+      />
+      {actions.dialog}
 
       {analyticsError && (
         <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
           {analyticsError}
         </p>
       )}
-      {timeDataError && (
+      {(timeDataError || !analyticsAllowed) && (
         <p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-          {timeDataError} — showing analytics only.
+          {timeDataError && !analyticsAllowed
+            ? "You can see who this is, but their time and launcher activity are outside your office or department."
+            : timeDataError
+              ? `${timeDataError} Showing launcher activity only.`
+              : "Their launcher activity is outside your office. Showing time data only."}
         </p>
       )}
 
+      {(analyticsAllowed || !timeDataError) && (
+      <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <StatCard
           label="Right now"
@@ -294,7 +380,7 @@ export function UserProfile360Shell({
           label="Time off (YTD)"
           value={timeDataError ? "—" : `${formatDays(timeOffYtd.total)} d`}
         />
-        <StatCard
+        {analyticsAllowed && <StatCard
           label="Launcher events"
           value={
             analyticsLoading
@@ -306,15 +392,15 @@ export function UserProfile360Shell({
               ? `${analytics.totals.app_launches.toLocaleString()} launches · ${analytics.totals.link_clicks.toLocaleString()} clicks`
               : undefined
           }
-        />
-        <StatCard
+        />}
+        {analyticsAllowed && <StatCard
           label="Destinations"
           value={
             analyticsLoading
               ? "…"
               : analytics?.totals.unique_destinations.toLocaleString() ?? "0"
           }
-        />
+        />}
         <StatCard
           label="Incidents"
           value={timeDataError ? "—" : incidents.length.toString()}
@@ -342,8 +428,8 @@ export function UserProfile360Shell({
           <TabsTrigger value="incidents" disabled={!!timeDataError}>
             Incidents {incidents.length > 0 && `(${incidents.length})`}
           </TabsTrigger>
-          <TabsTrigger value="apps">Apps</TabsTrigger>
-          <TabsTrigger value="audit">Audit Log</TabsTrigger>
+          {analyticsAllowed && <TabsTrigger value="apps">Apps</TabsTrigger>}
+          {analyticsAllowed && <TabsTrigger value="audit">Audit Log</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="overview" className="mt-4 space-y-4">
@@ -406,7 +492,7 @@ export function UserProfile360Shell({
               </CardContent>
             </Card>
           </div>
-          <Card>
+          {analyticsAllowed && <Card>
             <CardHeader>
               <CardTitle className="text-base">First / last activity</CardTitle>
             </CardHeader>
@@ -432,7 +518,7 @@ export function UserProfile360Shell({
                 </div>
               </div>
             </CardContent>
-          </Card>
+          </Card>}
         </TabsContent>
 
         <TabsContent value="timesheet" className="mt-4">
@@ -468,6 +554,8 @@ export function UserProfile360Shell({
           <AuditTab analytics={analytics} loading={analyticsLoading} range={range} />
         </TabsContent>
       </Tabs>
+      </>
+      )}
     </div>
   );
 }

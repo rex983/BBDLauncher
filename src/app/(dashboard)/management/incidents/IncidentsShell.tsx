@@ -36,6 +36,7 @@ import {
   type IncidentStatus,
   INCIDENT_SEVERITY_VARIANT,
 } from "@/lib/incidents/types";
+import { PersonLink } from "@/components/features/people/person-peek";
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -291,7 +292,13 @@ function IncidentRowTable({
             </TableCell>
             <TableCell className="text-sm">{fmtDate(r.created_at)}</TableCell>
             <TableCell>
-              <div className="font-medium">{r.employee?.name || r.employee?.email || "—"}</div>
+              <div className="font-medium">
+                {r.employee ? (
+                  <PersonLink id={r.employee_profile_id} name={r.employee.name} email={r.employee.email} />
+                ) : (
+                  "—"
+                )}
+              </div>
               <div className="text-xs text-muted-foreground">{r.employee?.email}</div>
             </TableCell>
             <TableCell className="font-medium">{r.title}</TableCell>
