@@ -1,18 +1,10 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { useCallback } from "react";
+import { useConfirmAction } from "@/components/shared/confirm";
 
-// Deactivate / reactivate / remove, with a real confirmation instead of the
-// browser's confirm() box. Shared by the Users list and a person's profile.
+// Deactivate / reactivate / remove a person, each behind a confirmation.
+// Shared by the Users list and a person's profile.
 //
 //   const actions = useUserActions(reload);
 //   actions.askToggleActive(user); actions.askRemove(user);
@@ -20,23 +12,8 @@ import {
 
 type Target = { id: string; email: string; name: string | null; is_active: boolean };
 
-type Pending = {
-  title: string;
-  body: string;
-  action: string;
-  destructive: boolean;
-  run: () => Promise<Response>;
-};
-
 export function useUserActions(onChanged: () => void) {
-  const [pending, setPending] = useState<Pending | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const ask = useCallback((p: Pending) => {
-    setError(null);
-    setPending(p);
-  }, []);
+  const { ask, dialog } = useConfirmAction(onChanged);
 
   const askToggleActive = useCallback(
     (u: Target) => {
@@ -72,46 +49,6 @@ export function useUserActions(onChanged: () => void) {
       });
     },
     [ask],
-  );
-
-  const confirm = async () => {
-    if (!pending) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await pending.run();
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError(typeof body.error === "string" ? body.error : "That didn't work. Try again.");
-        return;
-      }
-      setPending(null);
-      onChanged();
-    } catch {
-      setError("That didn't work. Check your connection and try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const dialog = (
-    <Dialog open={!!pending} onOpenChange={(o) => !o && !busy && setPending(null)}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{pending?.title}</DialogTitle>
-          <DialogDescription>{pending?.body}</DialogDescription>
-        </DialogHeader>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setPending(null)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant={pending?.destructive ? "destructive" : "default"} onClick={confirm} disabled={busy}>
-            {busy ? "Working…" : pending?.action}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 
   return { askToggleActive, askRemove, dialog };

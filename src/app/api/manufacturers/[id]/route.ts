@@ -4,6 +4,7 @@ import { canManageContent } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
+import { loadManufacturerDetail } from "@/lib/manufacturers/summary";
 
 // Deposits are managed in Strapi and synced into manufacturer_config by the
 // Manufacturer Hub (one way). The launcher must not write them: any deposit
@@ -23,6 +24,17 @@ function diff(prev: Record<string, unknown>, next: Record<string, unknown>) {
     }
   }
   return changes;
+}
+
+// One manufacturer with its recent change history: the card behind a row on
+// the Manufacturers page.
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await requireSession(canManageContent);
+  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const detail = await loadManufacturerDetail(id, 5);
+  if (!detail) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json(detail, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function PUT(
