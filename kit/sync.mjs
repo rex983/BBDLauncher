@@ -19,6 +19,7 @@ const APPS = [
   "bbd-helpdesk",
   "bbd-manufacturer-hub",
   "bbd-mbox-archive",
+  "bbd-order-forms",
   "bbd-pm",
   "bbd-rep-insights",
   "manufacturer-questions",
