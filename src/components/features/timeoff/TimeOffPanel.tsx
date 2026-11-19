@@ -27,9 +27,9 @@ import {
   type TimeOffStatus,
   type TimeOffType,
 } from "@/lib/timeoff/types";
-import { formatBytes } from "@/components/shared/AttachmentPreview";
+import { AttachmentThumbs } from "@/components/shared/attachment-thumbs";
 import { fmtDay as fmtDate } from "@/components/shared/format";
-import { Paperclip, Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 
 export interface TimeOffRequest {
   id: string;
@@ -335,28 +335,11 @@ export function TimeOffPanel({
                   <p className="text-xs text-muted-foreground">Uploading…</p>
                 )}
                 {attachments.length > 0 && (
-                  <ul className="space-y-1">
-                    {attachments.map((a) => (
-                      <li
-                        key={a.path}
-                        className="flex items-center gap-2 text-sm"
-                      >
-                        <Paperclip className="h-3 w-3 text-muted-foreground" />
-                        <span className="truncate flex-1">{a.filename}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatBytes(a.size)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeAttachment(a.path)}
-                          className="text-muted-foreground hover:text-destructive"
-                          aria-label="Remove attachment"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <AttachmentThumbs
+                    attachments={attachments}
+                    hrefPrefix="/api/timeoff/attachments/"
+                    onRemove={removeAttachment}
+                  />
                 )}
                 <p className="text-xs text-muted-foreground">
                   PDF, images, or Word docs. 10 MB per file, up to 10 files.
@@ -439,21 +422,7 @@ export function TimeOffPanel({
                     <div className="space-y-1">
                       {r.reason && <div>{r.reason}</div>}
                       {r.attachments && r.attachments.length > 0 && (
-                        <ul className="flex flex-wrap gap-2">
-                          {r.attachments.map((a) => (
-                            <li key={a.path}>
-                              <a
-                                href={`/api/timeoff/attachments/${a.path}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-xs underline hover:text-foreground"
-                              >
-                                <Paperclip className="h-3 w-3" />
-                                {a.filename}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
+                        <AttachmentThumbs attachments={r.attachments} hrefPrefix="/api/timeoff/attachments/" size={40} />
                       )}
                       {!r.reason && (!r.attachments || r.attachments.length === 0) && "—"}
                     </div>
