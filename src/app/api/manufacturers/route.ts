@@ -4,6 +4,7 @@ import { canManageContent } from "@/lib/auth/permissions";
 import { NextRequest, NextResponse } from "next/server";
 import { validationError } from "@/app/api/_lib/validation";
 import { z } from "zod";
+import { listManufacturers } from "@/lib/manufacturers/summary";
 
 // Deposits are managed in Strapi and synced into manufacturer_config by the
 // Manufacturer Hub (one way). The launcher must not write them: any deposit
@@ -19,16 +20,12 @@ export async function GET() {
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
 
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("manufacturer_config")
-    .select("*")
-    .order("name");
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  // Plus the hub's logo, headline, HQ and page link where it has them.
+  try {
+    return NextResponse.json(await listManufacturers());
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to load" }, { status: 500 });
   }
-  return NextResponse.json(data || []);
 }
 
 export async function POST(req: NextRequest) {
