@@ -19,6 +19,12 @@ const csp = [
   "object-src 'none'",
 ].join("; ");
 
+// The in-page PDF viewer frames /api/timeoff/attachments/...?inline=1 from the
+// app itself. That response is only ever a PDF (checked by its bytes, sent
+// with nosniff), so its policy just says who may frame it; stricter rules
+// such as object-src can stop a browser's built-in PDF viewer.
+const inlinePdfCsp = "frame-ancestors 'self'";
+
 const nextConfig: NextConfig = {
   // Tree-shake modular imports so each `import { X } from "lucide-react"` /
   // "radix-ui" pulls only X, not the full barrel. Meaningfully shrinks
@@ -79,6 +85,15 @@ const nextConfig: NextConfig = {
             key: "Cross-Origin-Opener-Policy",
             value: "same-origin",
           },
+        ],
+      },
+      // Later entries win for the same header.
+      {
+        source: "/api/timeoff/attachments/:path*",
+        has: [{ type: "query", key: "inline", value: "1" }],
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: inlinePdfCsp },
         ],
       },
     ];

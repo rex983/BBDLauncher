@@ -22,9 +22,9 @@ import {
   type TimeOffStatus,
   type TimeOffType,
 } from "@/lib/timeoff/types";
-import { formatBytes } from "@/components/shared/AttachmentPreview";
+import { AttachmentThumbs } from "@/components/shared/attachment-thumbs";
 import { fmtWhen as fmtDateTime } from "@/components/shared/format";
-import { Check, Paperclip, Pencil, Trash2, X } from "lucide-react";
+import { Check, Pencil, Trash2, X } from "lucide-react";
 
 // Everything the dialog needs to render + edit. Callers assemble this
 // shape from wherever their data lives (queue API returns profile
@@ -236,22 +236,7 @@ export function RequestDetailDialog({ row, onClose, canDecide, canEdit, onChange
             <div className="space-y-1">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Attachments</div>
               {row.attachments && row.attachments.length > 0 ? (
-                <ul className="space-y-1">
-                  {row.attachments.map((a) => (
-                    <li key={a.path}>
-                      <a
-                        href={`/api/timeoff/attachments/${a.path}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 text-sm underline hover:text-foreground"
-                      >
-                        <Paperclip className="h-3 w-3" />
-                        {a.filename}
-                        <span className="text-xs text-muted-foreground">({formatBytes(a.size)})</span>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
+                <AttachmentThumbs attachments={row.attachments} hrefPrefix="/api/timeoff/attachments/" size={72} />
               ) : (
                 <p className="text-sm text-muted-foreground">None.</p>
               )}
