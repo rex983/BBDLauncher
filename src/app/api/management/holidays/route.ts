@@ -4,6 +4,9 @@ import { validationError } from "@/app/api/_lib/validation";
 import { requireTimeDataAccess } from "@/lib/auth/scope-check";
 import { HOLIDAY_COLUMNS } from "@/lib/timeoff/holidays";
 
+// The list also names the person a personal holiday (migration 071) is for.
+const LIST_COLUMNS = `${HOLIDAY_COLUMNS}, person:profiles!profile_id(name:full_name, email)`;
+
 // Company holidays (migration 070). Company-wide, so there is no office or
 // department scope: anyone who can see time data sees them all, and anyone
 // who can edit time data (admins + managers) can add or remove one.
@@ -24,7 +27,7 @@ export async function GET() {
   if (!gate.ok) return gate.response;
   const { data, error } = await gate.supabase
     .from("company_holidays")
-    .select(HOLIDAY_COLUMNS)
+    .select(LIST_COLUMNS)
     .order("holiday_date", { ascending: true });
   if (error) {
     return NextResponse.json(

@@ -170,7 +170,19 @@ export function TimeOffCalendar({
         const body = await res.json();
         setProfiles(body.profiles || []);
         setRequests(body.requests || []);
-        setHolidayNames(new Map(((body.holidays || []) as Holiday[]).map((h) => [h.date, h.name])));
+        // One person's own holiday is labelled with their first name; a
+        // company-wide holiday on the same date wins the cell.
+        const people = new Map(((body.profiles || []) as Profile[]).map((p) => [p.id, p]));
+        const names = new Map<string, string>();
+        for (const h of (body.holidays || []) as Holiday[]) {
+          if (!h.profile_id) names.set(h.date, h.name);
+          else if (!names.has(h.date)) {
+            const who = people.get(h.profile_id);
+            const first = (who?.name || who?.email || "").split(/[\s@]/)[0];
+            names.set(h.date, first ? `${h.name} (${first})` : h.name);
+          }
+        }
+        setHolidayNames(names);
       } else {
         setProfiles([]);
         setRequests([]);
@@ -296,7 +308,7 @@ export function TimeOffCalendar({
                       isWeekend && !isOther && !holiday ? "bg-muted/10" : "",
                       holiday ? "bg-emerald-500/10" : "",
                     ].join(" ")}
-                    title={holiday ? `Company holiday: ${holiday}` : undefined}
+                    title={holiday ? `Holiday: ${holiday}` : undefined}
                   >
                     <div
                       className={[

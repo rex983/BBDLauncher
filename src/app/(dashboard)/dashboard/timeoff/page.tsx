@@ -5,7 +5,7 @@ import {
   TimeOffPanel,
   type TimeOffRequest,
 } from "@/components/features/timeoff/TimeOffPanel";
-import { loadHolidays } from "@/lib/timeoff/holidays";
+import { holidaysFor, loadHolidays } from "@/lib/timeoff/holidays";
 import { workdaysFrom } from "@/lib/timesheets/schedule";
 
 // Server-render the viewer's time-off list so the panel paints with data
@@ -46,7 +46,7 @@ export default async function MyTimeOffPage() {
         title="Requests"
         initialRequests={initialRequests}
         workdays={[...workdaysFrom(schedules || [])]}
-        holidays={holidays}
+        holidays={holidaysFor(holidays, session.user.profileId)}
       />
     </div>
   );

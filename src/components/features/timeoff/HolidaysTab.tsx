@@ -7,7 +7,12 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { todayISO } from "@/lib/timeoff/types";
-import type { Holiday } from "@/lib/timeoff/holidays";
+import type { Holiday as BaseHoliday } from "@/lib/timeoff/holidays";
+import { Badge } from "@/components/ui/badge";
+
+// A holiday as the management list returns it: a personal one (migration
+// 071) carries the person it is for.
+type Holiday = BaseHoliday & { person?: { name: string | null; email: string } | null };
 import { Plus, Trash2 } from "lucide-react";
 
 function fmtHoliday(d: string) {
@@ -95,7 +100,7 @@ export function HolidaysTab({
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Days the whole company is off. A holiday never counts as a day off when someone
-        requests time off around it.
+        requests time off around it. One marked &ldquo;Only&rdquo; is a holiday for that person alone.
       </p>
 
       {canManage && (
@@ -153,7 +158,14 @@ export function HolidaysTab({
             {rows.map((h) => (
               <TableRow key={h.id} className={h.date < today ? "text-muted-foreground" : ""}>
                 <TableCell className="whitespace-nowrap">{fmtHoliday(h.date)}</TableCell>
-                <TableCell className="font-medium">{h.name}</TableCell>
+                <TableCell className="font-medium">
+                  {h.name}
+                  {h.profile_id && (
+                    <Badge variant="outline" className="ml-2 font-normal">
+                      Only {h.person?.name || h.person?.email || "one person"}
+                    </Badge>
+                  )}
+                </TableCell>
                 {canManage && (
                   <TableCell>
                     <Button

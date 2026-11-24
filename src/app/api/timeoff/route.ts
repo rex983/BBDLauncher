@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
     parsed.data.start_date,
     parsed.data.end_date,
     workdaysFrom(schedulesRes.data || []),
-    holidayDates(holidays),
+    holidayDates(holidays, session.user.profileId),
   );
   if (countable === 0) {
     return NextResponse.json(

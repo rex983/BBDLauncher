@@ -17,7 +17,7 @@ import {
 import type { TimePunch } from "@/lib/timesheets/state";
 import { fetchPunchesPaged } from "@/lib/timesheets/punches";
 import { workdaysFrom } from "@/lib/timesheets/schedule";
-import { loadHolidays } from "@/lib/timeoff/holidays";
+import { holidayDates, loadHolidays } from "@/lib/timeoff/holidays";
 import {
   buildWeekStarts,
   computeWeeklyBreakdown,
@@ -81,7 +81,8 @@ export interface EmployeeDetailData {
     // Weekdays (0 = Sun) this person works — pass to requestDays so
     // per-request day counts match the YTD totals.
     workdays: number[];
-    // Company-holiday dates (YYYY-MM-DD) — also passed to requestDays.
+    // Holiday dates (YYYY-MM-DD) for this person: company-wide plus their
+    // own — also passed to requestDays.
     holidays: string[];
   };
   overtime: EmployeeOvertime | null; // only when requested (timesheet page)
@@ -198,7 +199,7 @@ export async function loadEmployeeWindow(
   if (error) return { ok: false, status: 500, message: error };
 
   const workdays = workdaysFrom(schedulesRes.data || []);
-  const holidays = new Set(holidayRows.map((h) => h.date));
+  const holidays = holidayDates(holidayRows, profileId);
   const ytdByType = emptyTimeOffByType();
   for (const row of (ytdTimeOffRes.data || []) as TimeOffDaysRow[]) {
     ytdByType[row.type] += requestDays(row, workdays, holidays);

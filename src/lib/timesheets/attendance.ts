@@ -195,7 +195,9 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
       .gte("end_date", fromKey),
     loadHolidays(supabase),
   ]);
-  const holidays = holidayDates(holidayRows);
+  // Company-wide holidays, plus each person's own (migration 071).
+  const companyHolidays = holidayDates(holidayRows);
+  const personalHolidays = new Set(holidayRows.map((h) => h.profile_id).filter(Boolean));
 
   const schedulesBy = new Map<string, WorkScheduleRow[]>();
   for (const s of schedulesRes.data ?? []) {
@@ -240,6 +242,7 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
     const name = (profile.name as string | null) || (profile.email as string);
     const week = buildWeekView(schedulesBy.get(id) ?? []);
     const timeOff = timeOffBy.get(id) ?? [];
+    const holidays = personalHolidays.has(id) ? holidayDates(holidayRows, id) : companyHolidays;
     const all = punchesBy.get(id) ?? [];
     const countsFrom = countsFromBy.get(id) ?? fromKey;
 
@@ -312,7 +315,7 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
         continue;
       }
       if (key < countsFrom) continue;
-      // Company holiday (migration 070): nobody is expected in, so no
+      // Holiday (company-wide or their own): they are not expected in, so no
       // clock-in is not an absence. Someone who does work it is judged as usual.
       if (!firstIn && holidays.has(key)) continue;
 

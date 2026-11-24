@@ -127,7 +127,7 @@ export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }
       if (res.ok) {
         const body = await res.json();
         setRequests((body.requests || []) as LedgerRequest[]);
-        setHolidays(holidayDates((body.holidays || []) as Holiday[]));
+        setHolidays(holidayDates((body.holidays || []) as Holiday[], profile.id));
       } else {
         setRequests([]);
       }

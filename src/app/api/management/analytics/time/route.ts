@@ -125,7 +125,11 @@ export async function GET(req: NextRequest) {
     list.push(s);
     schedByProfile.set(s.profile_id, list);
   }
-  const holidays = holidayDates(await loadHolidays(supabase));
+  // Company-wide holidays, plus each person's own (migration 071).
+  const holidayRows = await loadHolidays(supabase);
+  const companyHolidays = holidayDates(holidayRows);
+  const personal = new Set(holidayRows.map((h) => h.profile_id).filter(Boolean));
+  const holidaysOf = (id: string) => (personal.has(id) ? holidayDates(holidayRows, id) : companyHolidays);
   const timeOffByProfile = new Map<string, TimeOffByType>();
   for (const t of (yearOffs ?? []) as unknown[]) {
     const row = t as {
@@ -137,7 +141,7 @@ export async function GET(req: NextRequest) {
       hours: number | null;
     };
     const existing = timeOffByProfile.get(row.profile_id) ?? emptyTimeOffByType();
-    existing[row.type] += requestDays(row, workdaysFrom(schedByProfile.get(row.profile_id) || []), holidays);
+    existing[row.type] += requestDays(row, workdaysFrom(schedByProfile.get(row.profile_id) || []), holidaysOf(row.profile_id));
     timeOffByProfile.set(row.profile_id, existing);
   }
 

@@ -113,7 +113,7 @@ export function TimeOffSummary({
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
   // Company-holiday dates from the range API — never counted as days off.
-  const [holidays, setHolidays] = useState<ReadonlySet<string>>(new Set());
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [ledgerProfile, setLedgerProfile] = useState<Profile | null>(null);
   const [availableYears, setAvailableYears] = useState<number[]>([currentYear]);
@@ -159,7 +159,7 @@ export function TimeOffSummary({
         const body = await res.json();
         setProfiles(body.profiles || []);
         setRequests(body.requests || []);
-        setHolidays(holidayDates((body.holidays || []) as Holiday[]));
+        setHolidays((body.holidays || []) as Holiday[]);
       } else {
         setProfiles([]);
         setRequests([]);
@@ -191,7 +191,7 @@ export function TimeOffSummary({
     for (const r of sortedByStart) {
       const row = byId.get(r.profile_id);
       if (!row) continue;
-      const days = requestDays(r, new Set(row.profile.workdays), holidays);
+      const days = requestDays(r, new Set(row.profile.workdays), holidayDates(holidays, r.profile_id));
       if (r.status === "approved") {
         row.approvedByType[r.type] += days;
         row.totalApproved += days;

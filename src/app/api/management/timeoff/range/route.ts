@@ -108,7 +108,11 @@ export async function GET(req: NextRequest) {
 
   const profileIds = profiles.map((p) => p.id);
   // Company holidays: never counted as days off, and shown on the calendar.
-  const holidays = await loadHolidays(supabase);
+  // One person's own holiday rides along only when that person is in view.
+  const inView = new Set(profileIds);
+  const holidays = (await loadHolidays(supabase)).filter(
+    (h) => !h.profile_id || inView.has(h.profile_id),
+  );
   if (profileIds.length === 0) return NextResponse.json({ profiles: [], requests: [], holidays });
 
   // A request overlaps [from, to] iff start_date <= to AND end_date >= from.

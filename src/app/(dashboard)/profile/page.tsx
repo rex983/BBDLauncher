@@ -28,7 +28,7 @@ import { canViewAs } from "@/lib/launcher/view-as";
 import { resolveAppsOnly } from "@/lib/auth/perm-role";
 import { MyGoalsCard, TeamReportsCard } from "@/components/features/goals/MyGoals";
 import { listMemosForEmployee } from "@/lib/memos/queries";
-import { holidayDates, loadHolidays } from "@/lib/timeoff/holidays";
+import { holidayDates, holidaysFor, loadHolidays } from "@/lib/timeoff/holidays";
 import {
   formatDays,
   requestDays,
@@ -85,7 +85,7 @@ export default async function ProfilePage({
   const currentYear = yearInZone(now);
   const yearStart = `${currentYear}-01-01`;
 
-  const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes, incidentsRes, memoRows, holidays] = await Promise.all([
+  const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes, incidentsRes, memoRows, allHolidays] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, email, name:full_name, role, office, department, is_it, created_at, avatar_url")
@@ -146,6 +146,8 @@ export default async function ProfilePage({
     listMemosForEmployee({ supabase, profileId }),
     loadHolidays(supabase),
   ]);
+  // Company-wide holidays plus this person's own.
+  const holidays = holidaysFor(allHolidays, profileId);
 
   const profile = profileRes.data;
   const schedules = (schedulesRes.data || []) as WorkScheduleRow[];
@@ -164,7 +166,7 @@ export default async function ProfilePage({
   // Fold approved rows into days-per-type. `requestDays` handles
   // full-day (scheduled-workday count) vs partial-day (hours/8) semantics.
   const workdays = workdaysFrom(schedules);
-  const holidaySet = holidayDates(holidays);
+  const holidaySet = holidayDates(holidays, profileId);
   const daysByType = new Map<TimeOffType, number>();
   for (const t of TIME_OFF_TYPES) daysByType.set(t.value, 0);
   let totalDaysOff = 0;
