@@ -136,10 +136,12 @@ export function TimeOffTab({
   windowRows,
   ytd,
   workdays,
+  holidays,
 }: {
   windowRows: WindowTimeOffRow[];
   ytd: YtdBreakdown;
   workdays: ReadonlySet<number>;
+  holidays: ReadonlySet<string>;
 }) {
   return (
     <div className="space-y-4">
@@ -203,7 +205,7 @@ export function TimeOffTab({
                     </TableCell>
                     <TableCell>
                       {r.full_day
-                        ? `${formatDays(requestDays(r, workdays))} d`
+                        ? `${formatDays(requestDays(r, workdays, holidays))} d`
                         : `${r.hours}h`}
                     </TableCell>
                     <TableCell>

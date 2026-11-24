@@ -12,6 +12,7 @@ import { localDateInZone, scheduledTimeInZone } from "./tz";
 import { buildWeekView, LATE_GRACE_MS, minutesLate, WEEKDAY_LABELS, type WorkScheduleRow } from "./schedule";
 import { buildWeekStarts, computeDayWorkedMs, computeWeeklyBreakdown } from "./weekly";
 import type { Department, Office } from "@/types/auth";
+import { holidayDates, loadHolidays } from "@/lib/timeoff/holidays";
 
 import type { AttendanceRange } from "./attendance-ranges";
 export { ATTENDANCE_RANGES, type AttendanceRange } from "./attendance-ranges";
@@ -179,7 +180,7 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
     profiles.filter((p) => (p.time_punches as unknown[] | null)?.length).map((p) => p.id as string),
   );
 
-  const [punchesRes, schedulesRes, timeOffRes] = await Promise.all([
+  const [punchesRes, schedulesRes, timeOffRes, holidayRows] = await Promise.all([
     fetchPunchesPaged(supabase, ids, lookBackISO),
     supabase
       .from("work_schedules")
@@ -192,7 +193,9 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
       .eq("status", "approved")
       .lte("start_date", todayKey)
       .gte("end_date", fromKey),
+    loadHolidays(supabase),
   ]);
+  const holidays = holidayDates(holidayRows);
 
   const schedulesBy = new Map<string, WorkScheduleRow[]>();
   for (const s of schedulesRes.data ?? []) {
@@ -309,6 +312,9 @@ export async function loadAttendance(params: LoadParams): Promise<AttendanceRepo
         continue;
       }
       if (key < countsFrom) continue;
+      // Company holiday (migration 070): nobody is expected in, so no
+      // clock-in is not an absence. Someone who does work it is judged as usual.
+      if (!firstIn && holidays.has(key)) continue;
 
       const start = scheduledTimeInZone(anchor(key), day.start);
       const end = scheduledTimeInZone(anchor(key), day.end);

@@ -18,6 +18,7 @@ import {
   type TimeOffType,
 } from "@/lib/timeoff/types";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { Holiday } from "@/lib/timeoff/holidays";
 
 interface Profile {
   id: string;
@@ -140,6 +141,8 @@ export function TimeOffCalendar({
   const [anchor, setAnchor] = useState(() => new Date());
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
+  // Company holidays by date, named on their day cell.
+  const [holidayNames, setHolidayNames] = useState<ReadonlyMap<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [showPending, setShowPending] = useState(true);
   const [expandedWeek, setExpandedWeek] = useState<number | null>(null);
@@ -167,6 +170,7 @@ export function TimeOffCalendar({
         const body = await res.json();
         setProfiles(body.profiles || []);
         setRequests(body.requests || []);
+        setHolidayNames(new Map(((body.holidays || []) as Holiday[]).map((h) => [h.date, h.name])));
       } else {
         setProfiles([]);
         setRequests([]);
@@ -282,23 +286,31 @@ export function TimeOffCalendar({
                 const dayISO = isoDate(day);
                 const isToday = dayISO === todayISOStr;
                 const isWeekend = di === 0 || di === 6;
+                const holiday = holidayNames.get(dayISO);
                 return (
                   <div
                     key={di}
                     className={[
-                      "border-r last:border-r-0 p-1 text-xs",
+                      "border-r last:border-r-0 p-1 text-xs flex items-start gap-1 min-w-0",
                       isOther ? "bg-muted/20 text-muted-foreground/60" : "",
-                      isWeekend && !isOther ? "bg-muted/10" : "",
+                      isWeekend && !isOther && !holiday ? "bg-muted/10" : "",
+                      holiday ? "bg-emerald-500/10" : "",
                     ].join(" ")}
+                    title={holiday ? `Company holiday: ${holiday}` : undefined}
                   >
                     <div
                       className={[
-                        "inline-flex items-center justify-center h-6 w-6 rounded-full text-xs",
+                        "inline-flex shrink-0 items-center justify-center h-6 w-6 rounded-full text-xs",
                         isToday ? "bg-primary text-primary-foreground font-semibold" : "",
                       ].join(" ")}
                     >
                       {day.getDate()}
                     </div>
+                    {holiday && (
+                      <span className="truncate leading-6 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                        {holiday}
+                      </span>
+                    )}
                   </div>
                 );
               })}

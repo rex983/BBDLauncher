@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,9 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  formatDays,
+  rangeBreakdown,
+  requestDays,
   TIME_OFF_STATUS_VARIANT,
   TIME_OFF_SUBCATEGORIES,
   TIME_OFF_SUBCATEGORY_HINTS,
@@ -30,6 +33,8 @@ import {
 import { AttachmentThumbs } from "@/components/shared/attachment-thumbs";
 import { fmtDay as fmtDate } from "@/components/shared/format";
 import { Plus } from "lucide-react";
+import type { Holiday } from "@/lib/timeoff/holidays";
+import { DEFAULT_WORKDAYS } from "@/lib/timesheets/schedule";
 
 export interface TimeOffRequest {
   id: string;
@@ -59,6 +64,14 @@ interface TimeOffPanelProps {
   upcomingOnly?: boolean;
   /** View as: the person's panel exactly, but nothing saves. */
   readOnly?: boolean;
+  /** Weekdays (0 = Sun) this person works. Other days never count as time off. */
+  workdays?: number[];
+  /** Company holidays. They never count as time off either. */
+  holidays?: Holiday[];
+}
+
+function plural(n: number, word: string) {
+  return `${formatDays(n)} ${word}${n === 1 ? "" : "s"}`;
 }
 
 export function TimeOffPanel({
@@ -67,7 +80,16 @@ export function TimeOffPanel({
   description,
   upcomingOnly = false,
   readOnly = false,
+  workdays,
+  holidays,
 }: TimeOffPanelProps) {
+  const workdaySet = useMemo(() => (workdays ? new Set(workdays) : DEFAULT_WORKDAYS), [workdays]);
+  const holidayNames = useMemo(
+    () => new Map((holidays ?? []).map((h) => [h.date, h.name])),
+    [holidays],
+  );
+  const holidaySet = useMemo(() => new Set(holidayNames.keys()), [holidayNames]);
+
   const filter = (list: TimeOffRequest[]) =>
     upcomingOnly
       ? list.filter((r) => r.end_date >= todayISO())
@@ -109,6 +131,22 @@ export function TimeOffPanel({
   }, [initialRequests, load]);
 
   const subOptions = TIME_OFF_SUBCATEGORIES[form.type];
+
+  // What the picked dates come to: days they aren't scheduled to work and
+  // company holidays are left out, and the form says so before they submit.
+  const breakdown =
+    form.start_date && form.end_date && form.end_date >= form.start_date
+      ? rangeBreakdown(form.start_date, form.end_date, workdaySet, holidaySet)
+      : null;
+  const notCounted = breakdown
+    ? [
+        breakdown.notScheduled > 0
+          ? `${plural(breakdown.notScheduled, "day")} you aren\u2019t scheduled to work`
+          : null,
+        ...breakdown.holidays.map((d) => holidayNames.get(d) || "a company holiday"),
+      ].filter((x): x is string => !!x)
+    : [];
+  const nothingToRequest = !!breakdown && breakdown.days === 0;
 
   const resetForm = () => {
     setForm(blankForm());
@@ -279,6 +317,29 @@ export function TimeOffPanel({
                 </div>
               </div>
 
+              {breakdown && (nothingToRequest || form.full_day || notCounted.length > 0) && (
+                <p
+                  className={
+                    nothingToRequest
+                      ? "text-sm text-destructive"
+                      : "text-sm text-muted-foreground"
+                  }
+                >
+                  {nothingToRequest ? (
+                    "None of these dates count as time off."
+                  ) : form.full_day ? (
+                    <>
+                      Counts as{" "}
+                      <span className="font-medium text-foreground">
+                        {plural(breakdown.days, "day")}
+                      </span>{" "}
+                      off.
+                    </>
+                  ) : null}
+                  {notCounted.length > 0 && <> Not counted: {notCounted.join(", ")}.</>}
+                </p>
+              )}
+
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm font-normal cursor-pointer">
                   <input
@@ -359,7 +420,7 @@ export function TimeOffPanel({
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={submitting}>
+                <Button type="submit" disabled={submitting || nothingToRequest}>
                   {submitting ? "Submitting…" : "Submit request"}
                 </Button>
               </div>
@@ -408,7 +469,9 @@ export function TimeOffPanel({
                     </div>
                   </TableCell>
                   <TableCell>
-                    {r.full_day ? "Full day" : `${r.hours}h`}
+                    {r.full_day
+                      ? plural(requestDays(r, workdaySet, holidaySet), "day")
+                      : `${r.hours}h`}
                   </TableCell>
                   <TableCell>
                     <Badge variant={TIME_OFF_STATUS_VARIANT[r.status]}>{r.status}</Badge>

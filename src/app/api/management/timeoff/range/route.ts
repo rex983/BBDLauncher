@@ -5,6 +5,7 @@ import {
 } from "@/lib/auth/scope-check";
 import { isKnownDepartment, isKnownOffice } from "@/lib/org/lists";
 import { workdaysFrom } from "@/lib/timesheets/schedule";
+import { loadHolidays } from "@/lib/timeoff/holidays";
 import { NextRequest, NextResponse } from "next/server";
 
 const MAX_RANGE_MS = 24 * 31 * 24 * 60 * 60 * 1000; // ~24 months
@@ -106,7 +107,9 @@ export async function GET(req: NextRequest) {
   }
 
   const profileIds = profiles.map((p) => p.id);
-  if (profileIds.length === 0) return NextResponse.json({ profiles: [], requests: [] });
+  // Company holidays: never counted as days off, and shown on the calendar.
+  const holidays = await loadHolidays(supabase);
+  if (profileIds.length === 0) return NextResponse.json({ profiles: [], requests: [], holidays });
 
   // A request overlaps [from, to] iff start_date <= to AND end_date >= from.
   const [{ data: requests, error }, { data: schedRows, error: schedErr }] = await Promise.all([
@@ -152,5 +155,6 @@ export async function GET(req: NextRequest) {
       workdays: [...workdaysFrom(schedByProfile.get(p.id) || [])],
     })),
     requests: requests || [],
+    holidays,
   });
 }

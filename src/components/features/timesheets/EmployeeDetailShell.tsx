@@ -96,6 +96,7 @@ const OVERTIME_WEEKS_PREVIEW = 6;
 
 const timeOffWindowColumns = (
   workdays: ReadonlySet<number>,
+  holidays: ReadonlySet<string>,
 ): ExportColumn<WindowTimeOffRow>[] => [
   { key: "start_date", label: "Start date", get: (r) => r.start_date },
   { key: "end_date", label: "End date", get: (r) => r.end_date },
@@ -103,7 +104,7 @@ const timeOffWindowColumns = (
   { key: "subcategory", label: "Subcategory", get: (r) => r.subcategory ?? "" },
   { key: "full_day", label: "Full day", get: (r) => r.full_day },
   { key: "hours", label: "Hours", get: (r) => r.hours ?? "" },
-  { key: "days", label: "Days", get: (r) => requestDays(r, workdays) },
+  { key: "days", label: "Days", get: (r) => requestDays(r, workdays, holidays) },
   { key: "status", label: "Status", get: (r) => r.status },
   { key: "reason", label: "Reason", get: (r) => r.reason ?? "" },
 ];
@@ -135,6 +136,10 @@ export default function EmployeeDetailShell({
   // Schedule doesn't change with the days selector, so the SSR value holds.
   const workdays = useMemo(
     () => new Set(initialData?.time_off.workdays ?? DEFAULT_WORKDAYS),
+    [initialData],
+  );
+  const holidays = useMemo(
+    () => new Set(initialData?.time_off.holidays ?? []),
     [initialData],
   );
   const [overtime, setOvertime] = useState<EmployeeOvertime | null>(
@@ -476,7 +481,7 @@ export default function EmployeeDetailShell({
               <ExportMenu
                 filename={`timeoff-${employeeSlug}-${days}d`}
                 rows={timeOffWindow}
-                columns={timeOffWindowColumns(workdays)}
+                columns={timeOffWindowColumns(workdays, holidays)}
                 size="sm"
               />
             </div>
@@ -489,7 +494,7 @@ export default function EmployeeDetailShell({
                     ? fmtDateShort(r.start_date)
                     : `${fmtDateShort(r.start_date)} – ${fmtDateShort(r.end_date)}`;
                 const durationLabel = r.full_day
-                  ? `${formatDays(requestDays(r, workdays))} d`
+                  ? `${formatDays(requestDays(r, workdays, holidays))} d`
                   : `${r.hours}h`;
                 return (
                   <li
