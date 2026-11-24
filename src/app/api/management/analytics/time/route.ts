@@ -9,6 +9,7 @@ import {
 } from "@/lib/timesheets/weekly";
 import { fetchScopedPunchesPaged } from "@/lib/timesheets/punches";
 import { workdaysFrom } from "@/lib/timesheets/schedule";
+import { holidayDates, loadHolidays } from "@/lib/timeoff/holidays";
 import { yearInZone } from "@/lib/timesheets/tz";
 import {
   emptyTimeOffByType,
@@ -124,6 +125,7 @@ export async function GET(req: NextRequest) {
     list.push(s);
     schedByProfile.set(s.profile_id, list);
   }
+  const holidays = holidayDates(await loadHolidays(supabase));
   const timeOffByProfile = new Map<string, TimeOffByType>();
   for (const t of (yearOffs ?? []) as unknown[]) {
     const row = t as {
@@ -135,7 +137,7 @@ export async function GET(req: NextRequest) {
       hours: number | null;
     };
     const existing = timeOffByProfile.get(row.profile_id) ?? emptyTimeOffByType();
-    existing[row.type] += requestDays(row, workdaysFrom(schedByProfile.get(row.profile_id) || []));
+    existing[row.type] += requestDays(row, workdaysFrom(schedByProfile.get(row.profile_id) || []), holidays);
     timeOffByProfile.set(row.profile_id, existing);
   }
 

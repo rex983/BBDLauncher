@@ -134,23 +134,56 @@ export const TIME_OFF_MANAGER_REASONS = [
 
 // Workday counter used by every "days off" total. Counts only the days the
 // employee is scheduled to work (see workdaysFrom — Mon–Fri unless they have
-// a custom schedule), so a Fri–Mon request is 2 days for a Mon–Fri worker,
-// and a Saturday off counts for someone who works Tue–Sat. For partial-day
+// a custom schedule), so a Fri–Tue request is 3 days for a Mon–Fri worker
+// and 4 for someone who also works that Saturday. Company holidays
+// (migration 070) never count, whatever the schedule. For partial-day
 // requests we credit `hours / 8` days rounded to one decimal.
+const NO_HOLIDAYS: ReadonlySet<string> = new Set();
+
+// Local date as YYYY-MM-DD.
+function isoOf(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export interface RangeBreakdown {
+  days: number; // days that count as time off
+  notScheduled: number; // days in the range the person doesn't work
+  holidays: string[]; // company-holiday dates in the range (YYYY-MM-DD)
+}
+
+// What a date range is made of: the days that count, and the ones that
+// don't (and why). A holiday on a day the person doesn't work anyway is
+// listed as a holiday.
+export function rangeBreakdown(
+  startISO: string,
+  endISO: string,
+  workdays: ReadonlySet<number> = DEFAULT_WORKDAYS,
+  holidays: ReadonlySet<string> = NO_HOLIDAYS,
+): RangeBreakdown {
+  const out: RangeBreakdown = { days: 0, notScheduled: 0, holidays: [] };
+  const cursor = new Date(startISO + "T00:00:00");
+  const end = new Date(endISO + "T00:00:00");
+  if (Number.isNaN(cursor.getTime()) || Number.isNaN(end.getTime())) return out;
+  while (cursor <= end) {
+    const iso = isoOf(cursor);
+    if (holidays.has(iso)) out.holidays.push(iso);
+    else if (workdays.has(cursor.getDay())) out.days++;
+    else out.notScheduled++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+}
+
 export function countBusinessDays(
   startISO: string,
   endISO: string,
   workdays: ReadonlySet<number> = DEFAULT_WORKDAYS,
+  holidays: ReadonlySet<string> = NO_HOLIDAYS,
 ): number {
-  const start = new Date(startISO + "T00:00:00");
-  const end = new Date(endISO + "T00:00:00");
-  let count = 0;
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    if (workdays.has(cursor.getDay())) count++;
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return count;
+  return rangeBreakdown(startISO, endISO, workdays, holidays).days;
 }
 
 // The columns requestDays needs, plus `type` for per-type folds.
@@ -165,22 +198,19 @@ export interface TimeOffDaysRow {
 export function requestDays(
   r: Omit<TimeOffDaysRow, "type">,
   workdays?: ReadonlySet<number>,
+  holidays?: ReadonlySet<string>,
 ): number {
   if (!r.full_day && r.hours) {
     return Math.round((r.hours / 8) * 10) / 10;
   }
-  return countBusinessDays(r.start_date, r.end_date, workdays);
+  return countBusinessDays(r.start_date, r.end_date, workdays, holidays);
 }
 
 // Today's date in local time as YYYY-MM-DD. Local — not UTC — because
 // employees see and pick dates in their own timezone; a UTC "today" would
 // flip a day early or late for anyone west/east of the deploy region.
 export function todayISO(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  return isoOf(new Date());
 }
 
 import type { BadgeVariant } from "@/lib/badge-variant";

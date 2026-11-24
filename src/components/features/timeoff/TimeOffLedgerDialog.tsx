@@ -28,6 +28,7 @@ import {
   type TimeOffStatus,
   type TimeOffType,
 } from "@/lib/timeoff/types";
+import { holidayDates, type Holiday } from "@/lib/timeoff/holidays";
 
 interface LedgerProfile {
   id: string;
@@ -91,6 +92,8 @@ export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
   const [requests, setRequests] = useState<LedgerRequest[]>([]);
+  // Company-holiday dates from the range API — never counted as days off.
+  const [holidays, setHolidays] = useState<ReadonlySet<string>>(new Set());
   const [loading, setLoading] = useState(false);
 
   // Reset filters whenever a new profile is opened so the dialog picks up
@@ -124,6 +127,7 @@ export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }
       if (res.ok) {
         const body = await res.json();
         setRequests((body.requests || []) as LedgerRequest[]);
+        setHolidays(holidayDates((body.holidays || []) as Holiday[]));
       } else {
         setRequests([]);
       }
@@ -146,13 +150,13 @@ export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }
     let pending = 0;
     let denied = 0;
     for (const r of sorted) {
-      const d = requestDays(r, workdays);
+      const d = requestDays(r, workdays, holidays);
       if (r.status === "approved") approved += d;
       else if (r.status === "pending") pending += d;
       else if (r.status === "denied") denied += d;
     }
     return { approved, pending, denied };
-  }, [sorted, workdays]);
+  }, [sorted, workdays, holidays]);
 
   return (
     <Dialog open={!!profile} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -238,7 +242,7 @@ export function TimeOffLedgerDialog({ profile, initialFrom, initialTo, onClose }
                     )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {requestDays(r, workdays).toFixed(1)}
+                    {requestDays(r, workdays, holidays).toFixed(1)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={TIME_OFF_STATUS_VARIANT[r.status]}>{r.status}</Badge>

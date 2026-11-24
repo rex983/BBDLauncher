@@ -1,7 +1,9 @@
 import { auth } from "@/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyTimeOffSubmitted } from "@/lib/slack/notify";
-import { TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
+import { countBusinessDays, TIME_OFF_SUBCATEGORIES } from "@/lib/timeoff/types";
+import { holidayDates, loadHolidays } from "@/lib/timeoff/holidays";
+import { workdaysFrom } from "@/lib/timesheets/schedule";
 import { isOwnedObjectPath } from "@/lib/attachments/safe-path";
 import { NextRequest, NextResponse } from "next/server";
 import { validationError } from "@/app/api/_lib/validation";
@@ -81,6 +83,29 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createAdminClient();
+
+  // Days the person isn't scheduled to work and company holidays never count
+  // as time off. A request made only of those days is nothing to ask for.
+  const [schedulesRes, holidays] = await Promise.all([
+    supabase.from("work_schedules").select("weekday").eq("profile_id", session.user.profileId),
+    loadHolidays(supabase),
+  ]);
+  if (schedulesRes.error) {
+    return NextResponse.json({ error: schedulesRes.error.message }, { status: 500 });
+  }
+  const countable = countBusinessDays(
+    parsed.data.start_date,
+    parsed.data.end_date,
+    workdaysFrom(schedulesRes.data || []),
+    holidayDates(holidays),
+  );
+  if (countable === 0) {
+    return NextResponse.json(
+      { error: "Those dates are all days you aren't scheduled to work or company holidays, so there is no time off to request." },
+      { status: 400 },
+    );
+  }
+
   const { data, error } = await supabase
     .from("time_off_requests")
     .insert({

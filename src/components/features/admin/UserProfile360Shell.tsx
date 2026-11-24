@@ -535,6 +535,7 @@ export function UserProfile360Shell({
             windowRows={timeOffWindow}
             ytd={timeOffYtd}
             workdays={workdaysFrom(workSchedule)}
+            holidays={new Set(timeData?.time_off.holidays ?? [])}
           />
         </TabsContent>
 

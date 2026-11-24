@@ -17,6 +17,7 @@ import {
 import type { TimePunch } from "@/lib/timesheets/state";
 import { fetchPunchesPaged } from "@/lib/timesheets/punches";
 import { workdaysFrom } from "@/lib/timesheets/schedule";
+import { loadHolidays } from "@/lib/timeoff/holidays";
 import {
   buildWeekStarts,
   computeWeeklyBreakdown,
@@ -80,6 +81,8 @@ export interface EmployeeDetailData {
     // Weekdays (0 = Sun) this person works — pass to requestDays so
     // per-request day counts match the YTD totals.
     workdays: number[];
+    // Company-holiday dates (YYYY-MM-DD) — also passed to requestDays.
+    holidays: string[];
   };
   overtime: EmployeeOvertime | null; // only when requested (timesheet page)
 }
@@ -142,7 +145,7 @@ export async function loadEmployeeWindow(
   const windowToDate = localDateInZone(new Date(endISO));
   const yearStart = `${yearInZone(now)}-01-01`;
 
-  const [punchesRes, windowTimeOffRes, ytdTimeOffRes, schedulesRes, overtimeRes] = await Promise.all([
+  const [punchesRes, windowTimeOffRes, ytdTimeOffRes, schedulesRes, holidayRows, overtimeRes] = await Promise.all([
     // Paged: a long custom range could pass PostgREST's 1,000-row cap.
     (async () => {
       const rows: TimePunch[] = [];
@@ -180,6 +183,7 @@ export async function loadEmployeeWindow(
       .gte("start_date", yearStart),
     // Work schedule — day counts follow the person's workdays.
     supabase.from("work_schedules").select("weekday").eq("profile_id", profileId),
+    loadHolidays(supabase),
     includeOvertime
       ? loadEmployeeOvertime(supabase, profileId, now)
       : { data: null, error: null },
@@ -194,9 +198,10 @@ export async function loadEmployeeWindow(
   if (error) return { ok: false, status: 500, message: error };
 
   const workdays = workdaysFrom(schedulesRes.data || []);
+  const holidays = new Set(holidayRows.map((h) => h.date));
   const ytdByType = emptyTimeOffByType();
   for (const row of (ytdTimeOffRes.data || []) as TimeOffDaysRow[]) {
-    ytdByType[row.type] += requestDays(row, workdays);
+    ytdByType[row.type] += requestDays(row, workdays, holidays);
   }
 
   return {
@@ -208,6 +213,7 @@ export async function loadEmployeeWindow(
         window: (windowTimeOffRes.data || []) as WindowTimeOffRow[],
         ytd: withTotal(ytdByType),
         workdays: [...workdays],
+        holidays: [...holidays],
       },
       overtime: overtimeRes.data,
     },

@@ -28,6 +28,7 @@ import { canViewAs } from "@/lib/launcher/view-as";
 import { resolveAppsOnly } from "@/lib/auth/perm-role";
 import { MyGoalsCard, TeamReportsCard } from "@/components/features/goals/MyGoals";
 import { listMemosForEmployee } from "@/lib/memos/queries";
+import { holidayDates, loadHolidays } from "@/lib/timeoff/holidays";
 import {
   formatDays,
   requestDays,
@@ -84,7 +85,7 @@ export default async function ProfilePage({
   const currentYear = yearInZone(now);
   const yearStart = `${currentYear}-01-01`;
 
-  const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes, incidentsRes, memoRows] = await Promise.all([
+  const [profileRes, schedulesRes, punches14Res, timeoffRes, launchesRes, ytdApprovedRes, incidentsRes, memoRows, holidays] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, email, name:full_name, role, office, department, is_it, created_at, avatar_url")
@@ -143,6 +144,7 @@ export default async function ProfilePage({
       .order("created_at", { ascending: false })
       .limit(50),
     listMemosForEmployee({ supabase, profileId }),
+    loadHolidays(supabase),
   ]);
 
   const profile = profileRes.data;
@@ -162,11 +164,12 @@ export default async function ProfilePage({
   // Fold approved rows into days-per-type. `requestDays` handles
   // full-day (scheduled-workday count) vs partial-day (hours/8) semantics.
   const workdays = workdaysFrom(schedules);
+  const holidaySet = holidayDates(holidays);
   const daysByType = new Map<TimeOffType, number>();
   for (const t of TIME_OFF_TYPES) daysByType.set(t.value, 0);
   let totalDaysOff = 0;
   for (const r of ytdApproved) {
-    const d = requestDays(r, workdays);
+    const d = requestDays(r, workdays, holidaySet);
     daysByType.set(r.type, (daysByType.get(r.type) || 0) + d);
     totalDaysOff += d;
   }
@@ -276,7 +279,8 @@ export default async function ProfilePage({
             <Stat label="Total" value={`${formatDays(totalDaysOff)} d`} />
           </div>
           <p className="text-xs text-muted-foreground mt-3">
-            Approved days only. Partial-day requests count as hours ÷ 8.
+            Approved days only. Days you aren&rsquo;t scheduled to work and company holidays
+            don&rsquo;t count. Partial-day requests count as hours ÷ 8.
           </p>
         </CardContent>
       </Card>
@@ -285,6 +289,8 @@ export default async function ProfilePage({
         initialRequests={timeoff}
         upcomingOnly
         readOnly={viewingAs}
+        workdays={[...workdays]}
+        holidays={holidays}
         title="My upcoming time off"
         description="Submit new requests and see the status of ones that haven't happened yet."
       />

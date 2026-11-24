@@ -17,6 +17,7 @@ import { useRolePreview } from "@/components/features/launcher/role-preview-cont
 import { TimeOffCalendar } from "@/components/features/timeoff/TimeOffCalendar";
 import { TimeOffSummary } from "@/components/features/timeoff/TimeOffSummary";
 import { MarkDayOffDialog } from "@/components/features/timeoff/MarkDayOffDialog";
+import { HolidaysTab } from "@/components/features/timeoff/HolidaysTab";
 import {
   RequestDetailDialog,
   type DetailRow,
@@ -92,7 +93,7 @@ export default function TimeOffShell({
   const bump = useCallback(() => setRefreshKey((k) => k + 1), []);
   // Controlled tab value so we can pass `active` down and skip fetches
   // for the tab the user isn't looking at.
-  const [tab, setTab] = useState<"queue" | "calendar" | "summary">("queue");
+  const [tab, setTab] = useState<"queue" | "calendar" | "summary" | "holidays">("queue");
 
   return (
     <div className="space-y-6">
@@ -105,7 +106,8 @@ export default function TimeOffShell({
           </div>
           <h1 className="text-2xl font-bold">Time Off</h1>
           <p className="text-muted-foreground">
-            Review requests, see who&rsquo;s off on a shared calendar, and check totals per employee.
+            Review requests, see who&rsquo;s off on a shared calendar, check totals per employee,
+            and set company holidays.
           </p>
         </div>
         {canManage && (
@@ -118,6 +120,7 @@ export default function TimeOffShell({
           <TabsTrigger value="queue">Requests</TabsTrigger>
           <TabsTrigger value="calendar">Calendar</TabsTrigger>
           <TabsTrigger value="summary">Summary</TabsTrigger>
+          <TabsTrigger value="holidays">Holidays</TabsTrigger>
         </TabsList>
         <TabsContent value="queue" className="mt-4">
           <RequestsQueue
@@ -132,6 +135,9 @@ export default function TimeOffShell({
         </TabsContent>
         <TabsContent value="summary" className="mt-4">
           <TimeOffSummary refreshKey={refreshKey} active={tab === "summary"} />
+        </TabsContent>
+        <TabsContent value="holidays" className="mt-4">
+          <HolidaysTab active={tab === "holidays"} canManage={canManage} onChanged={bump} />
         </TabsContent>
       </Tabs>
     </div>

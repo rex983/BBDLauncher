@@ -24,6 +24,7 @@ import {
   todayISO,
 } from "@/lib/timeoff/types";
 import { PersonLink } from "@/components/features/people/person-peek";
+import { holidayDates, type Holiday } from "@/lib/timeoff/holidays";
 
 interface Profile {
   id: string;
@@ -111,6 +112,8 @@ export function TimeOffSummary({
   const [to, setTo] = useState(defaultTo);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
+  // Company-holiday dates from the range API — never counted as days off.
+  const [holidays, setHolidays] = useState<ReadonlySet<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [ledgerProfile, setLedgerProfile] = useState<Profile | null>(null);
   const [availableYears, setAvailableYears] = useState<number[]>([currentYear]);
@@ -156,6 +159,7 @@ export function TimeOffSummary({
         const body = await res.json();
         setProfiles(body.profiles || []);
         setRequests(body.requests || []);
+        setHolidays(holidayDates((body.holidays || []) as Holiday[]));
       } else {
         setProfiles([]);
         setRequests([]);
@@ -187,7 +191,7 @@ export function TimeOffSummary({
     for (const r of sortedByStart) {
       const row = byId.get(r.profile_id);
       if (!row) continue;
-      const days = requestDays(r, new Set(row.profile.workdays));
+      const days = requestDays(r, new Set(row.profile.workdays), holidays);
       if (r.status === "approved") {
         row.approvedByType[r.type] += days;
         row.totalApproved += days;
@@ -217,7 +221,7 @@ export function TimeOffSummary({
         if (bNext) return 1;
         return b.totalApproved - a.totalApproved;
       });
-  }, [profiles, requests]);
+  }, [profiles, requests, holidays]);
 
   // Default matches the old fixed order: soonest upcoming first, the rest
   // keep the base order (most approved days) below.
@@ -378,7 +382,7 @@ export function TimeOffSummary({
       )}
       <p className="text-xs text-muted-foreground">
         Days = scheduled workdays (Mon–Fri unless the person has a custom schedule) for
-        full-day requests; partial days credit hours ÷ 8.
+        full-day requests, never counting company holidays; partial days credit hours ÷ 8.
         Click a row to open the full ledger.
       </p>
 
